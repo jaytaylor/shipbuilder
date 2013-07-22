@@ -104,6 +104,17 @@ func (this *Deployment) createContainer() error {
 	if this.err != nil {
 		return this.err
 	}
+	// Chown the app src & output to default user by grepping the uid+gid from /etc/passwd in the container.
+	this.err = e.Run("/bin/bash", "-c",
+		"touch "+this.Application.AppDir()+"/out && "+
+			"chown $(cat "+this.Application.RootFsDir()+"/etc/passwd | grep '^"+DEFAULT_NODE_USERNAME+":' | cut -d':' -f3,4) "+
+			this.Application.AppDir()+" && "+
+			"chown -R $(cat "+this.Application.RootFsDir()+"/etc/passwd | grep '^"+DEFAULT_NODE_USERNAME+":' | cut -d':' -f3,4) "+
+			this.Application.AppDir()+"/{out,src}",
+	)
+	if this.err != nil {
+		return this.err
+	}
 	return nil
 }
 
@@ -162,8 +173,7 @@ func (this *Deployment) build() error {
 		}
 		c <- err
 	}()
-
-	err = e.Run("sudo", "lxc-start", "--daemon", "-n", this.Application.Name)
+	err = e.Run("sudo", "lxc-start", "-d", "-n", this.Application.Name)
 	if err != nil {
 		return err
 	}
