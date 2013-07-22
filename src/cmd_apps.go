@@ -10,6 +10,9 @@ import (
 )
 
 func (this *Server) validateAppName(applicationName string) error {
+	if strings.ToLower(applicationName) == "base" {
+		return fmt.Errorf("Application name cannot be 'base'")
+	}
 	expr := `^[a-z0-9]+([a-z0-9-]*[a-z0-9])?$`
 	matcher := regexp.MustCompile(expr)
 	if !matcher.MatchString(applicationName) {
