@@ -254,7 +254,7 @@ backend {{.Name}}-maintenance
 {{end}}`))
 
 	// Discover all available build-packs.
-	listing, err := ioutil.ReadDir("build-packs")
+	listing, err := ioutil.ReadDir(DIRECTORY + "/build-packs")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
@@ -262,7 +262,7 @@ backend {{.Name}}-maintenance
 	for _, buildPack := range listing {
 		if buildPack.IsDir() {
 			fmt.Printf("Discovered build-pack: %v\n", buildPack.Name())
-			contents, err := ioutil.ReadFile("build-packs/" + buildPack.Name() + "/pre-hook")
+			contents, err := ioutil.ReadFile(DIRECTORY + "/build-packs/" + buildPack.Name() + "/pre-hook")
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "fatal: build-pack '%v' missing pre-hook file: %v\n", buildPack.Name(), err)
 				os.Exit(1)

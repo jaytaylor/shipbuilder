@@ -66,6 +66,7 @@ function gitLinkage() {
     echo 'info: Creating and linking /mnt/build/git -> /git'
     sudo mkdir -p /mnt/build/git 2>/dev/null
     sudo chown 777 /mnt/build/git
+    sudo ln -s /mnt/build/git /git
 }
 
 function buildEnv() {
