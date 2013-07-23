@@ -71,7 +71,7 @@ func (this *Deployment) createContainer() error {
 	_, err := os.Stat(this.Application.RootFsDir())
 	if err != nil {
 		// Clone the base application.
-		this.err = e.Run("sudo", "lxc-clone", "-s", "-B", "btrfs", "-o", "base", "-n", this.Application.Name)
+		this.err = e.Run("sudo", "lxc-clone", "-s", "-B", "btrfs", "-o", "base-"+this.Application.BuildPack, "-n", this.Application.Name)
 		if this.err != nil {
 			return this.err
 		}
@@ -296,7 +296,7 @@ func (this *Deployment) syncNode(node *Node) error {
 	// TODO: Maybe add fail check to clone operation.
 	err := e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+node.Host,
 		"sudo", "/bin/bash", "-c",
-		`"if ! [ -d '/var/lib/lxc/`+this.Application.Name+`' ]; then lxc-clone -B btrfs -s -o base-`+this.Application.BuildPack+` -n `+this.Application.Name+`; else echo 'base image already exists'; fi"`,
+		`"if ! [ -d '/var/lib/lxc/`+this.Application.Name+`' ]; then lxc-clone -B btrfs -s -o base-`+this.Application.BuildPack+` -n `+this.Application.Name+`; else echo 'app image already exists'; fi"`,
 	)
 	if err != nil {
 		fmt.Fprintf(logger, "error cloning base container: %v\n", err)
