@@ -156,7 +156,7 @@ function lxcConfigBuildPack() {
     local packages="$2"
     local customCommands="$3"
     echo "info: Creating build-pack ${container} container"
-    sudo lxc-clone -B btrfs -o base -n $container
+    sudo lxc-clone -s -B btrfs -o base -n $container
     sudo lxc-start -d -n $container
     getContainerIp $container
 
