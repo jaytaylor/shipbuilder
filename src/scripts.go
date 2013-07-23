@@ -24,156 +24,200 @@ done
 )
 
 var POSTDEPLOY = `#!/usr/bin/python -u
+# -*- coding: utf-8 -*-
+
 import os, stat, subprocess, sys, time
 
 def getIp(name):
-  with open('/var/lib/lxc/' + name + '/rootfs/app/ip') as f:
-    return f.read().split('/')[0]
+    with open('/var/lib/lxc/' + name + '/rootfs/app/ip') as f:
+        return f.read().split('/')[0]
+
+def modifyIpTables(action, chain, ip, port):
+    """
+    @param action str 'append' or 'delete'.
+    @param chain str 'PREROUTING' or 'OUTPUT'.
+    """
+    assert action in ('append', 'delete'), 'Invalid action: "{0}", must be "append" or "delete"'
+    assert chain in ('PREROUTING', 'OUTPUT'), 'Invalid chain: "{0}", must be "PREROUTING" or "OUTPUT"'.format(chain)
+    subprocess.check_call(
+        [
+            '/sbin/iptables',
+            '--table', 'nat',
+            '--append', chain,
+            '--proto', 'tcp',
+            '--dport', port,
+            '--jump', 'DNAT',
+            '--to-destination', '{0}:{1}'.format(ip, port),
+        ] + (['--out-interface', 'lo'] if chain == 'OUTPUT' else []),
+        stdout=sys.stdout,
+        stderr=sys.stderr
+    )
+
+def ipsForRulesMatchingPort(chain, port):
+    # NB: 'exit 0' added to avoid exit status code 1 when there were no results.
+    rawOutput = subprocess.check_output(
+        [
+            '/sbin/iptables --table nat --list {0} --numeric | grep -E -o "[0-9.]+:{1}" | grep -E -o "^[^:]+"; exit 0' \
+                .format(chain, port),
+        ],
+        shell=True,
+        stderr=sys.stderr
+    ).strip()
+    return rawOutput.split('\n') if len(rawOutput) > 0 else []
+
+def configureIpTablesForwarding(ip, port):
+    print 'configuring iptables to forward port {0} to {1}'.format(port, ip)
+    # Clear out any conflicting pre-existing rules on the same port.
+    for chain in ('PREROUTING', 'OUTPUT'):
+        conflictingRules = ipsForRulesMatchingPort(chain, port)
+        for someOtherIp in conflictingRules:
+            modifyIpTables('delete', chain, someOtherIp, port)
+
+    # Add a rule to route <eth0-iface>:<port> TCP packets to the container.
+    modifyIpTables('append', 'PREROUTING', ip, port)
+
+    # Add another rule so that the port will be reachable from <eth0-iface>:port from localhost.
+    modifyIpTables('append', 'OUTPUT', ip, port)
 
 def main(argv):
-  #print 'main argv={0}'.format(argv)
-  container = argv[1] #.split(',')
-  process = argv[1].split('` + DYNO_DELIMITER + `')[-3] # process is always 3 from the end.
+    #print 'main argv={0}'.format(argv)
+    container = argv[1]
+    process = argv[1].split('` + DYNO_DELIMITER + `')[-3] # Process is always 3 from the end.
 
-  # Start the specified container.
-  app = container.rsplit('` + DYNO_DELIMITER + `', 3)[0] # Get rid of port + version.
-  port = container.split('` + DYNO_DELIMITER + `')[-1]
-  print('cloning container: ' + container)
-  subprocess.call([
-    '/usr/bin/lxc-clone',
-    '-s',
-    '-B', 'btrfs',
-    '-o', app,
-    '-n', container
-  ], stdout=sys.stdout, stderr=sys.stderr)
+    # Start the specified container.
+    app = container.rsplit('` + DYNO_DELIMITER + `', 3)[0] # Get rid of port + version.
+    port = container.split('` + DYNO_DELIMITER + `')[-1] # Port is always at the end.
+    print 'cloning container: {0}'.format(container)
+    subprocess.call(['/usr/bin/lxc-stop', '-k', '-n', container], stdout=None, stderr=None)
+    subprocess.call(['/usr/bin/lxc-destroy', '-n', container], stdout=None, stderr=None)
+    subprocess.check_call(
+        ['/usr/bin/lxc-clone', '-s', '-B', 'btrfs', '-o', app, '-n', container],
+        stdout=sys.stdout,
+        stderr=sys.stderr
+    )
 
-  # This line, if present, will prevent the container from booting.
-  print('Scrubbing any "lxc.cap.drop = mac_{0}" lines from container config'.format(container))
-  subprocess.call([
-    'sed', '-i',
-    '/lxc.cap.drop = mac_{0}/d'.format(container),
-    '/var/lib/lxc/{0}/config'.format(container),
-  ])
+    # This line, if present, will prevent the container from booting.
+    print 'scrubbing any "lxc.cap.drop = mac_{0}" lines from container config'.format(container)
+    subprocess.check_call(
+        ['sed', '-i', '/lxc.cap.drop = mac_{0}/d'.format(container), '/var/lib/lxc/{0}/config'.format(container)],
+        stdout=sys.stdout,
+        stderr=sys.stderr
+    )
 
-  print('creating run script for ' + app + ' with process type=' + process)
-  # NB: The curly braces are kinda crazy here, to get a single '{' or '}' with python.format(), use double curly
-  # braces.
-  host = '''` + sshHost + `'''
-  runScript = '''#!/bin/bash
+    print 'creating run script for app "{0}" with process type={1}'.format(app, process)
+    # NB: The curly braces are kinda crazy here, to get a single '{' or '}' with python.format(), use double curly
+    # braces.
+    host = '''` + sshHost + `'''
+    runScript = '''#!/bin/bash
 ip addr show eth0 | grep 'inet.*eth0' | awk '{{print $2}}' > /app/ip
 rm -rf /tmp/log
 cd /app/src
 echo '{port}' > ../env/PORT
 while read line || [ -n "$line" ]; do
-  process="${{line%%:*}}"
-  command="${{line#*: }}"
-  if [ "$process" == "{process}" ]; then
-    envdir ../env /bin/bash -c "${{command}} 2>&1 | /app/` + BINARY + ` logger -h{host} -a{app} -p{process}"
-  fi
+    process="${{line%%:*}}"
+    command="${{line#*: }}"
+    if [ "$process" == "{process}" ]; then
+        envdir ../env /bin/bash -c "${{command}} 2>&1 | /app/` + BINARY + ` logger -h{host} -a{app} -p{process}"
+    fi
 done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, app=app)
-  runScriptFileName = '/var/lib/lxc/{0}/rootfs/app/run'.format(container)
-  with open(runScriptFileName, 'w') as fh:
-    fh.write(runScript)
-  # Chmod to be executable.
-  st = os.stat(runScriptFileName)
-  os.chmod(runScriptFileName, st.st_mode | stat.S_IEXEC)
+    runScriptFileName = '/var/lib/lxc/{0}/rootfs/app/run'.format(container)
+    with open(runScriptFileName, 'w') as fh:
+        fh.write(runScript)
+    # Chmod to be executable.
+    st = os.stat(runScriptFileName)
+    os.chmod(runScriptFileName, st.st_mode | stat.S_IEXEC)
 
-  print('starting container: {0}'.format(container))
-  subprocess.call([
-    '/usr/bin/lxc-start',
-    '--daemon',
-    '-n', container,
-  ], stdout=sys.stdout, stderr=sys.stderr)
+    print 'starting container: {0}'.format(container)
+    subprocess.check_call(
+        ['/usr/bin/lxc-start', '--daemon', '-n', container],
+        stdout=sys.stdout,
+        stderr=sys.stderr
+    )
 
-  print('Waiting for container to boot and report ip-address')
-  # Allow container to bootup.
-  ip = None
-  for _ in xrange(45):
-    time.sleep(1)
-    try:
-      ip = getIp(container)
-    except:
-      continue
+    print 'waiting for container to boot and report ip-address'
+    # Allow container to bootup.
+    ip = None
+    for _ in xrange(45):
+        time.sleep(1)
+        try:
+            ip = getIp(container)
+        except:
+            continue
 
-  if ip:
-    print('- ip: ' + ip)
-    subprocess.call([
-      '/sbin/iptables',
-      '--table', 'nat',
-      '--append', 'PREROUTING',
-      '--proto', 'tcp',
-      '--dport', port,
-      '--jump', 'DNAT',
-      '--to-destination', ip + ':' + port,
-    ], stdout=sys.stdout, stderr=sys.stderr)
+    if ip:
+        print 'Found ip: {0}'.format(ip)
+        configureIpTablesForwarding(ip, port)
 
-    # Another rule so that the port will be reachable from <eth0-ip>:port
-    # e.g. $ iptables --table nat --append OUTPUT --proto tcp --dport 10001 --out-interface lo --jump DNAT --to-destination 1.2.3.4:10001
-    subprocess.call([
-      '/sbin/iptables',
-      '--table', 'nat',
-      '--append', 'OUTPUT',
-      '--proto', 'tcp',
-      '--dport', port,
-      '--out-interface', 'lo',
-      '--jump', 'DNAT',
-      '--to-destination', ip + ':' + port,
-    ], stdout=sys.stdout, stderr=sys.stderr)
+        if process == 'web':
+            print 'waiting for web-server to finish starting up'
+            try:
+                subprocess.check_call([
+                    '/usr/bin/curl',
+                    '-sL',
+                    '-w', '"%{http_code} %{url_effective}\\n"',
+                    '{0}:{1}/'.format(ip, port),
+                    '-o', '/dev/null',
+                ], stderr=sys.stderr, stdout=sys.stdout)
+            except subprocess.CalledProcessError, e:
+                sys.stderr.write('- curl http check failed: {0}\n'.format(e))
 
-    if process == 'web':
-      print('Waiting for web-server to finish starting up')
-      subprocess.call([
-        '/usr/bin/curl',
-        '-sL',
-        '-w', '"%{http_code} %{url_effective}\\n"',
-        ip + ':{0}/'.format(port),
-        '-o', '/dev/null',
-      ], stdout=sys.stdout, stderr=sys.stderr)
-
-  else:
-    print('- error retrieving ip')
-    sys.exit(1)
+    else:
+        print '- error retrieving ip'
+        sys.exit(1)
 
 main(sys.argv)`
 
 var SHUTDOWN_CONTAINER = `#!/usr/bin/python -u
+# -*- coding: utf-8 -*-
 
 import subprocess, sys
 
+def modifyIpTables(action, chain, ip, port):
+    """
+    @param action str 'append' or 'delete'.
+    @param chain str 'PREROUTING' or 'OUTPUT'.
+    """
+    assert action in ('append', 'delete')
+    assert chain in ('PREROUTING', 'OUTPUT')
+    subprocess.check_call(
+        [
+            '/sbin/iptables',
+            '--table', 'nat',
+            '--append', chain,
+            '--proto', 'tcp',
+            '--dport', port,
+            '--jump', 'DNAT',
+            '--to-destination', ip + ':' + port,
+        ] + (['--out-interface', 'lo'] if chain == 'OUTPUT' else []),
+        stdout=sys.stdout,
+        stderr=sys.stderr
+    )
+
+def ipsForRulesMatchingPort(chain, port):
+    # NB: 'exit 0' added to avoid exit status code 1 when there were no results.
+    return subprocess.check_output(
+        [
+            '/sbin/iptables --table nat --list {0} --numeric | grep -E -o "[0-9.]+:{1}" | grep -E -o "^[^:]+"; exit 0' \
+                .format(chain, port),
+        ],
+        shell=True,
+        stderr=sys.stderr
+    ).strip().split('\n')
+
 def main(argv):
-  container = argv[1]
+    container = argv[1]
+    port = container.split('` + DYNO_DELIMITER + `').pop()
 
-  # Stop all existing containers.
-  print('stopping container: ' + container)
-  subprocess.call([
-    '/usr/bin/lxc-stop',
-    '-n', container,
-    '-k',
-  ], stdout=sys.stdout, stderr=sys.stderr)
-  subprocess.call([
-    '/usr/bin/lxc-destroy',
-    '-n', container,
-  ], stdout=sys.stdout, stderr=sys.stderr)
+    # Stop all existing containers.
+    print 'stopping container: '.format(container)
+    subprocess.check_call(['/usr/bin/lxc-stop', '-k', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
+    subprocess.check_call(['/usr/bin/lxc-destroy', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
 
-  cont = True
-  while cont:
-    cont = False
-    result = subprocess.check_output(['/sbin/iptables', '--table', 'nat', '--list', '--line-numbers', '--numeric'])
-    for line in result.split('\n'):
-      port = container.split('` + DYNO_DELIMITER + `').pop()
-
-      if line.find('dpt:' + port) >= 0:
-        print('remove ' + ' '.join(line.split()))
-        subprocess.call(
-          ['/sbin/iptables', '--table', 'nat', '--delete', 'PREROUTING', line.split()[0],],
-          stdout=sys.stdout, stderr=sys.stderr
-        )
-        subprocess.call(
-          ['/sbin/iptables', '--table', 'nat', '--delete', 'OUTPUT', line.split()[0],],
-          stdout=sys.stdout, stderr=sys.stderr
-        )
-        cont = True
-        break
+    for chain in ('PREROUTING', 'OUTPUT'):
+        rules = ipsForRulesMatchingPort(chain, port)
+        for ip in rules:
+            print 'removing iptables {0} chain rule: port={1} ip={2}'.format(chain, port, ip)
+            modifyIpTables('delete', chain, ip, port)
 
 main(sys.argv)`
 
