@@ -23,7 +23,11 @@ func (this *Server) validateAppName(applicationName string) error {
 func (this *Server) validateBuildPack(buildPack string) error {
 	_, ok := BUILD_PACKS[buildPack]
 	if !ok {
-		return fmt.Errorf("unsupported buildpack requested: %v, valid choices are: %v", buildPack, BUILD_PACKS)
+		validChoices := []string{}
+		for bp, _ := range BUILD_PACKS {
+			validChoices = append(validChoices, bp)
+		}
+		return fmt.Errorf("unsupported buildpack requested: %v, valid choices are: %v", buildPack, validChoices)
 	}
 	return nil
 }
