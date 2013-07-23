@@ -184,6 +184,11 @@ var (
 )
 
 func init() {
+	// Only validate templates if not running in server-mode.
+	if len(os.Args) > 1 && os.Args[1] != "server" {
+		return
+	}
+
 	template.Must(UPSTART.Parse(`
 console none
 
