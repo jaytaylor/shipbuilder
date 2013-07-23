@@ -71,6 +71,9 @@ stop on [!12345]
 exec start-stop-daemon --start --chdir /mnt/build --exec /usr/bin/envdir /mnt/build/env /mnt/build/shipbuilder server 2>&1 | logger -t shipbuilder
 EOF
 
+    echo 'info: copying build-packs'
+    sudo rm -rf /mnt/build/build-packs
+    sudo mv /{tmp,mnt}/build/build-packs
     echo 'info: stopping service'
     sudo service shipbuilder stop
     echo 'info: starting service'
@@ -169,6 +172,7 @@ func run(c string, args ...string) error {
 }
 
 func deploy() error {
+	fmt.Printf("info: Deploying to target: %v\n", sshHost)
 	os.Remove(DEPLOYER_SCRIPT_PATH)
 	os.Remove(COMPRESSED_PATH)
 
@@ -193,7 +197,7 @@ ssh -i '`+sshKey+`' -o 'StrictHostKeyChecking no' `+sshHost+` /bin/bash '`+DEPLO
 	if err != nil {
 		return err
 	}
-	fmt.Printf("go env = %v", os.Getenv("GOPATH"))
+	/*fmt.Printf("go env = %v", os.Getenv("GOPATH"))
 	args := []string{
 		"build",
 		"-o", os.Getenv("HOME") + "/Dropbox/SendHub\\ General/Engineering\\ Resources/bin/shipbuilder",
@@ -211,7 +215,7 @@ ssh -i '`+sshKey+`' -o 'StrictHostKeyChecking no' `+sshHost+` /bin/bash '`+DEPLO
 		return err
 	}
 	// Build & copy to dropbox
-	err = run("go", args...)
+	err = run("go", args...)*/
 	return err
 }
 

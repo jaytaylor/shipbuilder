@@ -6,6 +6,43 @@ import (
 	"strings"
 )
 
+func (this *Server) SyncContainer(e Executor, address string, container string, cloneOrCreateArgs ...string) error {
+	e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+address, "sudo lxc-stop -k -n "+container+";sudo lxc-destroy -n "+container)
+	err := e.Run("ssh", append(
+		[]string{
+			DEFAULT_NODE_USERNAME + "@" + address,
+			"sudo", "test", "-e", LXC_DIR + "/" + container, "&&",
+			"echo", "not creating/cloning image '" + container + "', already exists", "||",
+			"sudo",
+		},
+		cloneOrCreateArgs...,
+	)...)
+	if err != nil {
+		return err
+	}
+	// Rsync the base container over.
+	err = e.Run("sudo", "rsync",
+		"--recursive",
+		"--links",
+		"--perms",
+		"--times",
+		"--devices",
+		"--specials",
+		"--hard-links",
+		"--acls",
+		"--delete",
+		"--xattrs",
+		"--numeric-ids",
+		"-e", "ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes'",
+		LXC_DIR+"/"+container+"/rootfs/",
+		"root@"+address+":/var/lib/lxc/base/rootfs/",
+	)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (this *Server) Node_Add(conn net.Conn, addresses []string) error {
 	addresses = replaceLocalhostWithSystemIp(&addresses)
 
@@ -30,34 +67,18 @@ func (this *Server) Node_Add(conn net.Conn, addresses []string) error {
 			}
 			if !found {
 				fmt.Fprintf(dimLogger, "Transmitting base LXC container image to node: %v\n", addAddress)
-				err := e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+addAddress,
-					"sudo", "test", "-e", "/var/lib/lxc/base", "&&",
-					"echo", "not creating base image, already exists",
-					"||",
-					"sudo", "lxc-create", "-n", "base", "-B", "btrfs", "-t", "ubuntu",
-				)
+				err := this.SyncContainer(e, addAddress, "base", "lxc-create", "-n", "base", "-B", "btrfs", "-t", "ubuntu")
 				if err != nil {
 					return err
 				}
-				// Rsync the base container over.
-				err = e.Run("sudo", "rsync",
-					"--recursive",
-					"--links",
-					"--perms",
-					"--times",
-					"--devices",
-					"--specials",
-					"--hard-links",
-					"--acls",
-					"--delete",
-					"--xattrs",
-					"--numeric-ids",
-					"-e", "ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes'",
-					"/var/lib/lxc/base/rootfs/",
-					"root@"+addAddress+":/var/lib/lxc/base/rootfs/",
-				)
-				if err != nil {
-					return err
+				// Add build-packs.
+				for buildPack, _ := range BUILD_PACKS {
+					nContainer := "base-" + buildPack
+					fmt.Fprintf(dimLogger, "Transmitting build-pack '%v' LXC container image to node: %v\n", nContainer, addAddress)
+					err = this.SyncContainer(e, addAddress, nContainer, "lxc-clone", "-s", "-B", "btrfs", "-o", "base", "-n", nContainer)
+					if err != nil {
+						return err
+					}
 				}
 				fmt.Fprintf(dimLogger, "Adding node: %v\n", addAddress)
 				cfg.Nodes = append(cfg.Nodes, &Node{addAddress})

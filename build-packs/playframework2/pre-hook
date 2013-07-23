@@ -1,0 +1,7 @@
+#!/bin/bash
+cd /app/src
+#-DapplyEvolutions.default=false -Dconfig.file=conf/prod.conf -Dlogger.file=conf/prod-logger.xml -Dnewrelic.environment=production
+export _JAVA_OPTIONS='-Xmx5000m -XX:-UseConcMarkSweepGC'
+#stdbuf -o0 python -m compileall -q . 2>&1 >> /app/out
+#stdbuf -o0 pip install -r requirements.txt 2>&1 >> /app/out
+echo "RETURN_CODE: $?" >> /app/out

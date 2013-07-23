@@ -210,6 +210,18 @@ func (this *Server) handleConnection(conn net.Conn) {
 	}
 }
 
+func (this *Server) verifyRequiredBuildPacks() error {
+	return this.WithConfig(func(cfg *Config) error {
+		for _, app := range cfg.Applications {
+			_, ok := BUILD_PACKS[app.BuildPack]
+			if !ok {
+				return fmt.Errorf("fatal: missing build-pack '%v' for application '%v'", app.BuildPack, app.Name)
+			}
+		}
+		return nil
+	})
+}
+
 func (this *Server) start() error {
 	var err error
 
@@ -226,6 +238,12 @@ func (this *Server) start() error {
 	if err != nil {
 		return err
 	}
+
+	err = this.verifyRequiredBuildPacks()
+	if err != nil {
+		return err
+	}
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {

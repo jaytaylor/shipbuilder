@@ -74,9 +74,39 @@ function buildEnv() {
     echo "${sbHost}" | sudo tee /mnt/build/env/SB_SSH_HOST
 }
 
+function getContainerIp() {
+    local container="$1"
+    local allowedAttempts=60
+    local i=0
+    echo "info: Getting container IP-address for name '${container}'"
+    while [ $i -lt $allowedAttempts ]; do
+        maybeIp=$(sudo lxc-ls --fancy | grep "^${container}[ \t]\+" | head -n1 | sed 's/[ \t]\+/ /g' | cut -d' ' -f3 | sed 's/[^0-9\.]*//g')
+        # Verify that after a few seconds the ip hasn't changed.
+        if [ -n "${maybeIp}" ]; then
+            sleep 5
+            ip=$(sudo lxc-ls --fancy | grep "^${container}[ \t]\+" | head -n1 | sed 's/[ \t]\+/ /g' | cut -d' ' -f3 | sed 's/[^0-9\.]*//g')
+            if [ "${ip}" = "${maybeIp}" ]; then
+                echo "info: ip-address verified, value=${ip}"
+                break
+            else
+                echo "warn: ip-address not stable try1=${maybeIp} try2=${ip}"
+            fi
+            echo "info: found an ip=${ip}"
+        fi
+        i=$(($i+1))
+        sleep 1
+    done
+    if [ -n "${ip}" ]; then
+        echo "info: found ip=${ip} for ${container} container"
+    else
+        echo "error: obtaining ip-address for container '${container}' failed after ${allowedAttempts} attempts" 1>&2
+        exit 1
+    fi
+}
+
 function lxcInitBase() {
     echo 'info: Clear any pre-existing "base" container'
-    sudo lxc-stop -n base --kill 2>/dev/null
+    sudo lxc-stop -k -n base 2>/dev/null
     sudo lxc-destroy -n base 2>/dev/null
     
     echo 'info: Create the base LXC container'
@@ -89,18 +119,7 @@ function lxcInitBase() {
     rc=$?
     test $rc -ne 0 && echo "error: lxc-start base exited with status ${rc}" 1>&2 && exit $rc
 
-    echo 'info: Getting container IP-address'
-    allowedAttempts=60
-    i=0
-    while [ $i -lt $allowedAttempts ] && [ -z "${ip}" ]; do
-        ip=$(sudo lxc-ls --fancy | grep '^base' | head -n1 | sed 's/[ \t]\+/ /g' | cut -d' ' -f3 | sed 's/[^0-9\.]*//g')
-        i=$(($i+1))
-        sleep 1
-    done
-    if [ -z "${ip}" ]; then
-        echo "error: starting base container failed after ${allowedAttempts} attempts" 1>&2
-        exit 1
-    fi
+    getContainerIp base
 }
 
 function lxcConfigBase() {
@@ -116,8 +135,8 @@ function lxcConfigBase() {
     rc=$?
     test $rc -ne 0 && echo "error: container apt-get update exited with status ${rc}" 1>&2 && exit $rc
 
-    packages='daemontools git-core curl python-pip python-virtualenv python-dev libpq-dev libxml2 libxml2-dev libxslt1.1 libxslt1-dev python-libxml2 libcurl4-gnutls-dev libmemcached-dev zlib1g-dev'
-    echo "info: Installing packages to base containers: ${packages}"
+    packages='daemontools git-core curl unzip'
+    echo "info: Installing packages to base container: ${packages}"
     ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes' ubuntu@$ip "sudo apt-get install -y ${packages}"
     rc=$?
     test $rc -ne 0 && echo "error: container apt-get install ${packages} exited with status ${rc}" 1>&2 && exit $rc
@@ -126,6 +145,45 @@ function lxcConfigBase() {
     sudo lxc-stop -k -n base
     rc=$?
     test $rc -ne 0 && echo "error: lxc-stop base exited with status ${rc}" 1>&2 && exit $rc
+}
+
+function lxcConfigBuildPack() {
+    # @param $1 base-container suffix (e.g. 'python').
+    # @param $2 list of packages to install.
+    # @param $3 customCommands command to evaluate over SSH.
+    local container="base-$1"
+    local packages="$2"
+    local customCommands="$3"
+    echo "info: Creating build-pack ${container} container"
+    sudo lxc-clone -B btrfs -o base -n $container
+    sudo lxc-start -d -n $container
+    getContainerIp $container
+
+    echo "info: Installing packages to ${container} container: ${packages}"
+    ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes' ubuntu@$ip "sudo apt-get install -y ${packages}"
+    rc=$?
+    test $rc -ne 0 && echo "error: [${container}] container apt-get install ${packages} exited with status ${rc}" 1>&2 && exit $rc
+
+    if [ -n "${customCommands}" ]; then
+        echo "info: Running customCommands command: ${customCommands}"
+        ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes' ubuntu@$ip "${customCommands}"
+        rc=$?
+        test $rc -ne 0 && echo "error: [${container}] container customCommands command /${customCommands}/ exited with status ${rc}" 1>&2 && exit $rc
+    fi
+
+    echo "info: stopping ${container} container"
+    sudo lxc-stop -k -n $container
+    rc=$?
+    test $rc -ne 0 && echo "error: [${container}] lxc-stop exited with status ${rc}" 1>&2 && exit $rc
+}
+
+function lxcConfigBuildPacks() {
+    echo "info: Initializing build-pack: ${buildPack}"
+    for buildPack in $(ls -1 ../build-packs); do
+        packages="$(cat ../build-packs/$buildPack/container-packages 2>/dev/null)"
+        customCommands="$(cat ../build-packs/$buildPack/container-custom-commands 2>/dev/null)"
+        lxcConfigBuildPack "${buildPack}" "${packages}" "${customCommands}"
+    done
 }
 
 function rsyslogLoggingListeners() {
@@ -155,6 +213,7 @@ gitLinkage
 buildEnv
 lxcInitBase
 lxcConfigBase
+lxcConfigBuildPacks
 rsyslogLoggingListeners
 
 exit 0

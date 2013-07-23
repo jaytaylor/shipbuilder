@@ -16,4 +16,6 @@ Thumbs.db
 bin/
 env/
 dist/
+shipbuilder
+config.json
 

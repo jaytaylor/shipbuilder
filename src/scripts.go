@@ -1,6 +1,10 @@
 package main
 
 import (
+	"fmt"
+	"io/ioutil"
+	"os"
+	"strings"
 	"text/template"
 )
 
@@ -174,10 +178,9 @@ def main(argv):
 main(sys.argv)`
 
 var (
-	UPSTART             = template.New("UPSTART")
-	PYTHON_BUILD        = template.New("PYTHON_BUILD")
-	PLAYFRAMEWORK_BUILD = template.New("PLAYFRAMEWORK_BUILD")
-	HAPROXY_CONFIG      = template.New("HAPROXY_CONFIG")
+	UPSTART        = template.New("UPSTART")
+	HAPROXY_CONFIG = template.New("HAPROXY_CONFIG")
+	BUILD_PACKS    = map[string]*template.Template{}
 )
 
 func init() {
@@ -188,17 +191,6 @@ start on (local-filesystems and net-device-up IFACE!=lo)
 stop on [!12345]
 #exec su ` + DEFAULT_NODE_USERNAME + ` -c "/app/run"
 exec /app/run`))
-
-	template.Must(PYTHON_BUILD.Parse(`#!/bin/bash
-cd /app/src
-stdbuf -o0 python -m compileall -q . 2>&1 >> /app/out
-stdbuf -o0 pip install -r requirements.txt 2>&1 >> /app/out
-echo "RETURN_CODE: $?" >> /app/out`))
-
-	template.Must(PLAYFRAMEWORK_BUILD.Parse(`#!/bin/bash
-cd /app/src
-stdbuf -o0 play compile 2>&1 >> /app/out
-echo "RETURN_CODE: $?" >> /app/out`))
 
 	template.Must(HAPROXY_CONFIG.Parse(`
 global
@@ -260,4 +252,28 @@ backend {{.Name}}-maintenance
     rspadd Retry-After:\ 60
     server s3 {{.MaintenancePageDomain}}:80
 {{end}}`))
+
+	// Discover all available build-packs.
+	listing, err := ioutil.ReadDir("build-packs")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
+	}
+	for _, buildPack := range listing {
+		if buildPack.IsDir() {
+			fmt.Printf("Discovered build-pack: %v\n", buildPack.Name())
+			contents, err := ioutil.ReadFile("build-packs/" + buildPack.Name() + "/pre-hook")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "fatal: build-pack '%v' missing pre-hook file: %v\n", buildPack.Name(), err)
+				os.Exit(1)
+			}
+			// Map to template.
+			BUILD_PACKS[buildPack.Name()] = template.Must(template.New("BUILD_" + strings.ToUpper(buildPack.Name())).Parse(string(contents)))
+		}
+	}
+
+	if len(BUILD_PACKS) == 0 {
+		fmt.Fprintf(os.Stderr, "fatal: no build-packs found\n")
+		os.Exit(1)
+	}
 }

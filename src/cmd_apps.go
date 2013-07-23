@@ -20,8 +20,15 @@ func (this *Server) validateAppName(applicationName string) error {
 	}
 	return nil
 }
+func (this *Server) validateBuildPack(buildPack string) error {
+	_, ok := BUILD_PACKS[buildPack]
+	if !ok {
+		return fmt.Errorf("unsupported buildpack requested: %v, valid choices are: %v", buildPack, BUILD_PACKS)
+	}
+	return nil
+}
 
-func (this *Server) Apps_Create(conn net.Conn, applicationName string, buildpack string) error {
+func (this *Server) Apps_Create(conn net.Conn, applicationName string, buildPack string) error {
 	return this.WithPersistentConfig(func(cfg *Config) error {
 		applicationName = strings.ToLower(applicationName) // Always lowercase.
 
@@ -35,6 +42,11 @@ func (this *Server) Apps_Create(conn net.Conn, applicationName string, buildpack
 			if app.Name == applicationName {
 				return fmt.Errorf("application with name `%v` already exists", applicationName)
 			}
+		}
+
+		err = this.validateBuildPack(buildPack)
+		if err != nil {
+			return err
 		}
 
 		dimLogger := NewFormatter(NewTimeLogger(NewMessageLogger(conn)), DIM)
@@ -72,7 +84,7 @@ func (this *Server) Apps_Create(conn net.Conn, applicationName string, buildpack
 		// Save the config
 		cfg.Applications = append(cfg.Applications, &Application{
 			Name:        applicationName,
-			BuildPack:   buildpack,
+			BuildPack:   buildPack,
 			Domains:     []string{},
 			Environment: map[string]string{},
 			Processes:   map[string]int{},

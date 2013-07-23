@@ -140,7 +140,7 @@ func (this *Deployment) build() error {
 	if err != nil {
 		return err
 	}
-	err = PYTHON_BUILD.Execute(f, nil)
+	err = BUILD_PACKS[this.Application.BuildPack].Execute(f, nil)
 	f.Close()
 	if err != nil {
 		return err
@@ -296,7 +296,7 @@ func (this *Deployment) syncNode(node *Node) error {
 	// TODO: Maybe add fail check to clone operation.
 	err := e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+node.Host,
 		"sudo", "/bin/bash", "-c",
-		`"if ! [ -d '/var/lib/lxc/`+this.Application.Name+`' ]; then lxc-clone -B btrfs -s -o base -n `+this.Application.Name+`; else echo 'base image already exists'; fi"`,
+		`"if ! [ -d '/var/lib/lxc/`+this.Application.Name+`' ]; then lxc-clone -B btrfs -s -o base-`+this.Application.BuildPack+` -n `+this.Application.Name+`; else echo 'base image already exists'; fi"`,
 	)
 	if err != nil {
 		fmt.Fprintf(logger, "error cloning base container: %v\n", err)
