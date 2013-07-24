@@ -95,7 +95,8 @@ func (this *Deployment) createContainer() error {
 		return this.err
 	}
 	// Convert references to submodules to be read-only.
-	this.err = e.Run("/bin/bash", "-c", "sed -i 's|git@github.com:|git://github.com/|g' "+this.Application.SrcDir()+"/.gitmodules")
+	this.err = e.Run("/bin/bash", "-c",
+		"if [ -f '"+this.Application.SrcDir()+"/.gitmodules' ]; then echo 'converting submodule refs to be read-only'; sed -i 's,git@github.com:,git://github.com/,g' '"+this.Application.SrcDir()+"/.gitmodules'; else echo 'project does not appear to have any submodules'; fi")
 	if this.err != nil {
 		return this.err
 	}
