@@ -39,11 +39,13 @@ def modifyIpTables(action, chain, ip, port):
     """
     assert action in ('append', 'delete'), 'Invalid action: "{0}", must be "append" or "delete"'
     assert chain in ('PREROUTING', 'OUTPUT'), 'Invalid chain: "{0}", must be "PREROUTING" or "OUTPUT"'.format(chain)
+    assert ip is not None and ip != '', 'Invalid ip: "{0}", ip cannot be None or empty'.format(ip)
+    assert port is not None and port != '', 'Invalid port: "{0}", port cannot be None or empty'.format(port)
     subprocess.check_call(
         [
             '/sbin/iptables',
             '--table', 'nat',
-            '--append', chain,
+            '--{0}'.format(action), chain,
             '--proto', 'tcp',
             '--dport', port,
             '--jump', 'DNAT',
@@ -87,9 +89,12 @@ def main(argv):
     # Start the specified container.
     app = container.rsplit('` + DYNO_DELIMITER + `', 3)[0] # Get rid of port + version.
     port = container.split('` + DYNO_DELIMITER + `')[-1] # Port is always at the end.
+
+    # For safety, even though it's unlikley, try to kill/shutdown any existing container with the same name.
+    subprocess.call(['/usr/bin/lxc-stop -k -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)
+    subprocess.call(['/usr/bin/lxc-destroy -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)
+
     print 'cloning container: {0}'.format(container)
-    subprocess.call(['/usr/bin/lxc-stop', '-k', '-n', container], stdout=None, stderr=None)
-    subprocess.call(['/usr/bin/lxc-destroy', '-n', container], stdout=None, stderr=None)
     subprocess.check_call(
         ['/usr/bin/lxc-clone', '-s', '-B', 'btrfs', '-o', app, '-n', container],
         stdout=sys.stdout,
@@ -177,17 +182,19 @@ def modifyIpTables(action, chain, ip, port):
     @param action str 'append' or 'delete'.
     @param chain str 'PREROUTING' or 'OUTPUT'.
     """
-    assert action in ('append', 'delete')
-    assert chain in ('PREROUTING', 'OUTPUT')
+    assert action in ('append', 'delete'), 'Invalid action: "{0}", must be "append" or "delete"'
+    assert chain in ('PREROUTING', 'OUTPUT'), 'Invalid chain: "{0}", must be "PREROUTING" or "OUTPUT"'.format(chain)
+    assert ip is not None and ip != '', 'Invalid ip: "{0}", ip cannot be None or empty'.format(ip)
+    assert port is not None and port != '', 'Invalid port: "{0}", port cannot be None or empty'.format(port)
     subprocess.check_call(
         [
             '/sbin/iptables',
             '--table', 'nat',
-            '--append', chain,
+            '--{0}'.format(action), chain,
             '--proto', 'tcp',
             '--dport', port,
             '--jump', 'DNAT',
-            '--to-destination', ip + ':' + port,
+            '--to-destination', '{0}:{1}'.format(ip, port),
         ] + (['--out-interface', 'lo'] if chain == 'OUTPUT' else []),
         stdout=sys.stdout,
         stderr=sys.stderr
@@ -195,14 +202,15 @@ def modifyIpTables(action, chain, ip, port):
 
 def ipsForRulesMatchingPort(chain, port):
     # NB: 'exit 0' added to avoid exit status code 1 when there were no results.
-    return subprocess.check_output(
+    rawOutput = subprocess.check_output(
         [
             '/sbin/iptables --table nat --list {0} --numeric | grep -E -o "[0-9.]+:{1}" | grep -E -o "^[^:]+"; exit 0' \
                 .format(chain, port),
         ],
         shell=True,
         stderr=sys.stderr
-    ).strip().split('\n')
+    ).strip()
+    return rawOutput.split('\n') if len(rawOutput) > 0 else []
 
 def main(argv):
     container = argv[1]
