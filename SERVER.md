@@ -1,8 +1,8 @@
 ShipBuilder Server Installation 
--------------------------------
+===============================
 
 Requirements
-============
+------------
 * ShipBuilder is only compatible with Ububntu version 12.04 and 13.04; Both been tested and verified working (June 2013)
 * Passwordless SSH access from your machine to all servers involved
 * Passwordless `sudo` access for all servers involved
@@ -12,7 +12,7 @@ Requirements
 
 
 Service Modules
-===============
+---------------
 ShipBuilder is composed of 3 distinct pieces:
     * ShipBuilder Server
     * Container Node(s) (hosts which run the actual app containers)
@@ -20,7 +20,7 @@ ShipBuilder is composed of 3 distinct pieces:
 
 
 System Layout and Topology
-==========================
+--------------------------
 ShipBuilder can be built out with any layout you want.
 
     Examples
@@ -35,22 +35,25 @@ ShipBuilder can be built out with any layout you want.
 
 
 System Installation
-===================
+-------------------
 Once you have decided on a layout, ensure you can SSH and use `sudo` without a password on all relevant machines.
 
 First determine which devices you want to format with BTRFS and use for /mnt/build:
 
-
 0. Test/dry-run with `-t` flag:
+
     ./installation/install.sh -t -S [user@shipbuilder.host] -s [btrfs-device] -N [user@node1.host,user@node2.host,user@nodeN.host,..] -n [node-btrfs-device] -L [user@lb.host] -c [ssl-cert]
 
 1. Run Environment Installer:
-    ./installation/install.sh -S [user@shipbuilder.host] -s [btrfs-device] -N [user@node1.host,user@node2.host,user@nodeN.host,..] -n [node-btrfs-device] -L [user@lb.host] -c [ssl-cert]
+
+    ./installation/install.sh -S [user@shipbuilder.host] -s [sb-server-btrfs-device] -N [user@node1.host,user@node2.host,user@nodeN.host,..] -n [node-btrfs-device] -L [user@lb.host] -c [ssl-cert]
 
     Note: If you are installing everything on 1 machine, still pass all parameters, e.g.:
-        ./installation/install.sh -c [ssl-cert] -L [user@host] -S [user@host] -s [btrfs-device] -N [user@host] -n [btrfs-device]
+
+        ./installation/install.sh -c [ssl-cert] -L [user@host] -S [user@host] -s [sb-server-btrfs-device] -N [user@host] -n [node-btrfs-device]
 
 2. Congratulations! The hardest part should be over.  Next, create and configure your desired settings in the `env` folder:
+
     cp -r env.example env
     echo 'user@host' > env/SB_SSH_HOST
     echo 'your_aws_key' > env/SB_AWS_KEY
@@ -62,12 +65,15 @@ First determine which devices you want to format with BTRFS and use for /mnt/bui
     echo 'admin:password' > SB_HAPROXY_CREDENTIALS
 
 3. Build ShipBuilder Client:
+
     ./build.sh
 
 4. Deploy to ShipBuilder Server:
+
     envdir env go run deploy.go
 
 5. Add your load-balancer(s):
+
     ./dist/shipbuilder lb:add 
 
 
@@ -76,18 +82,18 @@ Port Mappings
 Specific ports must be open for each module.
 
 ShipBuilder Server
-==================
+------------------
 tcp/22 - Remote SSH access
 udp/514 - For app logging
 udp/10514 - For app logging
 
 Container Node(s)
-=================
+-----------------
 tcp/22 - Remote SSH access
 The load-balancer must also be able to access ports 10000+ (1 port for each app instance) on all Container Nodes.
 
 HAProxy Load-Balancer
-=====================
+---------------------
 tcp/22 - Remote SSH access
 tcp/80 - HTTP
 tcp/443 - HTTPS
