@@ -99,6 +99,11 @@ tcp/80 - HTTP
 tcp/443 - HTTPS
 
 
+Health Checks
+=============
+All web servers must return a 200 HTTP status code response for GET requests to '/', otherwise the load-balancer will think the app is unavailable.
+
+
 Misc
 ====
 temporary `env` config overrides are possible, just prefix the variable=value before invoking the client:
