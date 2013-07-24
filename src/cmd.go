@@ -263,7 +263,10 @@ func init() {
 		reader("releases", "releases:list", "Releases_List",
 			required("app"),
 		),
-		writer("reset", "reset", "Reset",
+		writer("reset", "reset", "Reset_App",
+			required("app"),
+		),
+		writer("restart", "redeploy", "Restart_App",
 			required("app"),
 		),
 	}
