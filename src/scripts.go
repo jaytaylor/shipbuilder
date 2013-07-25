@@ -44,19 +44,37 @@ def modifyIpTables(action, chain, ip, port):
     assert chain in ('PREROUTING', 'OUTPUT'), 'Invalid chain: "{0}", must be "PREROUTING" or "OUTPUT"'.format(chain)
     assert ip is not None and ip != '', 'Invalid ip: "{0}", ip cannot be None or empty'.format(ip)
     assert port is not None and port != '', 'Invalid port: "{0}", port cannot be None or empty'.format(port)
-    subprocess.check_call(
-        [
-            '/sbin/iptables',
-            '--table', 'nat',
-            '--{0}'.format(action), chain,
-            '--proto', 'tcp',
-            '--dport', port,
-            '--jump', 'DNAT',
-            '--to-destination', '{0}:{1}'.format(ip, port),
-        ] + (['--out-interface', 'lo'] if chain == 'OUTPUT' else []),
-        stdout=sys.stdout,
-        stderr=sys.stderr
-    )
+
+    # Sometimes iptables is being run too many times at once on the same box, and will give an error like:
+    #     iptables: Resource temporarily unavailable.
+    #     exit status 4
+    # We try to detect any such occurrence, and up to N times we'll wait for a moment and retry.
+    attempts = 0
+    while True:
+        child = subprocess.Popen(
+            [
+                '/sbin/iptables',
+                '--table', 'nat',
+                '--{0}'.format(action), chain,
+                '--proto', 'tcp',
+                '--dport', port,
+                '--jump', 'DNAT',
+                '--to-destination', '{0}:{1}'.format(ip, port),
+            ] + (['--out-interface', 'lo'] if chain == 'OUTPUT' else []),
+            stderr=sys.stderr,
+            stdout=sys.stdout
+        )
+        child.communicate()
+        exitCode = child.returncode
+        if exitCode == 0:
+            return
+        elif exitCode == 4 and attempts < 5:
+            log('iptables: Resource temporarily unavailable (exit status 4), retrying.. ({0} previous attempts)'.format(attempts))
+            attempts += 1
+            time.sleep(1)
+            continue
+        else:
+            raise subprocess.CalledProcessError('iptables exited with status code {0}'.format(exitCode))
 
 def ipsForRulesMatchingPort(chain, port):
     # NB: 'exit 0' added to avoid exit status code 1 when there were no results.
@@ -90,7 +108,6 @@ def main(argv):
     container = argv[1]
     process = argv[1].split('` + DYNO_DELIMITER + `')[-3] # Process is always 3 from the end.
 
-    # Start the specified container.
     app = container.rsplit('` + DYNO_DELIMITER + `', 3)[0] # Get rid of port + version.
     port = container.split('` + DYNO_DELIMITER + `')[-1] # Port is always at the end.
 
@@ -98,6 +115,7 @@ def main(argv):
     subprocess.call(['/usr/bin/lxc-stop -k -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)
     subprocess.call(['/usr/bin/lxc-destroy -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)
 
+    # Start the specified container.
     log('cloning container: {0}'.format(container))
     subprocess.check_call(
         ['/usr/bin/lxc-clone', '-s', '-B', 'btrfs', '-o', app, '-n', container],
@@ -179,7 +197,7 @@ main(sys.argv)`
 var SHUTDOWN_CONTAINER = `#!/usr/bin/python -u
 # -*- coding: utf-8 -*-
 
-import subprocess, sys
+import subprocess, sys, time
 
 container = None
 log = lambda message: sys.stdout.write('[{0}] {1}\n'.format(container, message))
@@ -193,19 +211,37 @@ def modifyIpTables(action, chain, ip, port):
     assert chain in ('PREROUTING', 'OUTPUT'), 'Invalid chain: "{0}", must be "PREROUTING" or "OUTPUT"'.format(chain)
     assert ip is not None and ip != '', 'Invalid ip: "{0}", ip cannot be None or empty'.format(ip)
     assert port is not None and port != '', 'Invalid port: "{0}", port cannot be None or empty'.format(port)
-    subprocess.check_call(
-        [
-            '/sbin/iptables',
-            '--table', 'nat',
-            '--{0}'.format(action), chain,
-            '--proto', 'tcp',
-            '--dport', port,
-            '--jump', 'DNAT',
-            '--to-destination', '{0}:{1}'.format(ip, port),
-        ] + (['--out-interface', 'lo'] if chain == 'OUTPUT' else []),
-        stdout=sys.stdout,
-        stderr=sys.stderr
-    )
+
+    # Sometimes iptables is being run too many times at once on the same box, and will give an error like:
+    #     iptables: Resource temporarily unavailable.
+    #     exit status 4
+    # We try to detect any such occurrence, and up to N times we'll wait for a moment and retry.
+    attempts = 0
+    while True:
+        child = subprocess.Popen(
+            [
+                '/sbin/iptables',
+                '--table', 'nat',
+                '--{0}'.format(action), chain,
+                '--proto', 'tcp',
+                '--dport', port,
+                '--jump', 'DNAT',
+                '--to-destination', '{0}:{1}'.format(ip, port),
+            ] + (['--out-interface', 'lo'] if chain == 'OUTPUT' else []),
+            stderr=sys.stderr,
+            stdout=sys.stdout
+        )
+        child.communicate()
+        exitCode = child.returncode
+        if exitCode == 0:
+            return
+        elif exitCode == 4 and attempts < 5:
+            log('iptables: Resource temporarily unavailable (exit status 4), retrying.. ({0} previous attempts)'.format(attempts))
+            attempts += 1
+            time.sleep(1)
+            continue
+        else:
+            raise subprocess.CalledProcessError('iptables exited with status code {0}'.format(exitCode))
 
 def ipsForRulesMatchingPort(chain, port):
     # NB: 'exit 0' added to avoid exit status code 1 when there were no results.
