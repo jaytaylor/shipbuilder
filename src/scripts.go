@@ -28,6 +28,9 @@ var POSTDEPLOY = `#!/usr/bin/python -u
 
 import os, stat, subprocess, sys, time
 
+container = None
+log = lambda message: sys.stdout.write('[{0}] {1}\n'.format(container, message))
+
 def getIp(name):
     with open('/var/lib/lxc/' + name + '/rootfs/app/ip') as f:
         return f.read().split('/')[0]
@@ -68,7 +71,7 @@ def ipsForRulesMatchingPort(chain, port):
     return rawOutput.split('\n') if len(rawOutput) > 0 else []
 
 def configureIpTablesForwarding(ip, port):
-    print 'configuring iptables to forward port {0} to {1}'.format(port, ip)
+    log('configuring iptables to forward port {0} to {1}'.format(port, ip))
     # Clear out any conflicting pre-existing rules on the same port.
     for chain in ('PREROUTING', 'OUTPUT'):
         conflictingRules = ipsForRulesMatchingPort(chain, port)
@@ -82,6 +85,7 @@ def configureIpTablesForwarding(ip, port):
     modifyIpTables('append', 'OUTPUT', ip, port)
 
 def main(argv):
+    global container
     #print 'main argv={0}'.format(argv)
     container = argv[1]
     process = argv[1].split('` + DYNO_DELIMITER + `')[-3] # Process is always 3 from the end.
@@ -94,7 +98,7 @@ def main(argv):
     subprocess.call(['/usr/bin/lxc-stop -k -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)
     subprocess.call(['/usr/bin/lxc-destroy -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)
 
-    print 'cloning container: {0}'.format(container)
+    log('cloning container: {0}'.format(container))
     subprocess.check_call(
         ['/usr/bin/lxc-clone', '-s', '-B', 'btrfs', '-o', app, '-n', container],
         stdout=sys.stdout,
@@ -102,14 +106,14 @@ def main(argv):
     )
 
     # This line, if present, will prevent the container from booting.
-    print 'scrubbing any "lxc.cap.drop = mac_{0}" lines from container config'.format(container)
+    log('scrubbing any "lxc.cap.drop = mac_{0}" lines from container config'.format(container))
     subprocess.check_call(
         ['sed', '-i', '/lxc.cap.drop = mac_{0}/d'.format(container), '/var/lib/lxc/{0}/config'.format(container)],
         stdout=sys.stdout,
         stderr=sys.stderr
     )
 
-    print 'creating run script for app "{0}" with process type={1}'.format(app, process)
+    log('creating run script for app "{0}" with process type={1}'.format(app, process))
     # NB: The curly braces are kinda crazy here, to get a single '{' or '}' with python.format(), use double curly
     # braces.
     host = '''` + sshHost + `'''
@@ -132,14 +136,14 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
     st = os.stat(runScriptFileName)
     os.chmod(runScriptFileName, st.st_mode | stat.S_IEXEC)
 
-    print 'starting container: {0}'.format(container)
+    log('starting container')
     subprocess.check_call(
         ['/usr/bin/lxc-start', '--daemon', '-n', container],
         stdout=sys.stdout,
         stderr=sys.stderr
     )
 
-    print 'waiting for container to boot and report ip-address'
+    log('waiting for container to boot and report ip-address')
     # Allow container to bootup.
     ip = None
     for _ in xrange(45):
@@ -150,11 +154,11 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
             continue
 
     if ip:
-        print 'Found ip: {0}'.format(ip)
+        log('found ip: {0}'.format(ip))
         configureIpTablesForwarding(ip, port)
 
         if process == 'web':
-            print 'waiting for web-server to finish starting up'
+            log('waiting for web-server to finish starting up')
             try:
                 subprocess.check_call([
                     '/usr/bin/curl',
@@ -167,7 +171,7 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
                 sys.stderr.write('- curl http check failed: {0}\n'.format(e))
 
     else:
-        print '- error retrieving ip'
+        log('- error retrieving ip')
         sys.exit(1)
 
 main(sys.argv)`
@@ -176,6 +180,9 @@ var SHUTDOWN_CONTAINER = `#!/usr/bin/python -u
 # -*- coding: utf-8 -*-
 
 import subprocess, sys
+
+container = None
+log = lambda message: sys.stdout.write('[{0}] {1}\n'.format(container, message))
 
 def modifyIpTables(action, chain, ip, port):
     """
@@ -213,18 +220,19 @@ def ipsForRulesMatchingPort(chain, port):
     return rawOutput.split('\n') if len(rawOutput) > 0 else []
 
 def main(argv):
+    global container
     container = argv[1]
     port = container.split('` + DYNO_DELIMITER + `').pop()
 
     # Stop all existing containers.
-    print 'stopping container: '.format(container)
+    log('stopping container')
     subprocess.check_call(['/usr/bin/lxc-stop', '-k', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
     subprocess.check_call(['/usr/bin/lxc-destroy', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
 
     for chain in ('PREROUTING', 'OUTPUT'):
         rules = ipsForRulesMatchingPort(chain, port)
         for ip in rules:
-            print 'removing iptables {0} chain rule: port={1} ip={2}'.format(chain, port, ip)
+            log('removing iptables {0} chain rule: port={1} ip={2}'.format(chain, port, ip))
             modifyIpTables('delete', chain, ip, port)
 
 main(sys.argv)`
