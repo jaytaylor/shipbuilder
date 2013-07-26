@@ -91,7 +91,7 @@ func (this *Server) Apps_Create(conn net.Conn, applicationName string, buildPack
 			BuildPack:   buildPack,
 			Domains:     []string{},
 			Environment: map[string]string{},
-			Processes:   map[string]int{},
+			Processes:   map[string]int{"web": 1},
 			Maintenance: false,
 		})
 		setReleases(applicationName, []Release{})
