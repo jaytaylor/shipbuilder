@@ -1,0 +1,21 @@
+- Add support for more build-packs (e.g. RoR)
+
+- Security: Ensure `sudo` privilege is revoked before container is launched
+
+- Security: Make apps run as 'ubuntu' (or other non-privileged user)
+
+- Split up installation scripts:
+    1 for shipbuilder server
+    1 for load-balancer
+    1 for nodes
+
+- Consider switching from BTRFS to ZFS (maybe support both?)
+
+- Add support for hipchat deployment notifications
+
+- Add host ip, port, & process type to `logs` output
+
+- Ensure non-essential container services are disabled before container is launched
+
+- Speed up commands by maintaining persistent SSH tunnel: We could eliminate the time it takes the client to login to the SB server to run a command by having an option to maintain the SSH tunnel (even perhaps just for some period of time?) so that a new connection is not required everytime a command is run.
+
