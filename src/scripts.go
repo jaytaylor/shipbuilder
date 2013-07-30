@@ -124,7 +124,7 @@ def main(argv):
     )
 
     # This line, if present, will prevent the container from booting.
-    log('scrubbing any "lxc.cap.drop = mac_{0}" lines from container config'.format(container))
+    #log('scrubbing any "lxc.cap.drop = mac_{0}" lines from container config'.format(container))
     subprocess.check_call(
         ['sed', '-i', '/lxc.cap.drop = mac_{0}/d'.format(container), '/var/lib/lxc/{0}/config'.format(container)],
         stdout=sys.stdout,
@@ -334,7 +334,8 @@ backend {{.Name}}
     option abortonclose
     option httpchk GET /
   {{range .Servers}}
-    server {{.Host}}-{{.Port}} {{.Host}}:{{.Port}} check port {{.Port}} observe layer7 minconn 20 maxconn 40 check inter 10s rise 1 fall 3 weight 1
+    #server {{.Host}}-{{.Port}} {{.Host}}:{{.Port}} check port {{.Port}} observe layer7 minconn 20 maxconn 40 check inter 10s rise 1 fall 3 weight 1
+    server {{.Host}}-{{.Port}} {{.Host}}:{{.Port}} check port {{.Port}} observe layer7
   {{end}}{{if .HaProxyStatsEnabled}}
     stats enable
     stats uri /haproxy
