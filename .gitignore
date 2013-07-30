@@ -18,4 +18,5 @@ env/
 dist/
 shipbuilder
 config.json
+*.pem
 

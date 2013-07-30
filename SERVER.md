@@ -11,6 +11,18 @@ Requirements
 * AWS S3 auth keys
 
 
+Overview of System Preparation
+------------------------------
+    1. Spin up or allocate the host(s) to be used, taking note of the /dev/<DEVICE> to use for BTRFS devices on the SB server and container nodes.
+    2. Run the install script - please just let me know if you run into any issues here, this is the only place where I want to make big changes
+    3. Checkout and configure ShipBuilder (via the env/ directory)
+    4. Compile ShipBuilder locally (./build.sh -f)
+    5. Deploy ShipBuilder (./deploy.sh -f)
+    6. Add the load-balancer: ./dist/shipbuilder lb:add HOST_OR_IP
+    7. Add the node(s): ./dist/shipbuilder nodes:add HOST_OR_IP1 HOST_OR_IP2.. HOST_OR_IPn
+    8. Start creating apps
+
+
 Service Modules
 ---------------
 ShipBuilder is composed of 3 distinct pieces:
