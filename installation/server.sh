@@ -58,8 +58,7 @@ function installGo() {
 function setupBtrfs() {
     echo "info: Formatting device ${DEVICE} as BTRFS"
     bash setupBtrfs.sh -d $DEVICE
-    rc=$?
-    test $rc -ne 0 && echo "error: execution of setupBtrfs.sh exited with non-zero status ${rc}" 1>&2 && exit $rc
+    abortIfNonZero $? "execution of setupBtrfs.sh"
 }
 
 function gitLinkage() {
@@ -112,13 +111,11 @@ function lxcInitBase() {
     
     echo 'info: Create the base LXC container'
     sudo lxc-create -n base -B btrfs -t ubuntu
-    rc=$?
-    test $rc -ne 0 && echo "error: lxc-create base exited with status ${rc}" 1>&2 && exit $rc
+    abortIfNonZero $? "lxc-create base"
     
     echo 'info: Configuring base LXC container..'
     sudo lxc-start --daemon -n base
-    rc=$?
-    test $rc -ne 0 && echo "error: lxc-start base exited with status ${rc}" 1>&2 && exit $rc
+    abortIfNonZero $? "lxc-start base"
 
     getContainerIp base
 }
@@ -133,19 +130,16 @@ function lxcConfigBase() {
 
     echo 'info: Updating apt repositories in container'
     ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes' ubuntu@$ip sudo apt-get update
-    rc=$?
-    test $rc -ne 0 && echo "error: container apt-get update exited with status ${rc}" 1>&2 && exit $rc
+    abortIfNonZero $? "container apt-get update"
 
     packages='daemontools git-core curl unzip'
     echo "info: Installing packages to base container: ${packages}"
     ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes' ubuntu@$ip "sudo apt-get install -y ${packages}"
-    rc=$?
-    test $rc -ne 0 && echo "error: container apt-get install ${packages} exited with status ${rc}" 1>&2 && exit $rc
+    abortIfNonZero $? "container apt-get install ${packages}"
 
     echo 'info: stopping base container'
     sudo lxc-stop -k -n base
-    rc=$?
-    test $rc -ne 0 && echo "error: lxc-stop base exited with status ${rc}" 1>&2 && exit $rc
+    abortIfNonZero $? "lxc-stop base"
 }
 
 function lxcConfigBuildPack() {
@@ -162,20 +156,17 @@ function lxcConfigBuildPack() {
 
     echo "info: Installing packages to ${container} container: ${packages}"
     ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes' ubuntu@$ip "sudo apt-get install -y ${packages}"
-    rc=$?
-    test $rc -ne 0 && echo "error: [${container}] container apt-get install ${packages} exited with status ${rc}" 1>&2 && exit $rc
+    abortIfNonZero $? "[${container}] container apt-get install ${packages}"
 
     if [ -n "${customCommands}" ]; then
         echo "info: Running customCommands command: ${customCommands}"
         ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes' ubuntu@$ip "${customCommands}"
-        rc=$?
-        test $rc -ne 0 && echo "error: [${container}] container customCommands command /${customCommands}/ exited with status ${rc}" 1>&2 && exit $rc
+        abortIfNonZero $? "[${container}] container customCommands command /${customCommands}/"
     fi
 
     echo "info: stopping ${container} container"
     sudo lxc-stop -k -n $container
-    rc=$?
-    test $rc -ne 0 && echo "error: [${container}] lxc-stop exited with status ${rc}" 1>&2 && exit $rc
+    abortIfNonZero $? "[${container}] lxc-stop"
 }
 
 function lxcConfigBuildPacks() {

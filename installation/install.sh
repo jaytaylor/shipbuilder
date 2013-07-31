@@ -80,8 +80,7 @@ if [ -n "${LIST_DEVICES_ONLY}" ]; then
     for sshHost in $(echo "${sshHosts}"); do
         echo "info:     ${sshHost}"
         devices=$(ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' -q $sshHost 'sudo find /dev/ -regex ".*\/\([hms\|]xv\)d.*"')
-        rc=$?
-        test $rc -ne 0 && echo "error: failed to retrieve storage devices from host ${sshHost}, command exited with status ${rc}" 1>&2 && exit $rc
+        abortIfNonZero $? "failed to retrieve storage devices from host ${sshHost}, command"
         for device in $(echo "${devices}"); do
             echo "info:         ${device}"
         done
@@ -233,8 +232,7 @@ function installServer() {
     echo "info: Installing build-server on host: ${sbHost}"
     rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" server.sh setupBtrfs.sh libfns.sh $sbHost:/tmp/
     ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost "/bin/bash /tmp/server.sh -S ${sbHost} -d ${sbDevice}"
-    rc=$?
-    test $rc -ne 0 && echo "error: remote execution of server.sh exited with non-zero status ${rc}" 1>&2 && exit $rc
+    abortIfNonZero $? "remote execution of server.sh"
     ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost "rm -f /tmp/server.sh /tmp/setupBtrfs.sh /tmp/libfns.sh"
 }
 
@@ -244,8 +242,7 @@ function setupLoadBalancer() {
         rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" $certFile loadBalancer.sh $lbHost:/tmp/
         certFileRemotePath="/tmp/$(echo $certFile | sed 's/^.*\/\(.*\)$/\1/')"
         ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $lbHost "/bin/bash /tmp/loadBalancer.sh -c ${certFileRemotePath}"
-        rc=$?
-        test $rc -ne 0 && echo "error: remote execution of loadBalancer.sh exited with non-zero status ${rc}" 1>&2 && exit $rc
+        abortIfNonZero $? "remote execution of loadBalancer.sh"
         ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $lbHost "rm -f /tmp/loadBalancer.sh"
     else
         echo 'warn: skipping load-balancer install, no host provided'
@@ -262,8 +259,7 @@ function setupNodes() {
                 echo "info: Setting up node: ${nodeHost}"
                 rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" setupBtrfs.sh libfns.sh $nodeHost:/tmp/
                 ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $nodeHost "/bin/bash /tmp/setupBtrfs.sh -d ${nodeDevice}"
-                rc=$?
-                test $rc -ne 0 && echo "error: remote execution of setupBtrfs.sh exited with non-zero status ${rc}" 1>&2 && exit $rc
+                abortIfNonZero $? "remote execution of setupBtrfs.sh"
                 ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $nodeHost "rm -f /tmp/setupBtrfs.sh /tmp/libfns.sh"
             fi
         done

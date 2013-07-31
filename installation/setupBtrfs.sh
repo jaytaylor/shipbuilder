@@ -80,8 +80,7 @@ if [ "${fs}" = "btrfs" ]; then
 else
     echo "info: Formatting ${DEVICE} with BTRFS"
     sudo mkfs.btrfs $DEVICE
-    rc=$?
-    test $rc -ne 0 && echo "error: mkfs.btrfs exited with non-zero status: ${rc}" 1>&2 && exit $rc
+    abortIfNonZero $? "mkfs.btrfs"
 fi
 
 if ! [ -d /mnt/build ]; then
@@ -102,8 +101,7 @@ fi
 
 echo "info: Mounting device ${DEVICE}"
 sudo mount $DEVICE
-rc=$?
-test $rc -ne 0 && echo "error: mounting ${DEVICE} exited with non-zero status: ${rc}" 1>&2 && exit $rc
+abortIfNonZero $? "mounting ${DEVICE}"
 
 if [ -d /var/lib/lxc ] && ! [ -e /mnt/build/lxc ]; then
     echo 'info: Create and link /mnt/build/lxc folder'
