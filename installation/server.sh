@@ -59,7 +59,7 @@ function setupBtrfs() {
     echo "info: Formatting device ${DEVICE} as BTRFS"
     bash setupBtrfs.sh -d $DEVICE
     rc=$?
-    test $rc -ne 0 && echo "error: execution of setupBtrfs.sh exited with non-zero status ${rc}" && exit $rc
+    test $rc -ne 0 && echo "error: execution of setupBtrfs.sh exited with non-zero status ${rc}" 1>&2 && exit $rc
 }
 
 function gitLinkage() {
@@ -205,7 +205,7 @@ function rsyslogLoggingListeners() {
     fi
 }
 
-source installLxc.sh
+source libfns.sh
 
 installGo
 installLxc

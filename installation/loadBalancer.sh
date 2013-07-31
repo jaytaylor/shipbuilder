@@ -52,6 +52,9 @@ if [ -n "${DRY_RUN}" ]; then
 fi
 
 
+source libfns.sh
+
+
 version=$(lsb_release -a 2>/dev/null | grep 'Release' | grep -o '[0-9\.]\+$')
 
 if [ "${version}" = '12.04' ]; then

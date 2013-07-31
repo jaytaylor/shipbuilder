@@ -60,7 +60,7 @@ if [ -n "${DRY_RUN}" ]; then
     exit 0
 fi
 
-source installLxc.sh
+source libfns.sh
 installLxc
 
 

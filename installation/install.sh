@@ -72,7 +72,7 @@ fi
 
 sshHosts="${sbHost} ${lbHost} $(echo "${nodeHosts}" | tr ',' ' ')"
 
-source verifySshAndSudoForHosts.sh
+source libfns.sh
 verifySshAndSudoForHosts "${sshHosts}" 
 
 if [ -n "${LIST_DEVICES_ONLY}" ]; then
@@ -231,11 +231,11 @@ function configureSshAccess() {
 
 function installServer() {
     echo "info: Installing build-server on host: ${sbHost}"
-    rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" server.sh setupBtrfs.sh installLxc.sh $sbHost:/tmp/
+    rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" server.sh setupBtrfs.sh libfns.sh $sbHost:/tmp/
     ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost "/bin/bash /tmp/server.sh -S ${sbHost} -d ${sbDevice}"
     rc=$?
-    test $rc -ne 0 && echo "error: remote execution of server.sh exited with non-zero status ${rc}" && exit $rc
-    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost "rm -f /tmp/server.sh /tmp/setupBtrfs.sh /tmp/installLxc.sh"
+    test $rc -ne 0 && echo "error: remote execution of server.sh exited with non-zero status ${rc}" 1>&2 && exit $rc
+    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost "rm -f /tmp/server.sh /tmp/setupBtrfs.sh /tmp/libfns.sh"
 }
 
 function setupLoadBalancer() {
@@ -245,7 +245,7 @@ function setupLoadBalancer() {
         certFileRemotePath="/tmp/$(echo $certFile | sed 's/^.*\/\(.*\)$/\1/')"
         ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $lbHost "/bin/bash /tmp/loadBalancer.sh -c ${certFileRemotePath}"
         rc=$?
-        test $rc -ne 0 && echo "error: remote execution of loadBalancer.sh exited with non-zero status ${rc}" && exit $rc
+        test $rc -ne 0 && echo "error: remote execution of loadBalancer.sh exited with non-zero status ${rc}" 1>&2 && exit $rc
         ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $lbHost "rm -f /tmp/loadBalancer.sh"
     else
         echo 'warn: skipping load-balancer install, no host provided'
@@ -260,11 +260,11 @@ function setupNodes() {
                 echo "info: build-server is the same as the node ${nodeHost}, nothing required"
             else
                 echo "info: Setting up node: ${nodeHost}"
-                rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" setupBtrfs.sh installLxc.sh $nodeHost:/tmp/
+                rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" setupBtrfs.sh libfns.sh $nodeHost:/tmp/
                 ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $nodeHost "/bin/bash /tmp/setupBtrfs.sh -d ${nodeDevice}"
                 rc=$?
-                test $rc -ne 0 && echo "error: remote execution of setupBtrfs.sh exited with non-zero status ${rc}" && exit $rc
-                ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $nodeHost "rm -f /tmp/setupBtrfs.sh /tmp/installLxc.sh"
+                test $rc -ne 0 && echo "error: remote execution of setupBtrfs.sh exited with non-zero status ${rc}" 1>&2 && exit $rc
+                ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $nodeHost "rm -f /tmp/setupBtrfs.sh /tmp/libfns.sh"
             fi
         done
     else
