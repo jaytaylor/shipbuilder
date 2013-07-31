@@ -1,4 +1,4 @@
-ShipBuilder Server Installation 
+ShipBuilder Server Installation
 ===============================
 
 Requirements
@@ -25,25 +25,29 @@ Overview of System Preparation
 
 Service Modules
 ---------------
-ShipBuilder is composed of 3 distinct pieces:
-    * ShipBuilder Server
-    * Container Node(s) (hosts which run the actual app containers)
-    * HAProxy Load-Balancer
 
+ShipBuilder is composed of 3 distinct pieces:
+
+* ShipBuilder Server
+* Container Node(s) (hosts which run the actual app containers)
+* HAProxy Load-Balancer
 
 System Layout and Topology
 --------------------------
+
 ShipBuilder can be built out with any layout you want.
 
-    Examples
+Examples
 
-    Each module running on separate hosts (3+ machines):
-        - one machine for ShipBuilder Server
-        - one or more machines configured as Container Nodes
-        - one machine as the Load-Balancer
+Each module running on separate hosts (3+ machines):
 
-    All modules running on a single host (1 machine):
-        - single machine configured with SB Sever, added as a Node and Load-Balancer
+- one machine for ShipBuilder Server
+- one or more machines configured as Container Nodes
+- one machine as the Load-Balancer
+
+All modules running on a single host (1 machine):
+
+- single machine configured with SB Sever, added as a Node and Load-Balancer
 
 
 System Installation
@@ -54,71 +58,89 @@ First determine which devices you want to format with BTRFS and use for /mnt/bui
 
 0. Test/dry-run with `-t` flag:
 
+    ```
     ./installation/install.sh -t -S [user@shipbuilder.host] -s [btrfs-device] -N [user@node1.host,user@node2.host,user@nodeN.host,..] -n [node-btrfs-device] -L [user@lb.host] -c [ssl-cert]
+    ```
 
 1. Run Environment Installer:
 
+    ```
     ./installation/install.sh -S [user@shipbuilder.host] -s [sb-server-btrfs-device] -N [user@node1.host,user@node2.host,user@nodeN.host,..] -n [node-btrfs-device] -L [user@lb.host] -c [ssl-cert]
+    ```
 
     Note: If you are installing everything on 1 machine, still pass all parameters, e.g.:
 
-        ./installation/install.sh -c [ssl-cert] -L [user@host] -S [user@host] -s [sb-server-btrfs-device] -N [user@host] -n [node-btrfs-device]
+    ```
+    ./installation/install.sh -c [ssl-cert] -L [user@host] -S [user@host] -s [sb-server-btrfs-device] -N [user@host] -n [node-btrfs-device]
+    ```
 
 2. Congratulations! The hardest part should be over.  Next, create and configure your desired settings in the `env` folder:
 
+    ```
     cp -r env.example env
     echo 'user@host' > env/SB_SSH_HOST
     echo 'your_aws_key' > env/SB_AWS_KEY
     echo 'your_aws_secret' > env/SB_AWS_SECRET
     echo 'your_s3_bucket' > env/SB_S3_BUCKET
+
     # Enable HAProxy stats:
     echo '1' > SB_HAPROXY_STATS
+
     # Set credentials to view HAProxy stats:
     echo 'admin:password' > SB_HAPROXY_CREDENTIALS
+    ```
 
 3. Build ShipBuilder Client:
 
-    ./build.sh
+    `./build.sh`
 
 4. Deploy to ShipBuilder Server:
 
-    envdir env go run deploy.go
+    `envdir env go run deploy.go`
 
 5. Add your load-balancer(s):
 
-    ./dist/shipbuilder lb:add 
+    `./dist/shipbuilder lb:add`
 
 
 Port Mappings
 =============
+
 Specific ports must be open for each module.
 
 ShipBuilder Server
 ------------------
-tcp/22 - Remote SSH access
-udp/514 - For app logging
-udp/10514 - For app logging
+
+- `tcp/22` - Remote SSH access
+- `udp/514` - For app logging
+- `udp/10514` - For app logging
 
 Container Node(s)
 -----------------
-tcp/22 - Remote SSH access
+
+- `tcp/22` - Remote SSH access
+
 The load-balancer must also be able to access ports 10000+ (1 port for each app instance) on all Container Nodes.
 
 HAProxy Load-Balancer
 ---------------------
-tcp/22 - Remote SSH access
-tcp/80 - HTTP
-tcp/443 - HTTPS
+
+- `tcp/22` - Remote SSH access
+- `tcp/80` - HTTP
+- `tcp/443` - HTTPS
 
 
 Health Checks
 =============
+
 All web servers must return a 200 HTTP status code response for GET requests to '/', otherwise the load-balancer will think the app is unavailable.
 
 
 Misc
 ====
+
 temporary `env` config overrides are possible, just prefix the variable=value before invoking the client:
+
     $ SB_SSH_HOST=sb-staging.sendhub.com ./dist/shipbuilder config -aadmin
     info: environmental override detected for SB_SSH_HOST: sb-staging.sendhub.com
     ..
