@@ -8,12 +8,14 @@ ShipBuilder is a git-based application deployment and serving system written in 
 Stores backups of application configurations and releases on s3.
 
 Major components:
+
 * ShipBuilder server
 * ShipBuilder command-line client
 * Container management
 * HTTP load balancer
 
 Requirements:
+
 * Ubuntu 12.04 or 13.04 (tested and verified compatible)
 * go-lang v1.1
 * envdir (linux: `apt-get install daemontools`, os-x: `brew install daemontools`)
@@ -21,12 +23,15 @@ Requirements:
 
 Installation & Configuration
 ----------------------------
+
 See /sendhub/shipbuilder/INSTALL.md
 
 
 Client Commands
 ---------------
+
 Note:
+
 * Any command that takes an [application-name] either gets the application name from the current directory or it must be specified with `-a<application name>`.
 
 System-wide commands
@@ -95,10 +100,9 @@ __apps:create__
 
     [apps:]create [application-name] [buildpack]
 
-Create an appication named `name` with the build pack `buildpack`.
-Available buildpacks are:
-* python
+Create an appication named `name` with the build pack `buildpack`. Available buildpacks are:
 
+* python
 
 __apps:destroy__
 
@@ -204,8 +208,9 @@ __maintenance:url__
 
 If `url` is empty, the current maintenance page URL is shown.
 If `url` is not empty, will sets the environment variable `MAINTENANCE_PAGE_URL`, which will be used when maintenance-mode is "on".  No redeploy required.
-Alternatively, you can also use config:set to a similar effect, with the addition of a full redeploy:
-e.g. `sb config:set MAINTENANCE_PAGE_URL='http://example.com/foo/bar.html' -aMyApp`
+Alternatively, you can also use config:set to a similar effect, with the addition of a full redeploy, e.g.:
+
+    sb config:set MAINTENANCE_PAGE_URL='http://example.com/foo/bar.html' -aMyApp
 
 
 __pre-receive__
@@ -231,7 +236,7 @@ List the goal and actual running instances of an application.
 
 __ps:scale__
 
-    ps:scale [process-type]=#num#.. -a[application-name] 
+    ps:scale [process-type]=#num#.. -a[application-name]
 
 Update the number of instances for one or more process types. Redeploys the app.
 
@@ -265,56 +270,62 @@ Rollback an application to a specific version. Note: Version is not optional.
 
 
 
-Project Compilation 
+Project Compilation
 -------------------
 
 Requirements:
-    - go-alng v1.1
-    - daemontools (the package which contains `envdir`)
 
-First set up your env: 
+- go-alng v1.1
+- daemontools (the package which contains `envdir`)
+
+First set up your env:
+
     echo 'sb.sendhub.com' > env/SB_SSH_HOST
     echo 'admin:password' > env/SB_HAPROXY_CREDENTIALS
     echo 'true' > env/SB_HAPROXY_STATS
     echo "$HOME/.ssh/id_rsa" > env/SB_SSH_KEY
 
 Build the client:
+
     ./build.sh
 
 Deploy to SB_SSH_HOST:
+
     ./deploy.sh
 
 
 Maintenance page url
 --------------------
-sb config:set MAINTENANCE_PAGE_URL='http://example.com/foo/bar.html' -aMyApp
+
+    sb config:set MAINTENANCE_PAGE_URL='http://example.com/foo/bar.html' -aMyApp
 
 
 Installation
 ------------
 
 Requirements:
-    - Ubuntu 12.04 or 13.04 (Both tested and verified)
-    - go-lang v1.1
-    - envdir (linux: `apt-get install daemontools`, os-x: `brew install daemontools`)
-    - Amazon AWS credentials + an s3 bucket
 
-1. Get shipbuilder:
-    git clone https://github.com/sendhub/shipbuilder
-    cd shipbuilder
+- Ubuntu 12.04 or 13.04 (Both tested and verified)
+- go-lang v1.1
+- envdir (linux: `apt-get install daemontools`, os-x: `brew install daemontools`)
+- Amazon AWS credentials + an s3 bucket
 
-2. Setup the shipbuilder server environment(s)
-    (see /sendhub/shipbuilder/SERVER.md)
-
+1. Get shipbuilder: `git clone https://github.com/sendhub/shipbuilder && cd shipbuilder`
+2. Setup the shipbuilder server environment(s) (see [SERVER.md](https://github.com/sendhub/shipbuilder/blob/master/SERVER.md))
 3. Start using shipbuilder!
 
 
 Creating your first app
 -----------------------
-# Let's say we have a django application, "my-app"
-# with a pip requirements file containing at least gunicorn
-# and a Procfile that looks like:
-# web: gunicorn -w 4 --max-requests=200 -b 0.0.0.0:$PORT app.wsgi:application
+
+Let's say we have a django application, "my-app"
+with a pip requirements file containing at least gunicorn
+and a Procfile that looks like:
+
+    web: gunicorn -w 4 --max-requests=200 -b 0.0.0.0:$PORT app.wsgi:application
+
+We would run the following commands:
+
     cd my-app
     alias sb='shipbuilder'
     sb apps:create my-app python
@@ -322,8 +333,7 @@ Creating your first app
     git remote add sb ssh://YOUR-SHIPBUILDER-HOST.NAME/git/my-app
     git push -f sb
 
-TODO:
-    - Save iptables after modification using `iptables-save > /root/iptables.saved`
-    - Automatically restore iptables on system boot `iptables-restore < /root/iptables.saved`
-
-
+TODO
+----
+- Save iptables after modification using `iptables-save > /root/iptables.saved`
+- Automatically restore iptables on system boot using `iptables-restore < /root/iptables.saved`
