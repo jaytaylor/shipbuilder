@@ -291,7 +291,8 @@ console none
 start on (local-filesystems and net-device-up IFACE!=lo)
 stop on [!12345]
 #exec su ` + DEFAULT_NODE_USERNAME + ` -c "/app/run"
-exec /app/run`))
+#exec /app/run
+exec start-stop-daemon --start -u ubuntu --exec /app/run`))
 
 	template.Must(HAPROXY_CONFIG.Parse(`
 global
