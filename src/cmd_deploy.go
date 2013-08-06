@@ -349,7 +349,7 @@ func (this *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) 
 	}()
 	select {
 	case <-done: // implicitly break.
-	case <-time.After(60 * time.Second):
+	case <-time.After(DYNO_START_TIMEOUT_SECONDS * time.Second):
 		err = fmt.Errorf("Timed out for dyno host %v", dyno.Host)
 	}
 	return dyno, err
@@ -397,8 +397,8 @@ func (this *Deployment) deploy() error {
 			c := make(chan error, 1)
 			go func() { c <- this.syncNode(node) }()
 			go func() {
-				time.Sleep(180 * time.Second)
-				c <- fmt.Errorf("Sync operation to node '%v' timed out after 180 seconds", node.Host)
+				time.Sleep(NODE_SYNC_TIMEOUT_SECONDS * time.Second)
+				c <- fmt.Errorf("Sync operation to node '%v' timed out after %v seconds", node.Host, NODE_SYNC_TIMEOUT_SECONDS)
 			}()
 			// Block until c has something, at which point syncStep will be notified.
 			syncStep <- SyncResult{node, <-c}
@@ -448,7 +448,7 @@ func (this *Deployment) deploy() error {
 		}
 	}
 
-	timeout := time.After(180 * time.Second)
+	timeout := time.After(DEPLOY_TIMEOUT_SECONDS * time.Second)
 OUTER:
 	for {
 		select {
@@ -465,7 +465,7 @@ OUTER:
 				}
 			}
 		case <-timeout:
-			return fmt.Errorf("Start operation timed out after 3 minutes")
+			return fmt.Errorf("Start operation timed out after %v seconds", DEPLOY_TIMEOUT_SECONDS)
 		}
 	}
 

@@ -39,15 +39,18 @@ type (
 )
 
 const (
-	APP_DIR               = "/app"
-	LXC_DIR               = "/var/lib/lxc"
-	DIRECTORY             = "/mnt/build"
-	BINARY                = "shipbuilder"
-	EXE                   = DIRECTORY + "/" + BINARY
-	CONFIG                = DIRECTORY + "/config.json"
-	GIT_DIRECTORY         = "/git"
-	DEFAULT_NODE_USERNAME = "ubuntu"
-	VERSION               = "0.1.0"
+	APP_DIR                    = "/app"
+	LXC_DIR                    = "/var/lib/lxc"
+	DIRECTORY                  = "/mnt/build"
+	BINARY                     = "shipbuilder"
+	EXE                        = DIRECTORY + "/" + BINARY
+	CONFIG                     = DIRECTORY + "/config.json"
+	GIT_DIRECTORY              = "/git"
+	DEFAULT_NODE_USERNAME      = "ubuntu"
+	VERSION                    = "0.1.0"
+	NODE_SYNC_TIMEOUT_SECONDS  = 180
+	DYNO_START_TIMEOUT_SECONDS = 120
+	DEPLOY_TIMEOUT_SECONDS     = 240
 )
 
 // LDFLAGS can be specified by compiling with `-ldflags '-X main.defaultSshHost=.. ...'`.
