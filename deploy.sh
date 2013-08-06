@@ -6,17 +6,12 @@
 # @date 2013-07-11
 #
 
-if [ -z "$(which envdir)" ]; then
-	echo 'fatal: no "envdir" binary found, make sure it is in a directory in your $PATH' 1>&2
-	exit 1
-fi
-
 cd "$(dirname "$0")"
 
-if ! [ -d './env' ]; then
-    echo 'fatal: missing "env" configuration directory, see "Compilation" in the README' 1>&2
-    exit 1
-fi
+# Verify that `go` and `envdir` (daemontools) dependencies are available.
+test -z "$(which go)" && echo 'fatal: no "go" binary found, make go-lang is installed and available in a directory in $PATH' 1>&2 && exit 1
+test -z "$(which envdir)" && echo 'fatal: no "envdir" binary found, make sure daemontools is installed and and available in $PATH' 1>&2 && exit 1
+
+test ! -d './env' && echo 'fatal: missing "env" configuration directory, see "Compilation" in the README' 1>&2 && exit 1
 
 envdir env go run deploy.go $*
-

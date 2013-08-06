@@ -3,24 +3,57 @@ ShipBuilder Server Installation
 
 Requirements
 ------------
-* ShipBuilder is only compatible with Ububntu version 12.04 and 13.04; Both been tested and verified working (June 2013)
-* Passwordless SSH access from your machine to all servers involved
-* Passwordless `sudo` access for all servers involved
+* ShipBuilder Server is compatible with Ubuntu version 12.04 and 13.04; Both have been tested and verified working (as of June 2013)
+* Passwordless SSH and sudo access from your machine to all servers involved
 * daemontools installed on your local machine
 * go-lang v1.1 installed on your local machine
 * AWS S3 auth keys
 
 
-Overview of System Preparation
-------------------------------
-    1. Spin up or allocate the host(s) to be used, taking note of the /dev/<DEVICE> to use for BTRFS devices on the SB server and container nodes.
-    2. Run the install script - please just let me know if you run into any issues here, this is the only place where I want to make big changes
-    3. Checkout and configure ShipBuilder (via the env/ directory)
-    4. Compile ShipBuilder locally (./build.sh -f)
-    5. Deploy ShipBuilder (./deploy.sh -f)
-    6. Add the load-balancer: ./dist/shipbuilder lb:add HOST_OR_IP
-    7. Add the node(s): ./dist/shipbuilder nodes:add HOST_OR_IP1 HOST_OR_IP2.. HOST_OR_IPn
-    8. Start creating apps
+System Preparation
+------------------
+1. Spin up or allocate the host(s) to be used, taking note of the /dev/<DEVICE> to use for BTRFS devices on the shipbuilder server and container node(s)
+1.b ensure you can SSH without a password, here is an example command to add your public key to the list of authorized keys:
+```
+    ssh -i ~/.ssh/july.pem ubuntu@ec2-54-226-107-87.compute-1.amazonaws.com "echo '$(cat ~/.ssh/id_rsa.pub)' >> ~/.ssh/authorized_keys && chmod 600 .ssh/authorized_keys"
+```
+
+2. Checkout and configure ShipBuilder (via the env/ directory)
+```
+    git clone https://github.com/Sendhub/shipbuilder.git
+    cd shipbuilder
+    cp -r env.example env
+
+    # Set the shipbuilder server host:        
+    echo ubuntu@sb.example.com > env/SB_SSH_HOST
+
+    # Set your AWS credentials:
+    echo 'MY_AWS_KEY' > env/SB_AWS_KEY
+    echo 'MY_AWS_SECRET' > env/SB_AWS_SECRET
+    echo 'MY_S3_BUCKET_NAME' > env/SB_S3_BUCKET
+```
+
+3. Run Installers:
+```
+    # For shipbuilder server:
+    ./installation/shipbuilder.sh -d /dev/xvdb install
+
+    # For nodes:
+    ./installation/node.sh -H ubuntu@node.example.com -d /dev/xvdb install
+
+    # For load-balancer(s):
+    ./installation/load-balancer.sh -H ubuntu@lb.example.com install
+```
+
+4. Compile ShipBuilder locally (./build.sh -f)
+
+5. Deploy ShipBuilder (./deploy.sh -f)
+
+6. Add the load-balancer: ./dist/shipbuilder lb:add HOST_OR_IP
+
+7. Add the node(s): ./dist/shipbuilder nodes:add HOST_OR_IP1 HOST_OR_IP2.. HOST_OR_IPn
+
+8. Start creating apps
 
 
 Service Modules
@@ -113,7 +146,8 @@ ShipBuilder Server
 
 - `tcp/22` - Remote SSH access
 - `udp/514` - For app logging
-- `udp/10514` - For app logging
+- `tcp/10514` - For app logging
+- `tcp/9998` - For app logging..
 
 Container Node(s)
 -----------------
