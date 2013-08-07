@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,14 +22,16 @@ type (
 		Config      *Config
 		Revision    string
 		Version     string
+		ScalingOnly bool // Flag to indicate whether this is a new release or a scaling activity.
 		err         error
 	}
 	Executor struct {
 		logger io.Writer
 	}
 	DeployLock struct {
-		numStarted, numFinished int
-		mutex                   sync.Mutex
+		numStarted  int
+		numFinished int
+		mutex       sync.Mutex
 	}
 )
 
@@ -355,17 +358,7 @@ func (this *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) 
 	return dyno, err
 }
 
-// Deploy the container to the hosts
-func (this *Deployment) deploy() error {
-	if len(this.Application.Processes) == 0 {
-		return fmt.Errorf("No processes scaled up, adjust with `ps:scale proc=#` before deploying")
-	}
-
-	titleLogger := NewFormatter(this.Logger, GREEN)
-	dimLogger := NewFormatter(this.Logger, DIM)
-
-	e := Executor{dimLogger}
-
+func writeDeployScripts() error {
 	err := ioutil.WriteFile("/tmp/postdeploy.py", []byte(POSTDEPLOY), 0777)
 	if err != nil {
 		return err
@@ -374,16 +367,43 @@ func (this *Deployment) deploy() error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
 
-	// TODO: Remove this once the automatic resource reclaimer exists.
-	// Build list of running dynos to be deactivated upon successful deployment.
+// Deploy the container to the hosts
+func (this *Deployment) deploy() error {
+	if len(this.Application.Processes) == 0 {
+		return fmt.Errorf("No processes scaled up, adjust with `ps:scale procType=#` before deploying")
+	}
+
+	titleLogger := NewFormatter(this.Logger, GREEN)
+	dimLogger := NewFormatter(this.Logger, DIM)
+
+	e := Executor{dimLogger}
+
+	err := writeDeployScripts()
+	if err != nil {
+		return err
+	}
+
+	// Build list of running dynos to be deactivated in the LB config upon successful deployment.
 	removeDynos := []Dyno{}
-	for process, _ := range this.Application.Processes {
+	for process, numDynos := range this.Application.Processes {
 		runningDynos, err := this.Server.getRunningDynos(this.Application.Name, process)
 		if err != nil {
 			return err
 		}
-		removeDynos = append(removeDynos, runningDynos...)
+		if !this.ScalingOnly {
+			removeDynos = append(removeDynos, runningDynos...)
+		} else if numDynos < 0 {
+			// Scaling down this type of process.
+			if len(runningDynos) >= -1*numDynos {
+				// NB: -1*numDynos in this case == positive number of dynos to remove.
+				removeDynos = append(removeDynos, runningDynos[0:-1*numDynos]...)
+			} else {
+				removeDynos = append(removeDynos, runningDynos...)
+			}
+		}
 	}
 
 	type SyncResult struct {
@@ -400,7 +420,7 @@ func (this *Deployment) deploy() error {
 				time.Sleep(NODE_SYNC_TIMEOUT_SECONDS * time.Second)
 				c <- fmt.Errorf("Sync operation to node '%v' timed out after %v seconds", node.Host, NODE_SYNC_TIMEOUT_SECONDS)
 			}()
-			// Block until c has something, at which point syncStep will be notified.
+			// Block until chan has something, at which point syncStep will be notified.
 			syncStep <- SyncResult{node, <-c}
 		}(node)
 	}
@@ -448,24 +468,26 @@ func (this *Deployment) deploy() error {
 		}
 	}
 
-	timeout := time.After(DEPLOY_TIMEOUT_SECONDS * time.Second)
-OUTER:
-	for {
-		select {
-		case result := <-startedChannel:
-			if result.err != nil {
-				// Then attempt start it again.
-				fmt.Fprintf(titleLogger, "Retrying starting app dyno %v on host %v, failure reason: %v\n", result.dyno.Process, result.dyno.Host, result.err)
-				go startDynoWrapper(dynoGenerator, result.dyno.Process)
-			} else {
-				addDynos = append(addDynos, result.dyno)
-				if len(addDynos) == numDesiredDynos {
-					fmt.Fprintf(titleLogger, "Successfully started app on %v total dynos\n", numDesiredDynos)
-					break OUTER
+	if numDesiredDynos > 0 {
+		timeout := time.After(DEPLOY_TIMEOUT_SECONDS * time.Second)
+	OUTER:
+		for {
+			select {
+			case result := <-startedChannel:
+				if result.err != nil {
+					// Then attempt start it again.
+					fmt.Fprintf(titleLogger, "Retrying starting app dyno %v on host %v, failure reason: %v\n", result.dyno.Process, result.dyno.Host, result.err)
+					go startDynoWrapper(dynoGenerator, result.dyno.Process)
+				} else {
+					addDynos = append(addDynos, result.dyno)
+					if len(addDynos) == numDesiredDynos {
+						fmt.Fprintf(titleLogger, "Successfully started app on %v total dynos\n", numDesiredDynos)
+						break OUTER
+					}
 				}
+			case <-timeout:
+				return fmt.Errorf("Start operation timed out after %v seconds", DEPLOY_TIMEOUT_SECONDS)
 			}
-		case <-timeout:
-			return fmt.Errorf("Start operation timed out after %v seconds", DEPLOY_TIMEOUT_SECONDS)
 		}
 	}
 
@@ -474,32 +496,35 @@ OUTER:
 		return err
 	}
 
-	// TODO: Maybe add delay to let things finish?
-
-	// Next destroy the old dynos.
-	/*for _, removeDyno := range removeDynos {
-		fmt.Fprintf(titleLogger, "Destroying old dyno %v\n", removeDyno.Container)
-		e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+removeDyno.Host, "sudo", "/tmp/shutdown_container.py", removeDyno.Container)
-	}*/
-
-	releases, err := getReleases(this.Application.Name)
-	if err != nil {
-		return err
-	}
-	// Prepend the release (releases are in descending order)
-	releases = append([]Release{{
-		Version:  this.Version,
-		Revision: this.Revision,
-		Date:     time.Now(),
-		Config:   this.Application.Environment,
-	}}, releases...)
-	// Only keep around the latest 15 (older ones are still in S3)
-	if len(releases) > 15 {
-		releases = releases[:15]
-	}
-	err = setReleases(this.Application.Name, releases)
-	if err != nil {
-		return err
+	if !this.ScalingOnly {
+		// Update releases.
+		releases, err := getReleases(this.Application.Name)
+		if err != nil {
+			return err
+		}
+		// Prepend the release (releases are in descending order)
+		releases = append([]Release{{
+			Version:  this.Version,
+			Revision: this.Revision,
+			Date:     time.Now(),
+			Config:   this.Application.Environment,
+		}}, releases...)
+		// Only keep around the latest 15 (older ones are still in S3)
+		if len(releases) > 15 {
+			releases = releases[:15]
+		}
+		err = setReleases(this.Application.Name, releases)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Trigger old dynos to shutdown.
+		for _, removeDyno := range removeDynos {
+			fmt.Fprintf(titleLogger, "Shutting down dyno: %v\n", removeDyno.Container)
+			go func(rd Dyno) {
+				rd.shutdown(Executor{os.Stdout})
+			}(removeDyno)
+		}
 	}
 
 	return nil
@@ -527,19 +552,21 @@ func (this *Deployment) Deploy() error {
 		}
 	}()
 
-	err = this.createContainer()
-	if err != nil {
-		return err
-	}
+	if !this.ScalingOnly {
+		err = this.createContainer()
+		if err != nil {
+			return err
+		}
 
-	err = this.build()
-	if err != nil {
-		return err
-	}
+		err = this.build()
+		if err != nil {
+			return err
+		}
 
-	err = this.archive()
-	if err != nil {
-		return err
+		err = this.archive()
+		if err != nil {
+			return err
+		}
 	}
 
 	err = this.deploy()
@@ -596,10 +623,9 @@ func (this *Server) Redeploy(conn net.Conn, applicationName string) error {
 	defer deployLock.finish()
 
 	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
-		// Nothing to redeploy.
 		if app.LastDeploy == "" {
-			fmt.Fprintf(this.getLogger(conn), "Redeploy is not going to happen because this app has not yet had a first deploy\n")
-			return nil
+			// Nothing to redeploy.
+			return fmt.Errorf("Redeploy is not going to happen because this app has not yet had a first deploy")
 		}
 		previousVersion := app.LastDeploy
 		// Bump version.
@@ -639,6 +665,60 @@ func (this *Server) Redeploy(conn net.Conn, applicationName string) error {
 			return fmt.Errorf("failed to find previous deploy: %v", previousVersion)
 		}
 		Logf(conn, "redeploying\n")
+		return deployment.Deploy()
+	})
+}
+
+func (this *Server) Rescale(conn net.Conn, applicationName string, args map[string]string) error {
+	deployLock.start()
+	defer deployLock.finish()
+
+	changes := map[string]int{}
+
+	err := this.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
+		for processType, newNumDynosStr := range args {
+			newNumDynos, err := strconv.Atoi(newNumDynosStr)
+			if err != nil {
+				return err
+			}
+
+			oldNumDynos, ok := app.Processes[processType]
+			if !ok {
+				// Add new dyno type to changes.
+				changes[processType] = newNumDynos
+			} else if newNumDynos != oldNumDynos {
+				// Take note of difference.
+				changes[processType] = newNumDynos - oldNumDynos
+			}
+
+			app.Processes[processType] = newNumDynos
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if len(changes) == 0 {
+		return fmt.Errorf("No scaling changes were detected")
+	}
+
+	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
+		if app.LastDeploy == "" {
+			// Nothing to redeploy.
+			return fmt.Errorf("Rescaling will apply only to future deployments because this app has not yet had a first deploy")
+		}
+		logger := NewTimeLogger(NewMessageLogger(conn))
+		fmt.Fprintf(NewFormatter(logger, GREEN), "will make the following scale adjustments: %v\n", changes)
+		// Temporarily replace Processes with the diff.
+		app.Processes = changes
+		deployment := &Deployment{
+			Server:      this,
+			Logger:      logger,
+			Config:      cfg,
+			Application: app,
+			Version:     app.LastDeploy,
+			ScalingOnly: true,
+		}
 		return deployment.Deploy()
 	})
 }

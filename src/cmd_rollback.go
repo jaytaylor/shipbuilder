@@ -1,11 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"net"
 )
 
 func (this *Server) Rollback(conn net.Conn, applicationName, version string) error {
 	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
+		if app.LastDeploy == "" {
+			// Nothing to redeploy.
+			return fmt.Errorf("Rollback is impossible because this app has not yet had a first deploy")
+		}
 		// Get the next version
 		app, cfg, err := this.IncrementAppVersion(app)
 		if err != nil {

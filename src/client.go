@@ -13,7 +13,7 @@ import (
 	"reflect"
 	"strings"
 
-	"code.google.com/p/go.crypto/ssh/terminal"
+	//"code.google.com/p/go.crypto/ssh/terminal"
 )
 
 type (
@@ -34,11 +34,11 @@ func fail(format string, args ...interface{}) {
 func (this *Client) send(msg Message) error {
 	//fmt.Printf("CLIENT DEBUG: msg=%v\n", msg)
 	// Open a tunnel if necessary
-	if terminal.IsTerminal(STDOUT_FD) {
+	/*if terminal.IsTerminal(STDOUT_FD) {
 		fmt.Print("HEY DUDE, I CAN TELL THIS IS RUNNING IN A TERMINAL\n")
 	} else {
 		fmt.Print("HEY DUDE, I COULD TELL DIZ AIN'T NO TERMNAL\n")
-	}
+	}*/
 
 	if !strings.Contains(strings.ToLower(sshHost), "localhost") && !strings.Contains(strings.ToLower(sshHost), "127.0.0.1") {
 		bs, err := exec.Command("hostname").Output()

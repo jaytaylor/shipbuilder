@@ -45,9 +45,9 @@ func containerToDyno(host string, container string) (Dyno, error) {
 	}, nil
 }
 
-func (this *Dyno) shutdown(e Executor) {
+func (this *Dyno) shutdown(e Executor) error {
 	fmt.Fprintf(e.logger, "Shutting down dyno, host=%v app=%v proc=%v, version=%v port=%v", this.Host, this.Application, this.Process, this.Version, this.Port)
-	e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+this.Host, "sudo", "/tmp/shutdown_container.py", this.Container)
+	return e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+this.Host, "sudo", "/tmp/shutdown_container.py", this.Container)
 }
 
 func (this *Server) getRunningDynos(application, process string) ([]Dyno, error) {

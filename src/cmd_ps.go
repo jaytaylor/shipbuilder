@@ -2,7 +2,6 @@ package main
 
 import (
 	"net"
-	"strconv"
 )
 
 func (this *Server) Ps_List(conn net.Conn, applicationName string) error {
@@ -24,24 +23,7 @@ func (this *Server) Ps_List(conn net.Conn, applicationName string) error {
 	})
 }
 
-func (this *Server) Rescale(args map[string]string, applicationName string) error {
-	return this.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
-		for processType, numDynosStr := range args {
-			numDynos, err := strconv.Atoi(numDynosStr)
-			if err != nil {
-				return err
-			}
-			app.Processes[processType] = numDynos
-		}
-		return nil
-	})
-}
-
-// ps:scale web=12 worker=12 scheduler=1
+// e.g. ps:scale web=12 worker=12 scheduler=1
 func (this *Server) Ps_Scale(conn net.Conn, applicationName string, args map[string]string) error {
-	err := this.Rescale(args, applicationName)
-	if err != nil {
-		return err
-	}
-	return this.Redeploy(conn, applicationName)
+	return this.Rescale(conn, applicationName, args)
 }

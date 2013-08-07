@@ -297,7 +297,8 @@ exec start-stop-daemon --start -u ubuntu --exec /app/run`))
 	template.Must(HAPROXY_CONFIG.Parse(`
 global
     maxconn 4096
-    log 127.0.0.1       local1 notice
+    # NB: Base HAProxy logging configuration is as per: http://kvz.io/blog/2010/08/11/haproxy-logging/
+    log 127.0.0.1 local1 info
 
 defaults
     log global
