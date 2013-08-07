@@ -35,7 +35,7 @@ System Preparation
 
 3. Run Installers:
 ```
-    # For shipbuilder server:
+    # For shipbuilder server (make sure this device is a persistent volume as this will be the source of truth):
     ./installation/shipbuilder.sh -d /dev/xvdb install
 
     # For nodes:

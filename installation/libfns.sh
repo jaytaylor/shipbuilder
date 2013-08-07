@@ -250,6 +250,9 @@ function prepareNode() {
 }
 
 function prepareLoadBalancer() {
+    # @param $1 ssl certificate base filename (without path).
+    certFile=/tmp/$1
+
     version=$(lsb_release -a 2>/dev/null | grep "Release" | grep -o "[0-9\.]\+$")
 
     if [ "${version}" = "12.04" ]; then
@@ -261,28 +264,43 @@ function prepareLoadBalancer() {
     fi
     echo "info: adding ppa repository for ${version}: ${ppa}"
     sudo apt-add-repository -y ${ppa}
+    abortIfNonZero $? "adding apt repository ppa ${ppa}"
 
     required="haproxy"
     echo "info: installing required packages: ${required}"
     sudo apt-get update
+    abortIfNonZero $? "updating apt"
     sudo apt-get install -y $required
+    abortIfNonZero $? "apt-get install ${required}"
 
     optional="vim-haproxy"
     echo "info: installing optional packages: ${optional}"
     sudo apt-get install -y $optional
+    abortIfNonZero $? "apt-get install ${optional}"
 
-    sudo mkdir /etc/haproxy/certs.d 2>/dev/null
     if [ -r "${certFile}" ]; then
+        if ! [ -d "/etc/haproxy/certs.d" ]; then
+            sudo mkdir /etc/haproxy/certs.d 2>/dev/null
+            abortIfNonZero $? "creating /etc/haproxy/certs.d directory"
+        fi
+
         echo "info: installing ssl certificate to /etc/haproxy/certs.d"
         sudo mv $certFile /etc/haproxy/certs.d/
+        abortIfNonZero $? "moving certificate to /etc/haproxy/certs.d"
+
         sudo chmod 400 /etc/haproxy/certs.d/$(echo $certFile | sed "s/^.*\/\(.*\)$/\1/")
+        abortIfNonZero $? "chmod 400 /etc/haproxy/certs.d/<cert-file>"
+
         sudo chown -R haproxy:haproxy /etc/haproxy/certs.d
+        abortIfNonZero $? "chown haproxy:haproxy /etc/haproxy/certs.d"
+
     else
-        echo "warn: no ssl certificate file was provided, ssl support will not be available" 1>&2
+        echo "warn: no certificate file was provided, ssl support will not be available" 1>&2
     fi
 
     echo "info: enabling the HAProxy system service in /etc/default/haproxy"
     sudo sed -i "s/ENABLED=0/ENABLED=1/" /etc/default/haproxy
+    abortIfNonZero $? "enabling haproxy service in /dev/default/haproxy"
 }
 
 function installGo() {
@@ -369,11 +387,11 @@ function lxcInitBase() {
     echo 'info: clear any pre-existing "base" container'
     sudo lxc-stop -k -n base 2>/dev/null
     sudo lxc-destroy -n base 2>/dev/null
-    
+
     echo 'info: creating base lxc container'
     sudo lxc-create -n base -B btrfs -t ubuntu
     abortIfNonZero $? "lxc-create base"
-    
+
     echo 'info: configuring base lxc container..'
     sudo lxc-start --daemon -n base
     abortIfNonZero $? "lxc-start base"
@@ -388,13 +406,13 @@ function lxcConfigBase() {
 
     sudo cp ~/.ssh/id_rsa.pub /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh/authorized_keys
     abortIfNonZero $? "base container ssh authorized_keys"
-    
+
     sudo chown -R ubuntu:ubuntu /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh
     abortIfNonZero $? "chown -R ubuntu:ubuntu base container .ssh"
-    
+
     sudo chmod 700 ubuntu:ubuntu /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh
     abortIfNonZero $? "chmod 700 base container .ssh"
-    
+
     sudo chmod 600 ubuntu:ubuntu /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh/authorized_keys
     abortIfNonZero $? "chmod 600 base container .ssh/authorized_keys"
 
@@ -403,7 +421,7 @@ function lxcConfigBase() {
     abortIfNonZero $? "adding 'ubuntu' to container sudoers"
 
     echo 'info: updating apt repositories in container'
-    ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes' ubuntu@$ip sudo apt-get update
+    ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes' ubuntu@$ip "sudo apt-get update"
     abortIfNonZero $? "container apt-get update"
 
     packages='daemontools git-core curl unzip'
@@ -433,7 +451,7 @@ function lxcConfigBuildPack() {
     abortIfNonZero $? "[${container}] container apt-get install ${packages}"
 
     if [ -n "${customCommands}" ]; then
-        echo "info: running customCommands command: ${customCommands}"
+        echo "info: running customCommands: ${customCommands}"
         ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes' ubuntu@$ip "${customCommands}"
         abortIfNonZero $? "[${container}] container customCommands command /${customCommands}/"
     fi
@@ -444,10 +462,10 @@ function lxcConfigBuildPack() {
 }
 
 function lxcConfigBuildPacks() {
-    echo "info: initializing build-pack: ${buildPack}"
-    for buildPack in $(ls -1 ../build-packs); do
-        packages="$(cat ../build-packs/$buildPack/container-packages 2>/dev/null)"
-        customCommands="$(cat ../build-packs/$buildPack/container-custom-commands 2>/dev/null)"
+    for buildPack in $(ls -1 /mnt/build/build-packs); do
+        echo "info: initializing build-pack: ${buildPack}"
+        packages="$(cat /mnt/build/build-packs/$buildPack/container-packages 2>/dev/null)"
+        customCommands="$(cat /mnt/build/build-packs/$buildPack/container-custom-commands 2>/dev/null)"
         lxcConfigBuildPack "${buildPack}" "${packages}" "${customCommands}"
     done
 }
