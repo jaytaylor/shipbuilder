@@ -401,7 +401,7 @@ function lxcInitBase() {
 
 function lxcConfigBase() {
     echo "info: adding shipbuilder server's public-key to authorized_keys file in base container"
-    sudo mkdir /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh
+    test ! -e "/mnt/build/lxc/base/rootfs/home/ubuntu/.ssh" sudo mkdir /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh
     abortIfNonZero $? "base container .ssh directory"
 
     sudo cp ~/.ssh/id_rsa.pub /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh/authorized_keys
@@ -410,10 +410,10 @@ function lxcConfigBase() {
     sudo chown -R ubuntu:ubuntu /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh
     abortIfNonZero $? "chown -R ubuntu:ubuntu base container .ssh"
 
-    sudo chmod 700 ubuntu:ubuntu /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh
+    sudo chmod 700 /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh
     abortIfNonZero $? "chmod 700 base container .ssh"
 
-    sudo chmod 600 ubuntu:ubuntu /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh/authorized_keys
+    sudo chmod 600 /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh/authorized_keys
     abortIfNonZero $? "chmod 600 base container .ssh/authorized_keys"
 
     echo 'info: adding the container "ubuntu" user to the sudoers list'
