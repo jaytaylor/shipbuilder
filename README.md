@@ -21,7 +21,7 @@ Any app server can be run on ShipBuilder, but if will need a build-pack! Current
 Requirements:
 
 * Ubuntu 12.04 or 13.04 (tested and verified compatible)
-* go-lang v1.1
+* go v1.1
 * envdir (linux: `apt-get install daemontools`, os-x: `brew install daemontools`)
 * Amazon AWS credentials + an s3 bucket
 
