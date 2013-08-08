@@ -6,6 +6,8 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -539,6 +541,28 @@ func (this *Deployment) deploy() error {
 	return nil
 }
 
+func (this *Deployment) postDeployHooks() {
+	if this.ScalingOnly {
+		return
+	}
+
+	theUrl, ok := this.Application.Environment["DEPLOYHOOKS_HTTP_URL"]
+	if !ok {
+		return
+	}
+
+	message := "Deployed " + this.Application.Name + " " + this.Version + " (" + this.Revision[0:7] + ")."
+
+	if strings.Contains(theUrl, "https://api.hipchat.com/v1/rooms/message") {
+		theUrl += "&notify=0&from=ShipBuilder&message_format=text&message=" + url.QueryEscape(message)
+		fmt.Printf("info: dispatching app deployhook url, app=%v url=%v\n", this.Application.Name, theUrl)
+		go http.Get(theUrl)
+
+	} else {
+		fmt.Printf("error: unrecognized app deployhook url, app=%v url=%v\n", this.Application.Name, theUrl)
+	}
+}
+
 func (this *Deployment) undoVersionBump() {
 	this.Server.destroyContainer(Executor{this.Logger}, this.Application.Name+DYNO_DELIMITER+this.Version)
 	this.Server.WithPersistentApplication(this.Application.Name, func(app *Application, cfg *Config) error {
@@ -587,6 +611,7 @@ func (this *Deployment) Deploy() error {
 		return err
 	}
 
+	this.postDeployHooks()
 	return nil
 }
 

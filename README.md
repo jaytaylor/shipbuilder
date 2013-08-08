@@ -294,10 +294,18 @@ Deploy to SB_SSH_HOST:
     ./deploy.sh
 
 
-Maintenance page url
+Maintenance page URL
 --------------------
+Set your own custom maintenance page URL to be displayed while the app is in maintenance mode.
 
     sb config:set MAINTENANCE_PAGE_URL='http://example.com/foo/bar.html' -aMyApp
+
+
+Deploy-hooks URL
+----------------
+Set a deploy-hook URL to enable things like HipChat room notifications.
+
+    sb config:set DEPLOYHOOKS_HTTP_URL='https://api.hipchat.com/v1/rooms/message?auth_token=<THE_TOKEN>&room_id=<THE_ROOM>' -aMyApp
 
 
 Installation
