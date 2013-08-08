@@ -1,6 +1,8 @@
 ShipBuilder
 ===========
 
+Additional information is available at [https://shipbuilder.io](http://shipbuilder.io)
+
 About
 -----
 ShipBuilder is a git-based application deployment and serving system written in Go.
@@ -39,3 +41,14 @@ Creating your first app
 -----------------------
 
 See [TUTORIAL.md](https://github.com/sendhub/shipbuilder/blob/master/TUTORIAL.md)
+
+Getting Help
+------------
+Have a question? Want some help? You can reach shipbuilder experts any of the following ways:
+
+Discussion List: [ShipBuilder Google Group](https://groups.google.com/forum/#!forum/shipbuilder)
+IRC: [#shipbuilder on FreeNode](irc://chat.freenode.node/shipbuilder)
+Twitter: [ShipBuilderIO](https://twitter.com/ShipBuilderIO)
+
+Or open a GitHub issue.
+
