@@ -190,14 +190,14 @@ __pre-receive__
 
     pre-receive directory old-revision new-revision reference
 
-Internal command automatically invoked by the git repo on post-receive.
-
-
-__pre-receive__
-
-    pre-receive directory old-revision new-revision reference
-
 Internal command automatically invoked by the git repo on pre-receive.
+
+
+__post-receive__
+
+    post-receive directory old-revision new-revision reference
+
+Internal command automatically invoked by the git repo on post-receive.
 
 
 __ps:list__
