@@ -16,23 +16,30 @@ func (this *Server) Rollback(conn net.Conn, applicationName, version string) err
 		if err != nil {
 			return err
 		}
+
 		deployment := &Deployment{
 			Server:      this,
-			Logger:      NewLogger(NewMessageLogger(conn), "[redeploy] "),
+			Logger:      NewLogger(NewTimeLogger(NewMessageLogger(conn)), "[rollback] "),
 			Config:      cfg,
 			Application: app,
 			Version:     app.LastDeploy,
 		}
+
+		// Cleanup any hanging chads upon error.
+		defer func() {
+			if err != nil {
+				deployment.undoVersionBump()
+			}
+		}()
+
 		err = deployment.extract(version)
 		if err != nil {
 			return err
 		}
-
 		err = deployment.deploy()
 		if err != nil {
 			return err
 		}
-
 		return nil
 	})
 }

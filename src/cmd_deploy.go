@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,9 +23,6 @@ type (
 		Version     string
 		ScalingOnly bool // Flag to indicate whether this is a new release or a scaling activity.
 		err         error
-	}
-	Executor struct {
-		logger io.Writer
 	}
 	DeployLock struct {
 		numStarted  int
@@ -74,47 +70,48 @@ func (this *Deployment) createContainer() error {
 	_, err := os.Stat(this.Application.RootFsDir())
 	if err != nil {
 		// Clone the base application.
-		this.err = e.Run("sudo", "lxc-clone", "-s", "-B", "btrfs", "-o", "base-"+this.Application.BuildPack, "-n", this.Application.Name)
+		this.err = e.CloneContainer("base-"+this.Application.BuildPack, this.Application.Name)
 		if this.err != nil {
 			return this.err
 		}
 	}
 
 	e.Run("sudo", "rm", "-rf", this.Application.AppDir())
-	e.Run("mkdir", "-p", this.Application.SrcDir())
+	e.Run("sudo", "mkdir", "-p", this.Application.SrcDir())
 	// Copy the binary into the container.
-	this.err = e.Run("cp", EXE, this.Application.AppDir()+"/"+BINARY)
+	this.err = e.Run("sudo", "cp", EXE, this.Application.AppDir()+"/"+BINARY)
 	if this.err != nil {
 		return this.err
 	}
 	// Export the source to the container.
-	this.err = e.Run("git", "clone", this.Application.GitDir(), this.Application.SrcDir())
+	this.err = e.Run("sudo", "git", "clone", this.Application.GitDir(), this.Application.SrcDir())
 	if this.err != nil {
 		return this.err
 	}
 	// Checkout the given revision.
-	this.err = e.Run("/bin/bash", "-c", "cd "+this.Application.SrcDir()+" && git checkout -q -f "+this.Revision)
+	this.err = e.BashCmd("cd " + this.Application.SrcDir() + " && git checkout -q -f " + this.Revision)
 	if this.err != nil {
 		return this.err
 	}
 	// Convert references to submodules to be read-only.
-	this.err = e.Run("/bin/bash", "-c",
-		"if [ -f '"+this.Application.SrcDir()+"/.gitmodules' ]; then echo 'converting submodule refs to be read-only'; sed -i 's,git@github.com:,git://github.com/,g' '"+this.Application.SrcDir()+"/.gitmodules'; else echo 'project does not appear to have any submodules'; fi")
+	this.err = e.BashCmd(
+		"if [ -f '" + this.Application.SrcDir() + "/.gitmodules' ]; then echo 'converting submodule refs to be read-only'; sed -i 's,git@github.com:,git://github.com/,g' '" + this.Application.SrcDir() + "/.gitmodules'; else echo 'project does not appear to have any submodules'; fi",
+	)
 	if this.err != nil {
 		return this.err
 	}
 	// Update the submodules.
-	this.err = e.Run("/bin/bash", "-c", "cd "+this.Application.SrcDir()+" && git submodule init && git submodule update")
+	this.err = e.BashCmd("cd " + this.Application.SrcDir() + " && git submodule init && git submodule update")
 	if this.err != nil {
 		return this.err
 	}
 	// Chown the app src & output to default user by grepping the uid+gid from /etc/passwd in the container.
-	this.err = e.Run("/bin/bash", "-c",
-		"touch "+this.Application.AppDir()+"/out && "+
-			"chown $(cat "+this.Application.RootFsDir()+"/etc/passwd | grep '^"+DEFAULT_NODE_USERNAME+":' | cut -d':' -f3,4) "+
-			this.Application.AppDir()+" && "+
-			"chown -R $(cat "+this.Application.RootFsDir()+"/etc/passwd | grep '^"+DEFAULT_NODE_USERNAME+":' | cut -d':' -f3,4) "+
-			this.Application.AppDir()+"/{out,src}",
+	this.err = e.BashCmd(
+		"touch " + this.Application.AppDir() + "/out && " +
+			"chown $(cat " + this.Application.RootFsDir() + "/etc/passwd | grep '^" + DEFAULT_NODE_USERNAME + ":' | cut -d':' -f3,4) " +
+			this.Application.AppDir() + " && " +
+			"chown -R $(cat " + this.Application.RootFsDir() + "/etc/passwd | grep '^" + DEFAULT_NODE_USERNAME + ":' | cut -d':' -f3,4) " +
+			this.Application.AppDir() + "/{out,src}",
 	)
 	if this.err != nil {
 		return this.err
@@ -177,7 +174,7 @@ func (this *Deployment) build() error {
 		}
 		c <- err
 	}()
-	err = e.Run("sudo", "lxc-start", "-d", "-n", this.Application.Name)
+	err = e.StartContainer(this.Application.Name)
 	if err != nil {
 		return err
 	}
@@ -187,7 +184,7 @@ func (this *Deployment) build() error {
 	case <-time.After(30 * 60 * time.Second):
 		err = fmt.Errorf("timeout")
 	}
-	e.Run("sudo", "lxc-stop", "-k", "-n", this.Application.Name)
+	e.StopContainer(this.Application.Name)
 	if err != nil {
 		return err
 	}
@@ -215,21 +212,21 @@ func (this *Deployment) archive() error {
 	dimLogger := NewFormatter(this.Logger, DIM)
 
 	e := Executor{dimLogger}
-	e.Run("sudo", "lxc-clone",
-		"-B", "btrfs",
-		"-s",
-		"-o", this.Application.Name,
-		"-n", this.Application.Name+DYNO_DELIMITER+this.Version,
-	)
-	// Upload the image to S3.
+
+	versionedContainerName := this.Application.Name + DYNO_DELIMITER + this.Version
+
+	e.CloneContainer(this.Application.Name, versionedContainerName)
+
+	// Compress & upload the image to S3.
 	go func() {
-		e = Executor{NewLogger(os.Stdout, "[archive]")}
-		archiveName := "/tmp/" + this.Application.Name + DYNO_DELIMITER + this.Version + ".tar.gz"
-		err := e.Run("sudo", "tar", "-czf", archiveName, this.Application.LxcDir())
+		e = Executor{NewLogger(os.Stdout, "[archive] ")}
+		archiveName := "/tmp/" + versionedContainerName + ".tar.gz"
+		err := e.Run("sudo", "tar", "-czf", archiveName, this.Application.RootFsDir())
 		if err != nil {
 			return
 		}
 		defer e.Run("sudo", "rm", "-rf", archiveName)
+
 		h, err := os.Open(archiveName)
 		if err != nil {
 			return
@@ -253,43 +250,44 @@ func (this *Deployment) archive() error {
 func (this *Deployment) extract(version string) error {
 	e := Executor{this.Logger}
 
-	_, err := os.Stat(LXC_DIR + "/" + this.Application.Name + DYNO_DELIMITER + version)
+	// Remmove current app container if it exists.
+	e.DestroyContainer(this.Application.Name)
+
+	// Detect if the container is already present locally.
+	versionedAppContainer := this.Application.Name + DYNO_DELIMITER + version
+	_, err := os.Stat(LXC_DIR + "/" + versionedAppContainer)
 	if err == nil {
-		err = e.Run("sudo", "lxc-destroy", "-n", this.Application.Name)
-		if err != nil {
-			return err
-		}
-		err = e.Run("sudo", "lxc-clone", "-s", "-B", "btrfs", "-o", this.Application.Name+DYNO_DELIMITER+version, "-n", this.Application.Name)
-		if err != nil {
-			return err
-		}
-		return nil
+		return e.CloneContainer(versionedAppContainer, this.Application.Name)
 	}
 
-	// Pull from S3
-	fmt.Fprintln(this.Logger, "Downloading from S3")
+	// The requested app version doesn't exist locally, attempt to download it from S3.
+	fmt.Fprintln(this.Logger, "Downloading requested release from S3")
+
 	r, err := getS3Bucket().GetReader("/releases/" + this.Application.Name + "/" + version + ".tar.gz")
 	if err != nil {
 		return err
 	}
 	defer r.Close()
-	h, err := os.Create("/tmp/" + version + ".tar.gz")
+
+	localFileName := "/tmp/" + this.Application.Name + DYNO_DELIMITER + version + ".tar.gz"
+	h, err := os.Create(localFileName)
 	if err != nil {
 		return err
 	}
 	defer h.Close()
-	defer os.Remove("/tmp/" + version + ".tar.gz")
+	defer os.Remove(localFileName)
+
 	_, err = io.Copy(h, r)
 	if err != nil {
 		return err
 	}
 
+	e.CloneContainer("base-"+this.Application.BuildPack, this.Application.Name)
 	fmt.Fprintln(this.Logger, "Extracting..")
-	err = e.Run("sudo", "tar", "-C", this.Application.LxcDir(), "-xzf", "/tmp/"+version+".tar.gz")
+	err = e.Run("sudo", "tar", "-C", this.Application.RootFsDir(), "-xzf", localFileName)
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -300,7 +298,7 @@ func (this *Deployment) syncNode(node *Node) error {
 	// TODO: Maybe add fail check to clone operation.
 	err := e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+node.Host,
 		"sudo", "/bin/bash", "-c",
-		`"if ! [ -d '/var/lib/lxc/`+this.Application.Name+`' ]; then lxc-clone -B btrfs -s -o base-`+this.Application.BuildPack+` -n `+this.Application.Name+`; else echo 'app image already exists'; fi"`,
+		`"test ! -d '/var/lib/lxc/`+this.Application.Name+`' && lxc-clone -B btrfs -s -o base-`+this.Application.BuildPack+` -n `+this.Application.Name+` || echo 'app image already exists'"`,
 	)
 	if err != nil {
 		fmt.Fprintf(logger, "error cloning base container: %v\n", err)
@@ -358,6 +356,15 @@ func (this *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) 
 	return dyno, err
 }
 
+func (this *Deployment) autoDetectRevision() error {
+	revision, err := ioutil.ReadFile(LXC_DIR + "/" + this.Application.Name + "/rootfs" + APP_DIR + "/src/.git/HEAD")
+	if err != nil {
+		return err
+	}
+	this.Revision = strings.Trim(string(revision), "\n")
+	return nil
+}
+
 func writeDeployScripts() error {
 	err := ioutil.WriteFile("/tmp/postdeploy.py", []byte(POSTDEPLOY), 0777)
 	if err != nil {
@@ -370,7 +377,7 @@ func writeDeployScripts() error {
 	return nil
 }
 
-// Deploy the container to the hosts
+// Deploy and launch the container to nodes.
 func (this *Deployment) deploy() error {
 	if len(this.Application.Processes) == 0 {
 		return fmt.Errorf("No processes scaled up, adjust with `ps:scale procType=#` before deploying")
@@ -380,6 +387,8 @@ func (this *Deployment) deploy() error {
 	dimLogger := NewFormatter(this.Logger, DIM)
 
 	e := Executor{dimLogger}
+
+	this.autoDetectRevision()
 
 	err := writeDeployScripts()
 	if err != nil {
@@ -530,25 +539,29 @@ func (this *Deployment) deploy() error {
 	return nil
 }
 
+func (this *Deployment) undoVersionBump() {
+	this.Server.destroyContainer(Executor{this.Logger}, this.Application.Name+DYNO_DELIMITER+this.Version)
+	this.Server.WithPersistentApplication(this.Application.Name, func(app *Application, cfg *Config) error {
+		// If the version hasn't been messed with since we incremented it, go ahead and decrement it because
+		// this deploy has failed.
+		if app.LastDeploy == this.Version {
+			prev, err := app.CalcPreviousVersion()
+			if err != nil {
+				return err
+			}
+			app.LastDeploy = prev
+		}
+		return nil
+	})
+}
+
 func (this *Deployment) Deploy() error {
 	var err error
 
 	// Cleanup any hanging chads upon error.
 	defer func() {
 		if err != nil {
-			this.Server.destroyContainer(Executor{this.Logger}, this.Application.Name+DYNO_DELIMITER+this.Version)
-			this.Server.WithPersistentApplication(this.Application.Name, func(app *Application, cfg *Config) error {
-				// If the version hasn't been messed with since we incremented it, go ahead and decrement it because
-				// this deploy has failed.
-				if app.LastDeploy == this.Version {
-					prev, err := app.CalcPreviousVersion()
-					if err != nil {
-						return err
-					}
-					app.LastDeploy = prev
-				}
-				return nil
-			})
+			this.undoVersionBump()
 		}
 	}()
 
@@ -577,23 +590,12 @@ func (this *Deployment) Deploy() error {
 	return nil
 }
 
-func (this *Executor) Run(name string, args ...string) error {
-	if name == "ssh" {
-		//fmt.Fprint(this.logger, "debug: injecting ssh args\n")
-		args = append([]string{"-o", "StrictHostKeyChecking no", "-o", "BatchMode yes"}, args...)
-	}
-	io.WriteString(this.logger, "$ "+name+" "+strings.Join(args, " ")+"\n")
-	cmd := exec.Command(name, args...)
-	cmd.Stdout = this.logger
-	cmd.Stderr = this.logger
-	err := cmd.Run()
-	return err
-}
-
 func (this *Server) Deploy(conn net.Conn, applicationName, revision string) error {
-	fmt.Fprintf(this.getLogger(conn), "Deploying revision %v\n", revision)
 	deployLock.start()
 	defer deployLock.finish()
+
+	logger := NewTimeLogger(NewMessageLogger(conn))
+	fmt.Fprintf(logger, "Deploying revision %v\n", revision)
 
 	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
 		// Bump version.
@@ -603,7 +605,7 @@ func (this *Server) Deploy(conn net.Conn, applicationName, revision string) erro
 		}
 		deployment := &Deployment{
 			Server:      this,
-			Logger:      NewTimeLogger(NewMessageLogger(conn)),
+			Logger:      logger,
 			Config:      cfg,
 			Application: app,
 			Revision:    revision,
@@ -622,6 +624,8 @@ func (this *Server) Redeploy(conn net.Conn, applicationName string) error {
 	deployLock.start()
 	defer deployLock.finish()
 
+	logger := NewTimeLogger(NewMessageLogger(conn))
+
 	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
 		if app.LastDeploy == "" {
 			// Nothing to redeploy.
@@ -635,12 +639,12 @@ func (this *Server) Redeploy(conn net.Conn, applicationName string) error {
 		}
 		deployment := &Deployment{
 			Server:      this,
-			Logger:      NewTimeLogger(NewMessageLogger(conn)),
+			Logger:      logger,
 			Config:      cfg,
 			Application: app,
 			Version:     app.LastDeploy,
 		}
-		// Find the release that corresponds with the latest deploy
+		// Find the release that corresponds with the latest deploy.
 		releases, err := getReleases(applicationName)
 		if err != nil {
 			return err
@@ -673,6 +677,9 @@ func (this *Server) Rescale(conn net.Conn, applicationName string, args map[stri
 	deployLock.start()
 	defer deployLock.finish()
 
+	logger := NewLogger(NewTimeLogger(NewMessageLogger(conn)), "[scale] ")
+
+	// Calculate scale changes to make.
 	changes := map[string]int{}
 
 	err := this.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
@@ -702,13 +709,15 @@ func (this *Server) Rescale(conn net.Conn, applicationName string, args map[stri
 		return fmt.Errorf("No scaling changes were detected")
 	}
 
+	// Apply the changes.
 	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
 		if app.LastDeploy == "" {
 			// Nothing to redeploy.
 			return fmt.Errorf("Rescaling will apply only to future deployments because this app has not yet had a first deploy")
 		}
-		logger := NewTimeLogger(NewMessageLogger(conn))
-		fmt.Fprintf(NewFormatter(logger, GREEN), "will make the following scale adjustments: %v\n", changes)
+
+		fmt.Fprintf(logger, "will make the following scale adjustments: %v\n", changes)
+
 		// Temporarily replace Processes with the diff.
 		app.Processes = changes
 		deployment := &Deployment{
