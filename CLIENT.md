@@ -7,6 +7,7 @@ Note:
 
 * Any command that takes an [application-name] either gets the application name from the current directory or it must be specified with `-a<application name>`.
 
+
 System-wide commands
 --------------------
 
@@ -66,9 +67,8 @@ __nodes:remove__
 Remove one or more nodes from the system.
 
 
-
 Application-specific commands
-------------------------------
+-----------------------------
 __apps:create__
 
     [apps:]create [application-name] [buildpack]
@@ -223,7 +223,7 @@ Get the release information for an application at the given version. *Not yet im
 
 __releases:list__
 
-    releases:list -a[application-name]
+    releases[:list?] -a[application-name]
 
 List the most recent 15 releases for an application.
 
@@ -240,7 +240,6 @@ __rollback__
     rollback [version] -a[application-name]
 
 Rollback an application to a specific version. Note: Version is not optional.
-
 
 
 Project Compilation
@@ -267,15 +266,27 @@ Deploy to SB_SSH_HOST:
     ./deploy.sh
 
 
-Maintenance page URL
---------------------
+Setting a maintenance page URL
+--------------------------------
+
 Set your own custom maintenance page URL to be displayed while the app is in maintenance mode.
 
     sb config:set MAINTENANCE_PAGE_URL='http://example.com/foo/bar.html' -aMyApp
 
 
-Deploy-hooks URL
-----------------
+Setting deploy-hooks URL
+------------------------
+
 Set a deploy-hook URL to enable things like HipChat room notifications.
 
     sb config:set DEPLOYHOOKS_HTTP_URL='https://api.hipchat.com/v1/rooms/message?auth_token=<THE_TOKEN>&room_id=<THE_ROOM>' -aMyApp
+
+
+ShipBuilder Client Configuration Overrides
+------------------------------------------
+
+temporary `env` config overrides are possible, just prefix the variable=value before invoking the client:
+
+    $ SB_SSH_HOST=sb-staging.sendhub.com ./shipbuilder config -aMyApp
+    info: environmental override detected for SB_SSH_HOST: sb-staging.sendhub.com
+    ..

@@ -70,21 +70,17 @@ unset IFS_BAK
 echo 'info: compiling project'
 cd 'src'
 
-if ! [ -d '../dist' ]; then
-    mkdir ../dist
-fi
-
 if [ -n "${ldflags}" ]; then
     echo "info:     go build -o ../shipbuilder -ldflags ${ldflags}"
-    go build -o ../dist/shipbuilder -ldflags "${ldflags}"
+    go build -o ../shipbuilder -ldflags "${ldflags}"
 else
-    go build -o ../dist/shipbuilder
+    go build -o ../shipbuilder
 fi
 
 buildResult=$?
 
 if [ $buildResult -eq 0 ]; then
-    echo 'info:     build succeeded - the shipbuilder binary is located at dist/shipbuilder'
+    echo 'info:     build succeeded - the shipbuilder binary is located at ./shipbuilder'
 else
     echo "error:     build failed, exited with status ${buildResult}" 1>&2
 fi
