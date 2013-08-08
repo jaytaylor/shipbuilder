@@ -7,15 +7,16 @@ Requirements
 * Passwordless SSH and sudo access from your machine to all servers involved
 * daemontools installed on your local machine
 * go-lang v1.1 installed on your local machine
-* AWS S3 auth keys
+* AWS S3 auth keys - Used to stores backups of application configurations and releases on S3 for easy rollback and restoration.
 
 
 System Preparation
 ------------------
 1. Spin up or allocate the host(s) to be used, taking note of the /dev/<DEVICE> to use for BTRFS devices on the shipbuilder server and container node(s)
-1.b ensure you can SSH without a password, here is an example command to add your public key to the list of authorized keys:
+
+1.b ensure you can SSH without a password, here is an example command to add your public key to the remote servers authorized keys:
 ```
-    ssh -i ~/.ssh/july.pem ubuntu@ec2-54-226-107-87.compute-1.amazonaws.com "echo '$(cat ~/.ssh/id_rsa.pub)' >> ~/.ssh/authorized_keys && chmod 600 .ssh/authorized_keys"
+    ssh -i ~/.ssh/somekey.pem ubuntu@sb.example.com "echo '$(cat ~/.ssh/id_rsa.pub)' >> ~/.ssh/authorized_keys && chmod 600 .ssh/authorized_keys"
 ```
 
 2. Checkout and configure ShipBuilder (via the env/ directory)
