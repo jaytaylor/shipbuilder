@@ -180,7 +180,7 @@ temporary `env` config overrides are possible, just prefix the variable=value be
     info: environmental override detected for SB_SSH_HOST: sb-staging.sendhub.com
     ..
 
-Amaazon AWS
+Amazon AWS
 ===========
 If you are running this on AWS, here are some additional recommendations: /sendhub/shipbuilder/AWS_NOTES.md
 
