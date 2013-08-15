@@ -25,8 +25,8 @@ echo 'info: fetching dependencies'
 # import (
 #     ...
 # )
-# and appropriately filters the list down to the projects dependencies.
-dependencies=$(find src -wholename '*.go' -exec awk '{ if ($1 ~ /^import/ && $2 ~ /[(]/) { s=1; next; } if ($1 ~ /[)]/) { s=0; } if (s) print; }' {} \; | grep -v '^[^\.]*$' | tr -d '\t' | tr -d '"' | sed 's/^\. \{1,\}//g' | sort | uniq)
+# and appropriately filters the list down to the projects dependencies.  It also ignores any lines which start with "//", as those are comments.
+dependencies=$(find src -wholename '*.go' -exec awk '{ if ($1 ~ /^import/ && $2 ~ /[(]/) { s=1; next; } if ($1 ~ /[)]/) { s=0; } if (s) print; }' {} \; | grep -v '^[^\.]*$' | tr -d '\t' | tr -d '"' | sed 's/^\. \{1,\}//g' | sort | uniq | grep -v '^[ \t]*\/\/')
 for dependency in $dependencies; do
     echo "info:     retrieving: ${dependency}"
     if ! [ $fastMode ] || ! [ -d "$GOPATH/src/${dependency}" ]; then 
@@ -50,7 +50,8 @@ SB_AWS_SECRET main.defaultAwsSecret
 SB_AWS_REGION main.defaultAwsRegion
 SB_S3_BUCKET main.defaultS3BucketName
 SB_HAPROXY_CREDENTIALS main.defaultHaProxyCredentials
-SB_HAPROXY_STATS main.defaultHaProxyStats"); do
+SB_HAPROXY_STATS main.defaultHaProxyStats
+LXC_FS main.defaultLxcFs"); do
     envvar=$(echo "${pair}" | sed 's/^\([^ ]\{1,\}\).*$/\1/')
     govar=$(echo "${pair}" | sed 's/^[^ ]\{1,\} \(.*\)$/\1/')
     if [ -f "env/${envvar}" ] && [ -n $(cat "env/${envvar}") ]; then

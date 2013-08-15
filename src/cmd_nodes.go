@@ -67,7 +67,7 @@ func (this *Server) Node_Add(conn net.Conn, addresses []string) error {
 			}
 			if !found {
 				fmt.Fprintf(dimLogger, "Transmitting base LXC container image to node: %v\n", addAddress)
-				err := this.SyncContainer(e, addAddress, "base", "lxc-create", "-n", "base", "-B", "btrfs", "-t", "ubuntu")
+				err := this.SyncContainer(e, addAddress, "base", "lxc-create", "-n", "base", "-B", lxcFs, "-t", "ubuntu")
 				if err != nil {
 					return err
 				}
@@ -75,7 +75,7 @@ func (this *Server) Node_Add(conn net.Conn, addresses []string) error {
 				for buildPack, _ := range BUILD_PACKS {
 					nContainer := "base-" + buildPack
 					fmt.Fprintf(dimLogger, "Transmitting build-pack '%v' LXC container image to node: %v\n", nContainer, addAddress)
-					err = this.SyncContainer(e, addAddress, nContainer, "lxc-clone", "-s", "-B", "btrfs", "-o", "base", "-n", nContainer)
+					err = this.SyncContainer(e, addAddress, nContainer, "lxc-clone", "-s", "-B", lxcFs, "-o", "base", "-n", nContainer)
 					if err != nil {
 						return err
 					}

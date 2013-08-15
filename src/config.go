@@ -64,6 +64,7 @@ var (
 	defaultS3BucketName       string
 	defaultSshHost            string
 	defaultSshKey             string
+	defaultLxcFs              string
 )
 
 // Global configuration.
@@ -74,6 +75,7 @@ var (
 	awsSecret    = OverridableByEnv("SB_AWS_SECRET", defaultAwsSecret)
 	awsRegion    = getAwsRegion("SB_AWS_REGION", defaultAwsRegion)
 	s3BucketName = OverridableByEnv("SB_S3_BUCKET", defaultS3BucketName)
+	lxcFs        = OverridableByEnv("LXC_FS", defaultLxcFs)
 )
 
 var (

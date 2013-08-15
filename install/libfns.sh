@@ -1,9 +1,17 @@
 function abortIfNonZero() {
-    # @param $1 return code/exit status (e.g. $?)
+    # @param $1 command return code/exit status (e.g. $?, '0', '1').
     # @param $2 error message if exit status was non-zero.
     local rc=$1
     local what=$2
-    test $rc -ne 0 && echo "error: ${what} exited with non-zero status ${rc}" 1>&2 #&& exit $rc
+    test $rc -ne 0 && echo "error: ${what} exited with non-zero status ${rc}" 1>&2 && exit $rc || :
+}
+
+function warnIfNonZero() {
+    # @param $1 command return code/exit status (e.g. $?, '0', '1').
+    # @param $2 error message if exit status was non-zero.
+    local rc=$1
+    local what=$2
+    test $rc -ne 0 && echo "warn: ${what} exited with non-zero status ${rc}" 1>&2 || :
 }
 
 function autoDetectServer() {
@@ -18,6 +26,18 @@ function autoDetectServer() {
     fi
 }
 
+function autoDetectFilesystem() {
+    # Attempts to auto-detect the filesystem host by reading the contents of ../env/LXC_FS.
+    if [ -r "../env/LXC_FS" ]; then
+        lxcFs=$(head -n1 ../env/LXC_FS)
+        if [ -n "${lxcFs}" ]; then
+            echo "info: auto-detected lxc filesystem: ${lxcFs}"
+        fi
+    else
+        echo 'warn: lxc filesystem auto-detection failed: no such file: ../env/LXC_FS' 1>&2
+    fi
+}
+
 function verifySshAndSudoForHosts() {
     # @param $1 string. List of space-delimited SSH connection strings.
     local sshHosts="$1"
@@ -26,16 +46,8 @@ function verifySshAndSudoForHosts() {
         echo -n "info:     testing host ${sshHost} .. "
         result=$(ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' -o 'ConnectTimeout 15' -q $sshHost 'sudo -n echo "succeeded" 2>/dev/null')
         rc=$?
-        if [ $rc -ne 0 ]; then
-            echo 'failed'
-            echo "error: ssh connection test failed for host: ${sshHost}" 1>&2
-            exit 1
-        fi
-        if [ -z "${result}" ]; then
-            echo 'failed'
-            echo "error: sudo access test failed for host: ${sshHost}" 1>&2
-            exit 1
-        fi
+        test $rc -ne 0 && echo 'failed' && echo "error: ssh connection test failed for host: ${sshHost} (exited with status code: ${rc})" 1>&2 && exit 1
+        test -z "${result}" && echo 'failed' && echo "error: sudo access test failed for host: ${sshHost}" 1>&2 && exit 1
         echo 'succeeded'
     done
 }
@@ -50,7 +62,7 @@ function initSbServerKeys() {
     function abortIfNonZero() {
         local rc=$1
         local what=$2
-        test $rc -ne 0 && echo "remote: error: ${what} exited with non-zero status ${rc}" && exit $rc
+        test $rc -ne 0 && echo "remote: error: ${what} exited with non-zero status ${rc}" && exit $rc || :
     }
     if ! test -e ~/.ssh/id_rsa.pub; then
         echo "remote: info: generating a new private/public key-pair for main user"
@@ -95,7 +107,8 @@ function initSbServerKeys() {
         sudo chmod 600 ~/.ssh/authorized_keys
         abortIfNonZero $? "chmod 600 ~/.ssh/authorized_keys command"
     fi'"'"
-    abortIfNonZero $? "ssh key initialization"
+    abortIfNonZero $? 'ssh key initialization'
+    echo 'info: ssh key initialization succeeded'
 }
 
 function getSbServerPublicKeys() {
@@ -139,25 +152,32 @@ function installAccessForSshHost() {
     function abortIfNonZero() {
         local rc=$1
         local what=$2
-        test $rc -ne 0 && echo "remote: error: ${what} exited with non-zero status ${rc}" && exit $rc
+        test $rc -ne 0 && echo "remote: error: ${what} exited with non-zero status ${rc}" && exit $rc || :
     }
-    if test -z "$(sudo grep "'"${unprivilegedPubKey}"'" ~/.ssh/authorized_keys)" || test -z "$(sudo grep "'"${unprivilegedPubKey}"'" ~/.ssh/authorized_keys)"; then
+    echo "remote: checking main user.."
+    if test -z "$(grep "'"${unprivilegedPubKey}"'" ~/.ssh/authorized_keys)" || test -z "$(sudo grep "'"${rootPubKey}"'" ~/.ssh/authorized_keys)"; then
         echo -e "'"${unprivilegedPubKey}\n${rootPubKey}"'" >> ~/.ssh/authorized_keys
         abortIfNonZero $? "appending public-keys to authorized_keys command"
         chmod 600 ~/.ssh/authorized_keys
         abortIfNonZero $? "chmod 600 ~/.ssh/authorized_keys command"
     fi
-    if sudo test -z "$(sudo grep "'"${unprivilegedPubKey}"'" /root/.ssh/authorized_keys)" || sudo test -z "$(sudo grep "'"${unprivilegedPubKey}"'" /root/.ssh/authorized_keys)"; then
+    echo "remote: checking root user.."
+    if sudo test -z "$(sudo grep "'"${unprivilegedPubKey}"'" /root/.ssh/authorized_keys)" || sudo test -z "$(sudo grep "'"${rootPubKey}"'" /root/.ssh/authorized_keys)"; then
         echo -e "'"${unprivilegedPubKey}\n${rootPubKey}"'" | sudo tee -a /root/.ssh/authorized_keys >/dev/null
         abortIfNonZero $? "appending public-keys to authorized_keys command"
         sudo chmod 600 /root/.ssh/authorized_keys
         abortIfNonZero $? "chmod 600 /root/.ssh/authorized_keys command"
     fi
+    exit 0
     '"'"
     abortIfNonZero $? "ssh access installation failed for host ${sshHost}"
+    echo 'info: ssh access installation succeeded'
 }
 
 function installLxc() {
+    # @param $1 $lxcFs lxc filesystem to use (zfs, btrfs are both supported).
+    local lxcFs=$1
+    test -z "${lxcFs}" && echo 'error: installLxc() missing required parameter: $lxcFs' 1>&2 && exit 1
     echo 'info: a supported version of lxc must be installed (as of 2013-07-02, `buntu comes with 0.7.x by default, we require is 0.9.0 or greater)'
     echo 'info: adding lxc daily ppa'
     sudo add-apt-repository -y ppa:ubuntu-lxc/daily
@@ -169,7 +189,18 @@ function installLxc() {
 
     echo "info: installed version $(lxc-version) (should be >= 0.9.0)"
 
-    local required='btrfs-tools git mercurial bzr build-essential bzip2 daemontools lxc lxc-templates ntp ntpdate'
+    if test "${lxcFs}" = 'zfs'; then
+        echo 'info: adding zfs ppa'
+        sudo add-apt-repository -y ppa:zfs-native/stable
+        abortIfNonZero $? "command 'add-apt-repository -y ppa:zfs-native/stable'"
+        sudo apt-get update
+        abortIfNonZero $? "command 'sudo apt-get update'"
+        sudo apt-get install -y ubuntu-zfs
+        abortIfNonZero $? "command 'sudo apt-get install -y ubuntu-zfs'"
+    fi
+
+    local maybeBtrfs=$(test "${lxcFs}" = 'btrfs' && echo 'btrfs-tools ')
+    local required="${maybeBtrfs}git mercurial bzr build-essential bzip2 daemontools lxc lxc-templates ntp ntpdate"
     echo "info: installing required build-server packages: ${required}"
     sudo apt-get install -y $required
     abortIfNonZero $? "command 'apt-get install -y ${required}'"
@@ -178,19 +209,29 @@ function installLxc() {
     echo "info: installing recommended packages: ${recommended}"
     sudo apt-get install -y $recommended
     abortIfNonZero $? "command 'apt-get install -y ${recommended}'"
+    echo 'info: installLxc() succeeded'
 }
 
 function prepareNode() {
     # @param $1 device to format and use for new mount.
-    device=$1
-    test -z "${device}" && echo 'error: missing required parameter: -d [device]' 1>&2 && exit 1
+    # @param $2 $lxcFs lxc filesystem to use (zfs, btrfs are both supported).
+    local device=$1
+    local lxcFs=$2
+    test -z "${device}" && echo 'error: prepareNode() missing required parameter: $device' 1>&2 && exit 1
     test ! -e "${device}" && echo "error: unrecognized device '${device}'" 1>&2 && exit 1
+    test -z "${lxcFs}" && echo 'error: prepareNode() missing required parameter: $lxcFs' 1>&2 && exit 1
 
-    installLxc
+    installLxc $lxcFs
 
     echo "info: attempting to unmount /mnt and ${device} to be safe"
     sudo umount /mnt 1>&2 2>/dev/null
     sudo umount $device 1>&2 2>/dev/null
+
+    if ! [ -d /mnt/build ]; then
+        echo 'info: creating /mnt/build mount point'
+        sudo mkdir -p /mnt/build
+        abortIfNonZero $? "creating /mnt/build"
+    fi
 
     # Try to temporarily mount the device to get an accurate FS-type reading.
     sudo mount $device /mnt 1>&2 2>/dev/null
@@ -199,34 +240,91 @@ function prepareNode() {
     sudo umount $device 1>&2 2>/dev/null
 
     echo "info: existing fs type on ${device} is ${fs}"
-    if [ "${fs}" = "btrfs" ]; then
-        echo "info: ${device} is already formatted with btrfs"
+    if [ "${fs}" = "${lxcFs}" ]; then
+        echo "info: ${device} is already formatted with ${lxcFs}"
+
     else
-        echo "info: formatting ${device} with btrfs"
-        sudo mkfs.btrfs $device
-        abortIfNonZero $? "mkfs.btrfs ${device}"
-    fi
+        echo "info: formatting ${device} with ${lxcFs}"
+        if test "${lxcFs}" = 'btrfs'; then
+            sudo mkfs.btrfs $device
+            abortIfNonZero $? "mkfs.btrfs ${device}"
 
-    if ! [ -d /mnt/build ]; then
-        echo 'info: creating /mnt/build mount point'
-        sudo mkdir -p /mnt/build
-        abortIfNonZero $? "creating /mnt/build"
-    fi
+            echo 'info: updating /etc/fstab to map /mnt/build to the btrfs device'
+            if [ -z "$(grep "$(echo $device | sed 's:/:\\/:g')" /etc/fstab)" ]; then
+                echo 'info: adding new fstab entry'
+                echo "${device} /mnt/build auto defaults 0 0" | sudo tee -a /etc/fstab >/dev/null
+                abortIfNonZero $? "fstab add"
+            else
+                echo 'info: editing existing fstab entry'
+                sudo sed -i "s-^\s*${device}\s\+.*\$-${device} /mnt/build auto defaults 0 0-" /etc/fstab
+                abortIfNonZero $? "fstab edit"
+            fi
 
-    echo 'info: updating /etc/fstab to map /mnt/build to the btrfs device'
-    if [ -z "$(grep "$(echo $device | sed 's:/:\\/:g')" /etc/fstab)" ]; then
-        echo 'info: adding new fstab entry'
-        echo "${device} /mnt/build auto defaults 0 0" | sudo tee -a /etc/fstab >/dev/null
-        abortIfNonZero $? "fstab add"
-    else
-        echo 'info: editing existing fstab entry'
-        sudo sed -i "s-^\s*${device}\s\+.*\$-${device} /mnt/build auto defaults 0 0-" /etc/fstab
-        abortIfNonZero $? "fstab edit"
-    fi
+            echo "info: mounting device ${device}"
+            sudo mount $device
+            abortIfNonZero $? "mounting ${device}"
 
-    echo "info: mounting device ${device}"
-    sudo mount $device
-    abortIfNonZero $? "mounting ${device}"
+        elif test "${lxcFs}" = 'zfs'; then
+            zfsPool='tank'
+
+            # Create ZFS pool mount point.
+            test ! -d "/${zfsPool}" && sudo rm -rf "/${zfsPool}" && sudo mkdir "/${zfsPool}" || :
+            abortIfNonZero $? "creating /${zfsPool} mount point"
+
+            # Create ZFS pool and attach to a device.
+            # NB: ashift=12 is recommended by ZFS website.
+            if test -z "$(sudo zfs list -o name,mountpoint | sed '1d' | grep "^${zfsPool}.*\/${zfsPool}"'$')"; then
+                # Format the device with any filesystem (mkfs.ext4 is fast).
+                sudo mkfs.ext4 -q $device
+                abortIfNonZero $? "command 'sudo mkfs.ext4 -q ${device}'"
+
+                sudo zpool create -o ashift=12 $zfsPool $device
+                abortIfNonZero $? "command 'sudo zpool create -o ashift=12 ${zfsPool} ${device}'"
+            fi
+
+            # Create lxc and git volumes.
+            for volume in lxc git; do
+                test -z "$(sudo zfs list -o name | sed '1d' | grep "^${zfsPool}\/${volume}")" && sudo zfs create -o compression=on $zfsPool/$volume || :
+                abortIfNonZero $? "command 'sudo zfs create -o compression=on ${zfsPool}/${volume}'"
+            done
+
+            # Unmount all ZFS volumes.
+            sudo zfs umount -a
+            abortIfNonZero $? "command 'sudo zfs umount -a'"
+
+            # Export the pool.
+            sudo zpool export tank
+            abortIfNonZero $? "command 'sudo zpool export tank'"
+
+            # Import the zfs pool, this will mount the volumes.
+            sudo zpool import tank
+            abortIfNonZero $? "command 'sudo zpool import tank'"
+
+            # Add zfsroot to lxc configuration.
+            test -z "$(sudo grep '^zfsroot=' /etc/lxc/lxc.conf 2>/dev/null)" && echo 'zfsroot=tank' | sudo tee -a /etc/lxc/lxc.conf || sudo sed -i 's/^zfsroot=.*/zfsroot=tank/g' /etc/lxc/lxc.conf
+            abortIfNonZero $? 'application of lxc zfsroot setting'
+
+            # Remove any fstab entry for the ZFS device (ZFS will auto-mount one pool).
+            sudo sed -i "/.*$(echo "${device}" | sed 's/\//\\\//g').*/d" /etc/fstab
+
+            # Chmod 777 /tank/git
+            sudo chmod 777 /tank/git
+            abortIfNonZero $? "command 'sudo chmod 777 /tank/git'"
+
+            # Link /var/lib/lxc to /tank/lxc, and then link /mnt/build/lxc to /var/lib/lxc.
+            test -d '/var/lib/lxc' && sudo mv /var/lib/lxc{,.bak} || :
+            test ! -h '/var/lib/lxc' && sudo ln -s /tank/lxc /var/lib/lxc || :
+            test ! -h '/mnt/build/lxc' && sudo ln -s /tank/lxc /mnt/build/lxc || :
+
+            # Also might as well resolve the git linkage while we're here.
+            test ! -h '/mnt/build/git' && sudo ln -s /tank/git /mnt/build/git || :
+            test ! -h '/git' && sudo ln -s /tank/git /git || :
+
+        else
+            echo "error: prepareNode() got unrecognized filesystem \"${lxcFs}\"" 1>&2
+            exit 1
+        fi
+    fi
 
     if [ -d /var/lib/lxc ] && ! [ -e /mnt/build/lxc ]; then
         echo 'info: creating and linking /mnt/build/lxc folder'
@@ -247,6 +345,7 @@ function prepareNode() {
         sudo ln -s /mnt/build/lxc /var/lib/lxc
         abortIfNonZero $? "lxc directory symlink 2nd attempt"
     fi
+    echo 'info: prepareNode() succeeded'
 }
 
 function prepareLoadBalancer() {
@@ -301,17 +400,23 @@ function prepareLoadBalancer() {
     echo "info: enabling the HAProxy system service in /etc/default/haproxy"
     sudo sed -i "s/ENABLED=0/ENABLED=1/" /etc/default/haproxy
     abortIfNonZero $? "enabling haproxy service in /dev/default/haproxy"
+    echo 'info: prepareLoadBalancer() succeeded'
 }
 
 function installGo() {
     if [ -z "$(which go)" ]; then
         echo 'info: installing go 1.1 on the build-server'
         curl --location --silent https://launchpad.net/ubuntu/+archive/primary/+files/golang-src_1.1-1_amd64.deb > /tmp/golang-src_1.1-1_amd64.deb
+        abortIfNonZero $? 'golang-src package download'
         curl --location --silent https://launchpad.net/ubuntu/+archive/primary/+files/golang-go_1.1-1_amd64.deb > /tmp/golang-go_1.1-1_amd64.deb
+        abortIfNonZero $? 'golang-go package download'
         sudo dpkg -i /tmp/golang-src_1.1-1_amd64.deb /tmp/golang-go_1.1-1_amd64.deb
+        abortIfNonZero $? 'golang packages installation'
         mkdir ~/go 2>/dev/null
+        abortIfNonZero $ 'creating directory ~/go'
         echo 'info: adding $GOPATH to ~/.bashrc'
         echo 'export GOPATH=$HOME/go' >> ~/.bashrc
+        abortIfNonZero $? 'adding $GOPATH to ~/.bashrc var exports'
     else
         echo 'info: go already appears to be installed, not going to force it'
     fi
@@ -319,20 +424,19 @@ function installGo() {
 
 function gitLinkage() {
     echo 'info: creating and linking /mnt/build/git -> /git'
-    sudo mkdir -p /mnt/build/git 2>/dev/null
-    abortIfNonZero $? "creating directory /mnt/build/git"
-    sudo chown 777 /mnt/build/git
-    abortIfNonZero $? "chown 777 /mnt/build/git"
-    sudo ln -s /mnt/build/git /git
-    abortIfNonZero $? "symlink /mnt/build/git to /git"
+    test ! -d '/mnt/build/git' && test ! -h '/mnt/build/git' && sudo mkdir -p /mnt/build/git || :
+    test -d '/mnt/build/git' && sudo chown 777 /mnt/build/git || :
+    test ! -h '/git' && sudo ln -s /mnt/build/git /git || :
+    echo 'info: git linkage succeeded'
 }
 
 function buildEnv() {
     echo 'info: add build servers hostname configuration'
-    sudo mkdir /mnt/build/env 2>/dev/null
+    test ! -d /mnt/build/env && sudo rm -rf /mnt/build/env && sudo mkdir -p /mnt/build/env || :
     abortIfNonZero $? "creating directory /mnt/build/env"
     echo "${sbHost}" | sudo tee /mnt/build/env/SB_SSH_HOST
     abortIfNonZero $? "appending shipbuilder host to /mnt/build/env/SB_SSH_HOST"
+    echo 'info: env configuration succeeded'
 }
 
 function rsyslogLoggingListeners() {
@@ -351,6 +455,7 @@ function rsyslogLoggingListeners() {
         echo 'info: detected existing rsyslog haproxy configuration, will disable it'
         sudo mv /etc/rsyslog.d/haproxy.conf /etc/rsyslog.d-haproxy.conf.disabled
     fi
+    echo 'info: rsyslog configuration succeeded'
 }
 
 function getContainerIp() {
@@ -384,12 +489,16 @@ function getContainerIp() {
 }
 
 function lxcInitBase() {
+    # @param $1 lxc filesystem to use.
+    local lxcFs=$1
+    test -z "${lxcFs}" && echo 'error: lxcInitBase() missing required parameter: $lxcFs' 1>&2 && exit 1
+
     echo 'info: clear any pre-existing "base" container'
     sudo lxc-stop -k -n base 2>/dev/null
     sudo lxc-destroy -n base 2>/dev/null
 
     echo 'info: creating base lxc container'
-    sudo lxc-create -n base -B btrfs -t ubuntu
+    sudo lxc-create -n base -B $lxcFs $(test "${lxcFs}" = 'zfs' && echo '--zfsroot=tank' || :) -t ubuntu
     abortIfNonZero $? "lxc-create base"
 
     echo 'info: configuring base lxc container..'
@@ -401,7 +510,7 @@ function lxcInitBase() {
 
 function lxcConfigBase() {
     echo "info: adding shipbuilder server's public-key to authorized_keys file in base container"
-    test ! -e "/mnt/build/lxc/base/rootfs/home/ubuntu/.ssh" sudo mkdir /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh
+    test ! -e "/mnt/build/lxc/base/rootfs/home/ubuntu/.ssh" && sudo mkdir /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh || :
     abortIfNonZero $? "base container .ssh directory"
 
     sudo cp ~/.ssh/id_rsa.pub /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh/authorized_keys
@@ -432,17 +541,21 @@ function lxcConfigBase() {
     echo 'info: stopping base container'
     sudo lxc-stop -k -n base
     abortIfNonZero $? "lxc-stop base"
+    echo 'info: base container configuration succeeded'
 }
 
 function lxcConfigBuildPack() {
     # @param $1 base-container suffix (e.g. 'python').
     # @param $2 list of packages to install.
     # @param $3 customCommands command to evaluate over SSH.
+    # @param $4 lxc filesystem to use.
     local container="base-$1"
     local packages="$2"
     local customCommands="$3"
+    local lxcFs=$4
+    test -z "${lxcFs}" && echo 'error: lxcConfigBuildPack() missing required parameter: $lxcFs' 1>&2 && exit 1
     echo "info: creating build-pack ${container} container"
-    sudo lxc-clone -s -B btrfs -o base -n $container
+    sudo lxc-clone -s -B $lxcFs -o base -n $container
     sudo lxc-start -d -n $container
     getContainerIp $container
 
@@ -459,33 +572,55 @@ function lxcConfigBuildPack() {
     echo "info: stopping ${container} container"
     sudo lxc-stop -k -n $container
     abortIfNonZero $? "[${container}] lxc-stop"
+    echo 'info: build-pack configuration succeeded'
 }
 
 function lxcConfigBuildPacks() {
+    # @param $1 lxc filesystem to use.
+    local lxcFs=$1
+    test -z "${lxcFs}" && echo 'error: lxcConfigBuildPacks() missing required parameter: $lxcFs' 1>&2 && exit 1
     for buildPack in $(ls -1 /mnt/build/build-packs); do
         echo "info: initializing build-pack: ${buildPack}"
         packages="$(cat /mnt/build/build-packs/$buildPack/container-packages 2>/dev/null)"
         customCommands="$(cat /mnt/build/build-packs/$buildPack/container-custom-commands 2>/dev/null)"
-        lxcConfigBuildPack "${buildPack}" "${packages}" "${customCommands}"
+        lxcConfigBuildPack "${buildPack}" "${packages}" "${customCommands}" "${lxcFs}"
+        echo 'info: build-pack initialized succeeded'
     done
 }
 
 function prepareServerPart1() {
     # @param $1 ShipBuilder server hostname or ip-address.
     # @param $2 device to format and use for new mount.
+    # @param $3 lxc filesystem to use.
     sbHost=$1
     device=$2
-    test -z "${sbHost}" && echo 'error: prepareServer(): missing required parameter: shipbuilder host' 1>&2 && exit 1
-    test -z "${device}" && echo 'error: prepareServer(): missing required parameter: device' 1>&2 && exit 1
-    prepareNode $device
+    lxcFs=$3
+    test -z "${sbHost}" && echo 'error: prepareServerPart1(): missing required parameter: shipbuilder host' 1>&2 && exit 1
+    test -z "${device}" && echo 'error: prepareServerPart1(): missing required parameter: device' 1>&2 && exit 1
+    test -z "${lxcFs}" && echo 'error: prepareServerPart1(): missing required parameter: lxcFs' 1>&2 && exit 1
+    prepareNode $device $lxcFs
+    abortIfNonZero $? 'prepareNode() failed'
     installGo
+    abortIfNonZero $? 'installGo() failed'
     gitLinkage
+    abortIfNonZero $? 'gitLinkage() failed'
     buildEnv
+    abortIfNonZero $? 'buildEnv() failed'
     rsyslogLoggingListeners
+    abortIfNonZero $? 'rsyslogLoggingListeners() failed'
+    echo 'info: prepareServerPart1() succeeded'
 }
 
 function prepareServerPart2() {
-    lxcInitBase
-    lxcConfigBase
-    lxcConfigBuildPacks
+    # @param $1 lxc filesystem to use.
+    local lxcFs=$1
+    test -z "${lxcFs}" && echo 'error: prepareServerPart2() missing required parameter: $lxcFs' 1>&2 && exit 1
+    lxcInitBase $lxcFs
+    abortIfNonZero $? 'lxcInitBase() failed'
+    lxcConfigBase $lxcFs
+    abortIfNonZero $? 'lxcConfigBase() failed'
+    lxcConfigBuildPacks $lxcFs
+    abortIfNonZero $? 'lxcConfigBuildPacks() failed'
+    echo 'info: prepareServerPart2() succeeded'
 }
+

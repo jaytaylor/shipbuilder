@@ -68,13 +68,13 @@ def modifyIpTables(action, chain, ip, port):
         exitCode = child.returncode
         if exitCode == 0:
             return
-        elif exitCode == 4 and attempts < 5:
+        elif exitCode == 4 and attempts < 40:
             log('iptables: Resource temporarily unavailable (exit status 4), retrying.. ({0} previous attempts)'.format(attempts))
             attempts += 1
-            time.sleep(1)
+            time.sleep(0.5)
             continue
         else:
-            raise subprocess.CalledProcessError('iptables exited with status code {0}'.format(exitCode))
+            raise subprocess.CalledProcessError('iptables failure; exited with status code {0}'.format(exitCode))
 
 def ipsForRulesMatchingPort(chain, port):
     # NB: 'exit 0' added to avoid exit status code 1 when there were no results.
@@ -118,7 +118,7 @@ def main(argv):
     # Start the specified container.
     log('cloning container: {0}'.format(container))
     subprocess.check_call(
-        ['/usr/bin/lxc-clone', '-s', '-B', 'btrfs', '-o', app, '-n', container],
+        ['/usr/bin/lxc-clone', '-s', '-B', '` + lxcFs + `', '-o', app, '-n', container],
         stdout=sys.stdout,
         stderr=sys.stderr
     )

@@ -50,7 +50,7 @@ func (this *Executor) DestroyContainer(name string) error {
 	return nil // Don't operate on non-existent containers.
 }
 func (this *Executor) CloneContainer(oldName, newName string) error {
-	return this.Run("sudo", "lxc-clone", "-s", "-B", "btrfs", "-o", oldName, "-n", newName)
+	return this.Run("sudo", "lxc-clone", "-s", "-B", lxcFs, "-o", oldName, "-n", newName)
 }
 
 func (this *Executor) BashCmd(cmd string) error {

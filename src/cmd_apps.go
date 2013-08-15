@@ -158,8 +158,6 @@ func (this *Server) Apps_Destroy(conn net.Conn, applicationName string) error {
 			// Remove LXC base app image + version snapshots.
 			// NB: BTRFS has restrictions on how subvolumes may be removed (in this case <path>/rootfs).
 			this.destroyContainer(e, applicationName)
-			//e.Run("sudo", "/bin/bash", "-c", "btrfs subvolume delete "+LXC_DIR+"/"+applicationName+"/rootfs")
-			//e.Run("sudo", "/bin/bash", "-c", "rm -rf "+LXC_DIR+"/"+applicationName)
 			relatedVersionedContainerPaths, err := filepath.Glob(LXC_DIR + "/" + applicationName + DYNO_DELIMITER + "v*")
 			if err != nil {
 				return err
@@ -169,8 +167,6 @@ func (this *Server) Apps_Destroy(conn net.Conn, applicationName string) error {
 				container := tokens[len(tokens)-1]
 				this.destroyContainer(e, container)
 			}
-			//e.Run("sudo", "/bin/bash", "-c", "btrfs subvolume delete "+LXC_DIR+"/"+applicationName+"-v*/rootfs")
-			//e.Run("sudo", "/bin/bash", "-c", "rm -rf "+LXC_DIR+"/"+applicationName+"-v*")
 		}
 
 		err = delReleases(applicationName, dimLogger)

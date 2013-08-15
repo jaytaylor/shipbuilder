@@ -28,6 +28,7 @@ var (
 		"SB_S3_BUCKET":           "main.defaultS3BucketName",
 		"SB_HAPROXY_CREDENTIALS": "main.defaultHaProxyCredentials",
 		"SB_HAPROXY_STATS":       "main.defaultHaProxyStats",
+		"LXC_FS":                 "main.defaultLxcFs",
 	}
 	deployerScriptContent = `#!/bin/bash
 ################################################################################

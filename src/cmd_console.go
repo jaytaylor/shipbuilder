@@ -32,7 +32,7 @@ func (this *Server) Console(conn net.Conn, applicationName string) error {
 		tempName := applicationName + DYNO_DELIMITER + process + DYNO_DELIMITER + "console"
 
 		err = e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+host, "sudo", "/bin/bash", "-c",
-			`"lxc-clone -B btrfs -s -o `+runningDynos[0].Application+` -n `+tempName+` && lxc-start -n `+tempName+` -d"`,
+			`"lxc-clone -B `+lxcFs+` -s -o `+runningDynos[0].Application+` -n `+tempName+` && lxc-start -n `+tempName+` -d"`,
 		)
 		if err != nil {
 			return err
