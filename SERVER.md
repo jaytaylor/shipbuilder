@@ -37,7 +37,7 @@ All modules running on a single host (1 machine):
 
 Installation
 ------------
-1. Spin up or allocate the host(s) to be used, taking note of the /dev/<DEVICE> to use for BTRFS devices on the shipbuilder server and container node(s)
+1. Spin up or allocate the host(s) to be used, taking note of the /dev/<DEVICE> to use for BTRFS/ZFS storage devices on the shipbuilder server and container node(s)
 
 1.b ensure you can SSH without a password, here is an example command to add your public key to the remote servers authorized keys:
 ```
