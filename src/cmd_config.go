@@ -56,12 +56,12 @@ func (this *Server) Config_Set(conn net.Conn, applicationName string, args map[s
 	return this.Redeploy(conn, applicationName)
 }
 
-func (this *Server) Config_Remove(conn net.Conn, applicationName string, configNames string) error {
+func (this *Server) Config_Remove(conn net.Conn, applicationName string, configNames []string) error {
 	err := this.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
 		titleLogger, dimLogger := this.getTitleAndDimLoggers(conn)
 
 		fmt.Fprintf(titleLogger, "=== Removing environment variables..\n\n")
-		for _, key := range strings.Split(configNames, " ") {
+		for _, key := range configNames {
 			fmt.Fprintf(dimLogger, "    Removing '%v'\n", key)
 			delete(app.Environment, key)
 		}

@@ -181,7 +181,7 @@ func init() {
 			required("app"), mapped("args"),
 		),
 		writer("config:remove", "config:unset", "Config_Remove",
-			required("app"), required("names"),
+			required("app"), list("names"),
 		),
 		reader("console", "console", "Console",
 			required("app"),
