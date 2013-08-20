@@ -4,7 +4,7 @@ cd "$(dirname "$0")"
 
 source libfns.sh
 
-while getopts "d:f:S:h" OPTION; do
+while getopts "d:f:hS:s:" OPTION; do
     case $OPTION in
         h)
             echo "usage: $0 -S [shipbuilder-host] -d [server-dedicated-device] -f [lxc-filesystem] ACTION" 1>&2
@@ -15,16 +15,20 @@ while getopts "d:f:S:h" OPTION; do
             echo '  -S [shipbuilder-host]        ShipBuilder server user@hostname (flag can be omitted if auto-detected from env/SB_SSH_HOST)' 1>&2
             echo '  -d [server-dedicated-device] Device to format with btrfs or zfs filesystem and use to store lxc containers (e.g. /dev/xvdc)' 1>&2
             echo '  -f [lxc-filesystem]          LXC filesystem to use; "zfs" or "btrfs" (flag can be ommitted if auto-detected from env/LXC_FS)' 1>&2
+            echo '  -s [swap-device]             Device to use for swap (optional)' 1>&2
             exit 1
-            ;;
-        S)
-            sbHost=$OPTARG
             ;;
         d)
             device=$OPTARG
             ;;
         f)
             lxcFs=$OPTARG
+            ;;
+        S)
+            sbHost=$OPTARG
+            ;;
+        s)
+            swapDevice=$OPTARG
             ;;
     esac
 done
@@ -67,7 +71,7 @@ elif [ "${action}" = "install" ]; then
     rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" libfns.sh $sbHost:/tmp/
     abortIfNonZero $? 'rsync libfns.sh failed'
 
-    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost "source /tmp/libfns.sh && prepareServerPart1 ${sbHost} ${device} ${lxcFs}"
+    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost "source /tmp/libfns.sh && prepareServerPart1 ${sbHost} ${device} ${lxcFs} ${swapDevice}"
     abortIfNonZero $? 'remote prepareServerPart1() invocation'
 
     mv ../env/SB_SSH_HOST{,.bak}

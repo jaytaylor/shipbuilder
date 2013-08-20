@@ -213,10 +213,13 @@ function installLxc() {
 }
 
 function prepareNode() {
-    # @param $1 device to format and use for new mount.
+    # @param $1 $device to format and use for new mount.
     # @param $2 $lxcFs lxc filesystem to use (zfs, btrfs are both supported).
+    # @param $3 $swapDevice to format and use as for swap (optional).
     local device=$1
     local lxcFs=$2
+    local swapDevice=$3
+    test "${device}" = "${swapDevice}" && echo 'error: prepareNode() device & swapDevice must be different' 1>&2 && exit 1
     test -z "${device}" && echo 'error: prepareNode() missing required parameter: $device' 1>&2 && exit 1
     test ! -e "${device}" && echo "error: unrecognized device '${device}'" 1>&2 && exit 1
     test -z "${lxcFs}" && echo 'error: prepareNode() missing required parameter: $lxcFs' 1>&2 && exit 1
@@ -347,6 +350,18 @@ function prepareNode() {
         sudo ln -s /mnt/build/lxc /var/lib/lxc
         abortIfNonZero $? "lxc directory symlink 2nd attempt"
     fi
+
+    if ! test -z "${swapDevice}" && test -e "${swapDevice}"; then
+        echo "info: activating swap device or partition: ${swapDevice}"
+        echo "${swapDevice} none swap sw 0 0" | sudo tee -a /etc/fstab 1>/dev/null
+        sudo swapoff --all
+        abortIfNonZero $? "adding ${swapDevice} to /etc/fstab"
+        sudo mkswap -f $swapDevice
+        abortIfNonZero $? "mkswap ${swapDevice}"
+        sudo swapon --all
+        abortIfNonZero $? "sudo swapon --all"
+    fi
+
     echo 'info: prepareNode() succeeded'
 }
 
@@ -594,13 +609,16 @@ function prepareServerPart1() {
     # @param $1 ShipBuilder server hostname or ip-address.
     # @param $2 device to format and use for new mount.
     # @param $3 lxc filesystem to use.
+    # @param $4 $swapDevice to format and use as for swap (optional).
     sbHost=$1
     device=$2
     lxcFs=$3
+    local swapDevice=$4
     test -z "${sbHost}" && echo 'error: prepareServerPart1(): missing required parameter: shipbuilder host' 1>&2 && exit 1
     test -z "${device}" && echo 'error: prepareServerPart1(): missing required parameter: device' 1>&2 && exit 1
     test -z "${lxcFs}" && echo 'error: prepareServerPart1(): missing required parameter: lxcFs' 1>&2 && exit 1
-    prepareNode $device $lxcFs
+    test "${device}" = "${swapDevice}" && echo 'error: prepareServerPart1() device & swapDevice must be different' 1>&2 && exit 1
+    prepareNode $device $lxcFs $swapDevice
     abortIfNonZero $? 'prepareNode() failed'
     installGo
     abortIfNonZero $? 'installGo() failed'

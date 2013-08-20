@@ -4,7 +4,7 @@ cd "$(dirname "$0")"
 
 source libfns.sh
 
-while getopts "d:f:H:S:h" OPTION; do
+while getopts "d:f:H:hS:s:" OPTION; do
     case $OPTION in
         h)
             echo "usage: $0 -H [node-host] -S [shipbuilder-host] -d [device] -f [lxc-filesystem] [ACTION]" 1>&2
@@ -16,6 +16,7 @@ while getopts "d:f:H:S:h" OPTION; do
             echo '  -H [node-host]        Node user@hostname' 1>&2
             echo '  -d [device]           Device to install filesystem on' 1>&2
             echo '  -f [lxc-filesystem]   LXC filesystem to use; "zfs" or "btrfs" (flag can be ommitted if auto-detected from env/LXC_FS)' 1>&2
+            echo '  -s [swap-device]      Device to use for swap (optional)' 1>&2
             exit 1
             ;;
         d)
@@ -29,6 +30,9 @@ while getopts "d:f:H:S:h" OPTION; do
             ;;
         S)
             sbHost=$OPTARG
+            ;;
+        s)
+            swapDevice=$OPTARG
             ;;
     esac
 done
@@ -69,7 +73,7 @@ elif [ "${action}" = "install" ]; then
     rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" libfns.sh $nodeHost:/tmp/
     abortIfNonZero $? 'rsync libfns.sh failed'
 
-    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $nodeHost "source /tmp/libfns.sh && prepareNode ${device} ${lxcFs}"
+    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $nodeHost "source /tmp/libfns.sh && prepareNode ${device} ${lxcFs} ${swapDevice}"
     abortIfNonZero $? 'remote prepareNode() invocation'
 
 else
