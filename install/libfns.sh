@@ -249,9 +249,9 @@ function prepareNode() {
             sudo mkfs.btrfs $device
             abortIfNonZero $? "mkfs.btrfs ${device}"
 
-            echo 'info: updating /etc/fstab to map /mnt/build to the btrfs device'
+            echo "info: updating /etc/fstab to map /mnt/build to the ${lxcFs} device"
             if [ -z "$(grep "$(echo $device | sed 's:/:\\/:g')" /etc/fstab)" ]; then
-                echo 'info: adding new fstab entry'
+                echo "info: adding new fstab entry for ${device}"
                 echo "${device} /mnt/build auto defaults 0 0" | sudo tee -a /etc/fstab >/dev/null
                 abortIfNonZero $? "fstab add"
             else
@@ -277,6 +277,8 @@ function prepareNode() {
                 # Format the device with any filesystem (mkfs.ext4 is fast).
                 sudo mkfs.ext4 -q $device
                 abortIfNonZero $? "command 'sudo mkfs.ext4 -q ${device}'"
+
+                sudo zpool destroy $zfsPool 2>/dev/null
 
                 sudo zpool create -o ashift=12 $zfsPool $device
                 abortIfNonZero $? "command 'sudo zpool create -o ashift=12 ${zfsPool} ${device}'"
