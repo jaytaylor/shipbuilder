@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"strings"
 )
@@ -43,17 +44,50 @@ func (this *Server) SyncContainer(e Executor, address string, container string, 
 	return nil
 }
 
+func (this *Server) addNode(addAddress string, logger io.Writer) (string, error) {
+	prefixLogger := NewLogger(logger, "["+addAddress+"] ")
+	e := Executor{prefixLogger}
+	fmt.Fprintf(prefixLogger, "Transmitting base LXC container image to node: %v\n", addAddress)
+	err := this.SyncContainer(e, addAddress, "base", "lxc-create", "-n", "base", "-B", lxcFs, "-t", "ubuntu")
+	if err != nil {
+		return addAddress, err
+	}
+	// Add build-packs.
+	for buildPack, _ := range BUILD_PACKS {
+		nContainer := "base-" + buildPack
+		fmt.Fprintf(prefixLogger, "Transmitting build-pack '%v' LXC container image to node: %v\n", nContainer, addAddress)
+		err = this.SyncContainer(e, addAddress, nContainer, "lxc-clone", "-s", "-B", lxcFs, "-o", "base", "-n", nContainer)
+		if err != nil {
+			return addAddress, err
+		}
+	}
+	return addAddress, nil
+}
+
 func (this *Server) Node_Add(conn net.Conn, addresses []string) error {
+	type AddResult struct {
+		address string
+		err     error
+	}
+
+	addChannel := make(chan AddResult)
+
+	addNodeWrapper := func(addAddress string, logger io.Writer) {
+		result, err := this.addNode(addAddress, logger)
+		addChannel <- AddResult{result, err}
+	}
+
 	addresses = replaceLocalhostWithSystemIp(&addresses)
 
 	titleLogger, dimLogger := this.getTitleAndDimLoggers(conn)
 
 	fmt.Fprintf(titleLogger, "=== Adding Nodes\n\n")
 
-	e := Executor{dimLogger}
-
 	return this.WithPersistentConfig(func(cfg *Config) error {
+		numRemaining := 0
+
 		for _, addAddress := range addresses {
+			// Ensure the node to be added is not empty and that it isn't already added.
 			if len(addAddress) == 0 {
 				continue
 			}
@@ -65,23 +99,30 @@ func (this *Server) Node_Add(conn net.Conn, addresses []string) error {
 					break
 				}
 			}
-			if !found {
-				fmt.Fprintf(dimLogger, "Transmitting base LXC container image to node: %v\n", addAddress)
-				err := this.SyncContainer(e, addAddress, "base", "lxc-create", "-n", "base", "-B", lxcFs, "-t", "ubuntu")
-				if err != nil {
-					return err
-				}
-				// Add build-packs.
-				for buildPack, _ := range BUILD_PACKS {
-					nContainer := "base-" + buildPack
-					fmt.Fprintf(dimLogger, "Transmitting build-pack '%v' LXC container image to node: %v\n", nContainer, addAddress)
-					err = this.SyncContainer(e, addAddress, nContainer, "lxc-clone", "-s", "-B", lxcFs, "-o", "base", "-n", nContainer)
-					if err != nil {
-						return err
+			if found {
+				continue
+			}
+
+			go addNodeWrapper(addAddress, dimLogger)
+			numRemaining++
+		}
+
+		if numRemaining > 0 {
+		OUTER:
+			for {
+				select {
+				case result := <-addChannel:
+					if result.err != nil {
+						fmt.Fprintf(titleLogger, "Failed to add node '%v': %v\n", result.address, result.err)
+					} else {
+						fmt.Fprintf(titleLogger, "Adding node: %v\n", result.address)
+						cfg.Nodes = append(cfg.Nodes, &Node{result.address})
+					}
+					numRemaining--
+					if numRemaining == 0 {
+						break OUTER
 					}
 				}
-				fmt.Fprintf(dimLogger, "Adding node: %v\n", addAddress)
-				cfg.Nodes = append(cfg.Nodes, &Node{addAddress})
 			}
 		}
 		return nil
