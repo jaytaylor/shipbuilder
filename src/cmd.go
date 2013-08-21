@@ -266,7 +266,7 @@ func init() {
 		writer("reset", "reset", "Reset_App",
 			required("app"),
 		),
-		writer("restart", "redeploy", "Restart_App",
+		writer("restart", "restart", "Restart_App",
 			required("app"),
 		),
 	}
