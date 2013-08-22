@@ -290,6 +290,10 @@ console none
 
 start on (local-filesystems and net-device-up IFACE!=lo)
 stop on [!12345]
+pre-start script
+    exec touch /app/ip /app/env/PORT
+    exec chown ubuntu:ubuntu /app/ip /app/PORT
+end script
 #exec su ` + DEFAULT_NODE_USERNAME + ` -c "/app/run"
 #exec /app/run
 exec start-stop-daemon --start -u ubuntu --exec /app/run`))
@@ -323,9 +327,7 @@ frontend frontend
     option forwardfor
     option http-server-close
 {{range $app := .Applications}}
-  {{range .Domains}}
-    use_backend {{$app.Name}}{{if $app.Maintenance}}-maintenance{{end}} if { hdr_dom(host) -i {{.}} }
-  {{end}}
+    use_backend {{$app.Name}}{{if $app.Maintenance}}-maintenance{{end}} if { {{range .Domains}} hdr(host) -i {{.}} {{end}} }
 {{end}}
 
 {{range .Applications}}
@@ -336,14 +338,15 @@ backend {{.Name}}
     option abortonclose
     option httpchk GET /
   {{range .Servers}}
-    #server {{.Host}}-{{.Port}} {{.Host}}:{{.Port}} check port {{.Port}} observe layer7 minconn 20 maxconn 40 check inter 10s rise 1 fall 3 weight 1
     server {{.Host}}-{{.Port}} {{.Host}}:{{.Port}} check port {{.Port}} observe layer7
   {{end}}{{if .HaProxyStatsEnabled}}
     stats enable
     stats uri /haproxy
     stats auth {{.HaProxyCredentials}}
   {{end}}
+{{end}}
 
+{{range .Applications}}
 backend {{.Name}}-maintenance
     acl static_file path_end .gif || path_end .jpg || path_end .jpeg || path_end .png || path_end .css
     reqirep ^GET\ (.*)                    GET\ {{.MaintenancePageBasePath}}\1     if static_file
@@ -355,7 +358,8 @@ backend {{.Name}}-maintenance
     rspirep ^HTTP/([^0-9\.]+)\ 200\ OK    HTTP/\1\ 503\ 
     rspadd Retry-After:\ 60
     server s3 {{.MaintenancePageDomain}}:80
-{{end}}`))
+{{end}}
+`))
 
 	// Discover all available build-packs.
 	listing, err := ioutil.ReadDir(DIRECTORY + "/build-packs")
