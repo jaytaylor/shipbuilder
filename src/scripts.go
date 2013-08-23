@@ -290,13 +290,14 @@ console none
 
 start on (local-filesystems and net-device-up IFACE!=lo)
 stop on [!12345]
-pre-start script
-    exec touch /app/ip /app/env/PORT
-    exec chown ubuntu:ubuntu /app/ip /app/PORT
-end script
 #exec su ` + DEFAULT_NODE_USERNAME + ` -c "/app/run"
 #exec /app/run
-exec start-stop-daemon --start -u ubuntu --exec /app/run`))
+pre-start script
+    touch /app/ip /app/env/PORT || true
+    chown ubuntu:ubuntu /app/ip /app/PORT || true
+end script
+exec start-stop-daemon --start -u ubuntu --exec /app/run
+`))
 
 	template.Must(HAPROXY_CONFIG.Parse(`
 global

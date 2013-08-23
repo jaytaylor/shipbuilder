@@ -183,7 +183,7 @@ func (this *Deployment) build() error {
 
 	select {
 	case err = <-c:
-	case <-time.After(30 * 60 * time.Second):
+	case <-time.After(30 * time.Minute):
 		err = fmt.Errorf("timeout")
 	}
 	e.StopContainer(this.Application.Name)
