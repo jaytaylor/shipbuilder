@@ -10,17 +10,17 @@ import (
 
 const (
 	PRE_RECEIVE = `#!/bin/bash
-while read oldrev newrev refname
-do
+while read oldrev newrev refname; do
   ` + EXE + ` pre-receive ` + "`pwd`" + ` $oldrev $newrev $refname || exit 1
-done
-`
+done`
+
 	POST_RECEIVE = `#!/bin/bash
-while read oldrev newrev refname
-do
+while read oldrev newrev refname; do
   ` + EXE + ` post-receive ` + "`pwd`" + ` $oldrev $newrev $refname || exit 1
-done
-`
+done`
+
+	LOGIN_SHELL = `#!/usr/bin/env bash
+/usr/bin/envdir /app/env /bin/bash`
 )
 
 var POSTDEPLOY = `#!/usr/bin/python -u

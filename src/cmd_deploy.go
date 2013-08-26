@@ -78,15 +78,15 @@ func (this *Deployment) createContainer() error {
 		}
 	}
 
-	e.Run("sudo", "rm", "-rf", this.Application.AppDir())
-	e.Run("sudo", "mkdir", "-p", this.Application.SrcDir())
+	e.BashCmd("rm -rf " + this.Application.AppDir())
+	e.BashCmd("mkdir -p " + this.Application.SrcDir())
 	// Copy the binary into the container.
-	this.err = e.Run("sudo", "cp", EXE, this.Application.AppDir()+"/"+BINARY)
+	this.err = e.BashCmd("cp " + EXE + " " + this.Application.AppDir() + "/" + BINARY)
 	if this.err != nil {
 		return this.err
 	}
 	// Export the source to the container.
-	this.err = e.Run("sudo", "git", "clone", this.Application.GitDir(), this.Application.SrcDir())
+	this.err = e.BashCmd("git clone " + this.Application.GitDir() + " " + this.Application.SrcDir())
 	if this.err != nil {
 		return this.err
 	}
@@ -107,18 +107,61 @@ func (this *Deployment) createContainer() error {
 	if this.err != nil {
 		return this.err
 	}
+	return nil
+}
+
+func (this *Deployment) prepareEnvironmentVariables(e Executor) error {
+	// Write out the environmental variables.
+	err := e.BashCmd("rm -rf " + this.Application.AppDir() + "/env")
+	if err != nil {
+		return err
+	}
+	err = e.BashCmd("mkdir -p " + this.Application.AppDir() + "/env")
+	if err != nil {
+		return err
+	}
+	for key, value := range this.Application.Environment {
+		err = ioutil.WriteFile(this.Application.AppDir()+"/env/"+key, []byte(value), 0444)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (this *Deployment) prepareShellEnvironment(e Executor) error {
+	// Create envdir-based `/bin/envdirbash` amended bash login shell script.
+	err := ioutil.WriteFile(this.Application.RootFsDir()+"/bin/"+BINARY+"-bash", []byte(LOGIN_SHELL), 0777)
+	if err != nil {
+		return err
+	}
+	// Update the container's /etc/passwd file to use the `envdirbash` script and /app/src as the user's home directory.
+	escapedAppSrc := strings.Replace(this.Application.SrcDir(), "/", `\/`, -1)
+	err = e.Run("sudo",
+		"sed", "-i",
+		`s/^\(`+DEFAULT_NODE_USERNAME+`:.*:\):\/home\/`+DEFAULT_NODE_USERNAME+`:\/bin\/bash$/\1:`+escapedAppSrc+`:\/bin\/`+BINARY+`-bash/g`,
+		this.Application.RootFsDir()+"/etc/passwd",
+	)
+	if err != nil {
+		return err
+	}
+	// Move /home/<user>/.ssh to the new home directory in /app/src
+	err = e.BashCmd("cp -a /home/" + DEFAULT_NODE_USERNAME + "/.[a-zA-Z0-9]* " + this.Application.SrcDir() + "/")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (this *Deployment) prepareAppFilePermissions(e Executor) error {
 	// Chown the app src & output to default user by grepping the uid+gid from /etc/passwd in the container.
-	this.err = e.BashCmd(
+	return e.BashCmd(
 		"touch " + this.Application.AppDir() + "/out && " +
 			"chown $(cat " + this.Application.RootFsDir() + "/etc/passwd | grep '^" + DEFAULT_NODE_USERNAME + ":' | cut -d':' -f3,4) " +
 			this.Application.AppDir() + " && " +
 			"chown -R $(cat " + this.Application.RootFsDir() + "/etc/passwd | grep '^" + DEFAULT_NODE_USERNAME + ":' | cut -d':' -f3,4) " +
 			this.Application.AppDir() + "/{out,src}",
 	)
-	if this.err != nil {
-		return this.err
-	}
-	return nil
 }
 
 func (this *Deployment) build() error {
@@ -129,7 +172,8 @@ func (this *Deployment) build() error {
 
 	fmt.Fprintf(titleLogger, "Building image\n")
 
-	f, err := os.OpenFile(this.Application.RootFsDir()+"/etc/init/app.conf", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+	// Create upstart script.
+	f, err := os.OpenFile(this.Application.RootFsDir()+"/etc/init/app.conf", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0444)
 	if err != nil {
 		return err
 	}
@@ -139,7 +183,7 @@ func (this *Deployment) build() error {
 		return err
 	}
 	// Create the build script.
-	f, err = os.OpenFile(this.Application.RootFsDir()+"/app/run", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
+	f, err = os.OpenFile(this.Application.RootFsDir()+APP_DIR+"/run", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	if err != nil {
 		return err
 	}
@@ -148,8 +192,7 @@ func (this *Deployment) build() error {
 	if err != nil {
 		return err
 	}
-
-	// Create a file to store the output.
+	// Create a file to store container launch output in.
 	f, err = os.Create(this.Application.AppDir() + "/out")
 	if err != nil {
 		return err
@@ -191,20 +234,17 @@ func (this *Deployment) build() error {
 		return err
 	}
 
-	// Write out the environmental variables.
-	err = e.Run("sudo", "rm", "-rf", this.Application.AppDir()+"/env")
+	err = this.prepareEnvironmentVariables(e)
 	if err != nil {
 		return err
 	}
-	err = e.Run("sudo", "mkdir", "-p", this.Application.AppDir()+"/env")
+	err = this.prepareShellEnvironment(e)
 	if err != nil {
 		return err
 	}
-	for k, v := range this.Application.Environment {
-		err = ioutil.WriteFile(this.Application.AppDir()+"/env/"+k, []byte(v), 0777)
-		if err != nil {
-			return err
-		}
+	err = this.prepareAppFilePermissions(e)
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -359,7 +399,7 @@ func (this *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) 
 }
 
 func (this *Deployment) autoDetectRevision() error {
-	revision, err := ioutil.ReadFile(LXC_DIR + "/" + this.Application.Name + "/rootfs" + APP_DIR + "/src/.git/HEAD")
+	revision, err := ioutil.ReadFile(this.Application.SrcDir() + "/.git/HEAD")
 	if err != nil {
 		return err
 	}
