@@ -328,7 +328,7 @@ frontend frontend
     option forwardfor
     option http-server-close
 {{range $app := .Applications}}
-    use_backend {{$app.Name}}{{if $app.Maintenance}}-maintenance{{end}} if { {{range .Domains}} hdr(host) -i {{.}} {{end}} }
+    {{if .Domains}}use_backend {{$app.Name}}{{if $app.Maintenance}}-maintenance{{end}} if { {{range .Domains}} hdr(host) -i {{.}} {{end}} }{{end}}
 {{end}}
 
 {{range .Applications}}
