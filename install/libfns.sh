@@ -6,6 +6,10 @@ function abortIfNonZero() {
     test $rc -ne 0 && echo "error: ${what} exited with non-zero status ${rc}" 1>&2 && exit $rc || :
 }
 
+function abortWithError() {
+    echo "$1" 1>&2 && exit 1
+}
+
 function warnIfNonZero() {
     # @param $1 command return code/exit status (e.g. $?, '0', '1').
     # @param $2 error message if exit status was non-zero.
@@ -46,8 +50,8 @@ function verifySshAndSudoForHosts() {
         echo -n "info:     testing host ${sshHost} .. "
         result=$(ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' -o 'ConnectTimeout 15' -q $sshHost 'sudo -n echo "succeeded" 2>/dev/null')
         rc=$?
-        test $rc -ne 0 && echo 'failed' && echo "error: ssh connection test failed for host: ${sshHost} (exited with status code: ${rc})" 1>&2 && exit 1
-        test -z "${result}" && echo 'failed' && echo "error: sudo access test failed for host: ${sshHost}" 1>&2 && exit 1
+        test $rc -ne 0 && echo 'failed' && abortWithError "error: ssh connection test failed for host: ${sshHost} (exited with status code: ${rc})"
+        test -z "${result}" && echo 'failed' && abortWithError "error: sudo access test failed for host: ${sshHost}"
         echo 'succeeded'
     done
 }
@@ -180,8 +184,8 @@ function installLxc() {
     test -z "${lxcFs}" && echo 'error: installLxc() missing required parameter: $lxcFs' 1>&2 && exit 1
     echo 'info: a supported version of lxc must be installed (as of 2013-07-02, `buntu comes with 0.7.x by default, we require is 0.9.0 or greater)'
     echo 'info: adding lxc daily ppa'
-    sudo add-apt-repository -y ppa:ubuntu-lxc/daily
-    abortIfNonZero $? "command 'sudo add-apt-repository -y ppa:ubuntu-lxc/daily'"
+    sudo apt-add-repository -y ppa:ubuntu-lxc/daily
+    abortIfNonZero $? "command 'sudo apt-add-repository -y ppa:ubuntu-lxc/daily'"
     sudo apt-get update
     abortIfNonZero $? "command 'sudo add-get update'"
     sudo apt-get install -y lxc lxc-templates
@@ -189,18 +193,10 @@ function installLxc() {
 
     echo "info: installed version $(lxc-version) (should be >= 0.9.0)"
 
-    if test "${lxcFs}" = 'zfs'; then
-        echo 'info: adding zfs ppa'
-        sudo add-apt-repository -y ppa:zfs-native/stable
-        abortIfNonZero $? "command 'add-apt-repository -y ppa:zfs-native/stable'"
-        sudo apt-get update
-        abortIfNonZero $? "command 'sudo apt-get update'"
-        sudo apt-get install -y ubuntu-zfs
-        abortIfNonZero $? "command 'sudo apt-get install -y ubuntu-zfs'"
-    fi
+    # Add supporting package(s) for selected filesystem type.
+    local fsPackages="$(test "${lxcFs}" = 'btrfs' && echo 'btrfs-tools' || :) $(test "${lxcFs}" = 'zfs' && echo 'zfs-fuse' || :)"
 
-    local maybeBtrfs=$(test "${lxcFs}" = 'btrfs' && echo 'btrfs-tools ')
-    local required="${maybeBtrfs}git mercurial bzr build-essential bzip2 daemontools lxc lxc-templates ntp ntpdate"
+    local required="${fsPackages} git mercurial bzr build-essential bzip2 daemontools ntp ntpdate"
     echo "info: installing required build-server packages: ${required}"
     sudo apt-get install -y $required
     abortIfNonZero $? "command 'apt-get install -y ${required}'"
@@ -275,7 +271,6 @@ function prepareNode() {
             abortIfNonZero $? "creating /${zfsPool} mount point"
 
             # Create ZFS pool and attach to a device.
-            # NB: ashift=12 is recommended by ZFS website.
             if test -z "$(sudo zfs list -o name,mountpoint | sed '1d' | grep "^${zfsPool}.*\/${zfsPool}"'$')"; then
                 # Format the device with any filesystem (mkfs.ext4 is fast).
                 sudo mkfs.ext4 -q $device
@@ -283,7 +278,7 @@ function prepareNode() {
 
                 sudo zpool destroy $zfsPool 2>/dev/null
 
-                sudo zpool create -o ashift=12 $zfsPool $device
+                sudo zpool create $zfsPool $device
                 abortIfNonZero $? "command 'sudo zpool create -o ashift=12 ${zfsPool} ${device}'"
             fi
 
@@ -298,11 +293,11 @@ function prepareNode() {
             abortIfNonZero $? "command 'sudo zfs umount -a'"
 
             # Export the pool.
-            sudo zpool export tank
+            sudo zpool export $zfsPool
             abortIfNonZero $? "command 'sudo zpool export tank'"
 
             # Import the zfs pool, this will mount the volumes.
-            sudo zpool import tank
+            sudo zpool import $zfsPool
             abortIfNonZero $? "command 'sudo zpool import tank'"
 
             # Add zfsroot to lxc configuration.
