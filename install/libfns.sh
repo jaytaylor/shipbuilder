@@ -294,11 +294,15 @@ function prepareNode() {
 
             # Export the pool.
             sudo zpool export $zfsPool
-            abortIfNonZero $? "command 'sudo zpool export tank'"
+            abortIfNonZero $? "command 'sudo zpool export ${zfsPool}'"
 
             # Import the zfs pool, this will mount the volumes.
             sudo zpool import $zfsPool
-            abortIfNonZero $? "command 'sudo zpool import tank'"
+            abortIfNonZero $? "command 'sudo zpool import ${zfsPool}'"
+
+            # Enable zfs snapshot listing.
+            sudo zpool set listsnapshots=on $zfsPool
+            abortIfNonZero $? "command 'sudo zpool set listsnapshots=on ${zfsPool}'"
 
             # Add zfsroot to lxc configuration.
             test -z "$(sudo grep '^zfsroot=' /etc/lxc/lxc.conf 2>/dev/null)" && echo 'zfsroot=tank' | sudo tee -a /etc/lxc/lxc.conf || sudo sed -i 's/^zfsroot=.*/zfsroot=tank/g' /etc/lxc/lxc.conf
