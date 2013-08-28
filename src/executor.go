@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 type (
@@ -45,7 +46,20 @@ func (this *Executor) StopContainer(name string) error {
 func (this *Executor) DestroyContainer(name string) error {
 	if this.ContainerExists(name) {
 		this.StopContainer(name)
-		return this.Run("sudo", "lxc-destroy", "-n", name)
+		err := this.Run("sudo", "lxc-destroy", "-n", name)
+		// zfs-fuse sometimes takes a few tries to destroy a container.
+		if lxcFs == "zfs" {
+			if err != nil {
+				for i := 0; i <= 10; i++ {
+					time.Sleep(1 * time.Second)
+					err = this.Run("sudo", "lxc-destroy", "-n", name)
+					if err == nil {
+						return err
+					}
+				}
+			}
+		}
+		return err
 	}
 	return nil // Don't operate on non-existent containers.
 }
