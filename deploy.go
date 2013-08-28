@@ -53,7 +53,7 @@ echo 'info: fetching dependencies'
 dependencies=$(find . -wholename '*.go' -exec awk '{ if ($1 ~ /^import/ && $2 ~ /[(]/) { s=1; next; } if ($1 ~ /[)]/) { s=0; } if (s) print; }' {} \; | grep -v '^[^\.]*$' | tr -d '\t' | tr -d '"' | sed 's/^\. \{1,\}//g' | sort | uniq)
 for dependency in $dependencies; do
     echo "    retrieving: ${dependency}"
-    go get -u $dependency
+    if ! test -d "${GOPATH}/src/${dependency}"; then go get -u $dependency; else echo "        -> already exists, skipping"; fi
 done
 
 echo 'info: building daemon'
@@ -179,11 +179,11 @@ func deploy() error {
 
 	// Write out deployer script.
 	ioutil.WriteFile(DEPLOYER_SCRIPT_PATH, []byte(deployerScriptContent), 0777)
-	// If "-f|--fast" flag is passed, transform deployer script to not update dependencies which are already present.
-	if len(os.Args) > 1 && (os.Args[1] == "-f" || os.Args[1] == "--fast") {
-		fmt.Printf("INFO: FAST MODE ENABLED\n")
+	// If "-u|--update" flag is passed, transform deployer script to always update dependencies even when they are present.
+	if len(os.Args) > 1 && (os.Args[1] == "-u" || os.Args[1] == "--update") {
+		fmt.Printf("info: dependency updates will be forced\n")
 		run("bash", "-c",
-			`sed -i.bak 's/go get -u .*/if ! \[ -d "\$GOPATH\/src\/\${dependency}" \]; then &; else echo "        -> already exists, skipping"; fi/g' '`+DEPLOYER_SCRIPT_PATH+`'; rm -f '`+DEPLOYER_SCRIPT_PATH+`.bak'`,
+			`sed -i.bak 's/if ! test -d "\${GOPATH}\/src\/\${dependency}"; then go get -u \$dependency; else echo "        -> already exists, skipping"; fi/go get -u \${dependency}/g' '`+DEPLOYER_SCRIPT_PATH+`'; rm -f '`+DEPLOYER_SCRIPT_PATH+`.bak'`,
 		)
 	}
 
@@ -223,7 +223,7 @@ ssh -i '`+sshKey+`' -o 'StrictHostKeyChecking no' `+sshHost+` /bin/bash '`+DEPLO
 func main() {
 	err := deploy()
 	if err != nil {
-		fmt.Println(err)
+		panic(err)
 	}
 }
 

@@ -76,7 +76,7 @@ elif [ "${action}" = "install" ]; then
 
     mv ../env/SB_SSH_HOST{,.bak}
     echo "${sbHost}" > ../env/SB_SSH_HOST
-    ../deploy.sh -f
+    ../deploy.sh
     mv ../env/SB_SSH_HOST{.bak,}
 
     ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost "source /tmp/libfns.sh && prepareServerPart2 ${lxcFs}"

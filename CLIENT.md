@@ -1,7 +1,7 @@
 Client Commands
 ---------------
 
-Build the client by running `./build.sh -f` (-f is for fast-mode).
+Build the client by running `./build.sh`.
 
 Note:
 

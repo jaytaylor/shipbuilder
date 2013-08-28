@@ -74,7 +74,7 @@ Installation
 
 4. Compile ShipBuilder locally:
 ```
-    ./build.sh -f)
+    ./build.sh
 ```
 
 5. Add the load-balancer:
