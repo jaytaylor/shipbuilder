@@ -97,6 +97,12 @@ func (this *Application) AppDir() string {
 func (this *Application) SrcDir() string {
 	return this.AppDir() + "/src"
 }
+func (this *Application) LocalAppDir() string {
+	return APP_DIR
+}
+func (this *Application) LocalSrcDir() string {
+	return APP_DIR + "/src"
+}
 func (this *Application) GitDir() string {
 	return GIT_DIRECTORY + "/" + this.Name
 }
