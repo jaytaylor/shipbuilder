@@ -40,6 +40,7 @@ action=$1
 
 test -z "${sbHost}" && autoDetectServer
 test -z "${lxcFs}" && autoDetectFilesystem
+test -z "${zfsPool}" && autoDetectZfsPool
 
 test -z "${sbHost}" && echo 'error: missing required parameter: -S [shipbuilder-host]' 1>&2 && exit 1
 #test -z "${action}" && echo 'error: missing required parameter: action' 1>&2 && exit 1
@@ -71,7 +72,7 @@ elif [ "${action}" = "install" ]; then
     rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" libfns.sh $sbHost:/tmp/
     abortIfNonZero $? 'rsync libfns.sh failed'
 
-    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost "source /tmp/libfns.sh && prepareServerPart1 ${sbHost} ${device} ${lxcFs} ${swapDevice}"
+    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost "source /tmp/libfns.sh && prepareServerPart1 ${sbHost} ${device} ${lxcFs} ${swapDevice} ${zfsPool}"
     abortIfNonZero $? 'remote prepareServerPart1() invocation'
 
     mv ../env/SB_SSH_HOST{,.bak}

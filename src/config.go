@@ -65,6 +65,7 @@ var (
 	defaultSshHost            string
 	defaultSshKey             string
 	defaultLxcFs              string
+	defaultZfsPool            string
 )
 
 // Global configuration.
@@ -76,6 +77,7 @@ var (
 	awsRegion    = getAwsRegion("SB_AWS_REGION", defaultAwsRegion)
 	s3BucketName = OverridableByEnv("SB_S3_BUCKET", defaultS3BucketName)
 	lxcFs        = OverridableByEnv("LXC_FS", defaultLxcFs)
+	zfsPool      = OverridableByEnv("ZFS_POOL", defaultZfsPool)
 )
 
 var (

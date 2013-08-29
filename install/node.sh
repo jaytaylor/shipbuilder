@@ -44,6 +44,7 @@ action=$1
 
 test -z "${sbHost}" && autoDetectServer
 test -z "${lxcFs}" && autoDetectFilesystem
+test -z "${zfsPool}" && autoDetectZfsPool
 
 # Validate required parameters.
 test -z "${sbHost}" && echo 'error: missing required parameter: -S [shipbuilder-host]' 1>&2 && exit 1
@@ -73,7 +74,7 @@ elif [ "${action}" = "install" ]; then
     rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" libfns.sh $nodeHost:/tmp/
     abortIfNonZero $? 'rsync libfns.sh failed'
 
-    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $nodeHost "source /tmp/libfns.sh && prepareNode ${device} ${lxcFs} ${swapDevice}"
+    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $nodeHost "source /tmp/libfns.sh && prepareNode ${device} ${lxcFs} ${swapDevice} ${zfsPool}"
     abortIfNonZero $? 'remote prepareNode() invocation'
 
 else

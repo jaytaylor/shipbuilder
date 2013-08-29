@@ -29,6 +29,7 @@ var (
 		"SB_HAPROXY_CREDENTIALS": "main.defaultHaProxyCredentials",
 		"SB_HAPROXY_STATS":       "main.defaultHaProxyStats",
 		"LXC_FS":                 "main.defaultLxcFs",
+		"ZFS_POOL":               "main.defaultZfsPool",
 	}
 	deployerScriptContent = `#!/bin/bash
 ################################################################################
@@ -113,7 +114,8 @@ func getLdFlags() string {
 				if err != nil {
 					return err
 				}
-				value := strings.TrimSpace(string(data))
+				// Only use the value from the first line of the file.
+				value := strings.TrimSpace(strings.Split(string(data), "\n")[0])
 				ldflags += "-X " + flagName + " " + value
 			}
             return nil
