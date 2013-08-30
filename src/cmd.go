@@ -255,7 +255,7 @@ func init() {
 			required("app"), mapped("args"),
 		),
 		writer("rollback", "rollback", "Rollback",
-			required("app"), required("version"),
+			required("app"), optional("version", ""),
 		),
 		reader("releases:info", "releases:info", "Releases_Info",
 			required("app"),
