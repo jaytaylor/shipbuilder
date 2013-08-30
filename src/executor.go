@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -53,37 +52,43 @@ func (this *Executor) StopContainer(name string) error {
 func (this *Executor) DestroyContainer(name string) error {
 	if this.ContainerExists(name) {
 		this.StopContainer(name)
-		var err error = nil
 		// zfs-fuse sometimes takes a few tries to destroy a container.
 		if lxcFs == "zfs" {
-			err = this.zfsDestroyContainerAndChildren(name)
+			return this.zfsDestroyContainerAndChildren(name)
 		} else {
-			err = this.Run("sudo", "lxc-destroy", "-n", name)
+			return this.Run("sudo", "lxc-destroy", "-n", name)
 		}
-		return err
 	}
 	return nil // Don't operate on non-existent containers.
 }
 
 // Recursively destroys children of the requested container before destroying.  This should only be invoked by an Executor to destroy containers.
 func (this *Executor) zfsDestroyContainerAndChildren(name string) error {
-	childrenBytes, err := exec.Command("sudo", "/bin/bash", "-c", `zfs list -t snapshot | grep --only-matching '^.*/`+name+`@[^ ]\+' | sed 's/^.*@//'`).Output()
+	// NB: This is not working yet, and may not be required.
+	/* fmt.Fprintf(this.logger, "sudo /bin/bash -c \""+`zfs list -t snapshot | grep --only-matching '^`+zfsPool+`/`+name+`@[^ ]\+' | sed 's/^`+zfsPool+`\/`+name+`@//'`+"\"\n")
+	childrenBytes, err := exec.Command("sudo", "/bin/bash", "-c", `zfs list -t snapshot | grep --only-matching '^`+zfsPool+`/`+name+`@[^ ]\+' | sed 's/^`+zfsPool+`\/`+name+`@//'`).Output()
 	if err != nil {
 		// Allude to one possible cause and rememdy for the failure.
 		return fmt.Errorf("zfs snapshot listing failed- check that 'listsnapshots' is enabled for "+zfsPool+" ('zpool set listsnapshots=on "+zfsPool+"'), error=%v", err)
 	}
-	for _, child := range strings.Split(string(childrenBytes), "\n") {
-		err := this.zfsDestroyContainerAndChildren(child)
-		if err != nil {
-			return err
+	if len(strings.TrimSpace(string(childrenBytes))) > 0 {
+		fmt.Fprintf(this.logger, "Found some children for parent=%v: %v\n", name, strings.Split(strings.TrimSpace(string(childrenBytes)), "\n"))
+	}
+	for _, child := range strings.Split(strings.TrimSpace(string(childrenBytes)), "\n") {
+		if len(child) > 0 {
+			this.StopContainer(child)
+			this.zfsDestroyContainerAndChildren(child)
+			this.zfsRunAndResistDatasetIsBusy("sudo", "zfs", "destroy", "-R", zfsPool+"/"+name+"@"+child)
+			err = this.zfsRunAndResistDatasetIsBusy("sudo", "lxc-destroy", "-n", child)
+			//err := this.zfsDestroyContainerAndChildren(child)
+			if err != nil {
+				return err
+			}
 		}
 		//this.Run("sudo", "zfs", "destroy", zfsPool+"/"+name+"@"+child)
-	}
-	err = this.zfsRunAndResistDatasetIsBusy("sudo", "zfs", "destroy", "-R", zfsPool+"/"+name)
-	if err != nil {
-		return err
-	}
-	err = this.zfsRunAndResistDatasetIsBusy("sudo", "lxc-destroy", "-n", name)
+	}*/
+	this.zfsRunAndResistDatasetIsBusy("sudo", "zfs", "destroy", "-R", zfsPool+"/"+name)
+	err := this.zfsRunAndResistDatasetIsBusy("sudo", "lxc-destroy", "-n", name)
 	if err != nil {
 		return err
 	}

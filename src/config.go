@@ -103,6 +103,9 @@ func (this *Application) LocalAppDir() string {
 func (this *Application) LocalSrcDir() string {
 	return APP_DIR + "/src"
 }
+func (this *Application) BaseContainer() string {
+	return "base-" + this.BuildPack
+}
 func (this *Application) GitDir() string {
 	return GIT_DIRECTORY + "/" + this.Name
 }

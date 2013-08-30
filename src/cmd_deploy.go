@@ -263,11 +263,11 @@ func (this *Deployment) archive() error {
 	go func() {
 		e = Executor{NewLogger(os.Stdout, "[archive] ")}
 		archiveName := "/tmp/" + versionedContainerName + ".tar.gz"
-		err := e.Run("sudo", "tar", "-czf", archiveName, this.Application.RootFsDir())
+		err := e.BashCmd("tar --create --gzip --preserve-permissions --file " + archiveName + " " + this.Application.RootFsDir())
 		if err != nil {
 			return
 		}
-		defer e.Run("sudo", "rm", "-rf", archiveName)
+		defer e.BashCmd("rm -f " + archiveName)
 
 		h, err := os.Open(archiveName)
 		if err != nil {
@@ -292,18 +292,21 @@ func (this *Deployment) archive() error {
 func (this *Deployment) extract(version string) error {
 	e := Executor{this.Logger}
 
-	// Remmove current app container if it exists.
-	e.DestroyContainer(this.Application.Name)
+	if !e.ContainerExists(this.Application.Name) {
+		e.CloneContainer(this.Application.BaseContainer(), this.Application.Name)
+	}
 
 	// Detect if the container is already present locally.
 	versionedAppContainer := this.Application.Name + DYNO_DELIMITER + version
-	_, err := os.Stat(LXC_DIR + "/" + versionedAppContainer)
-	if err == nil {
-		return e.CloneContainer(versionedAppContainer, this.Application.Name)
+	if e.ContainerExists(versionedAppContainer) {
+		fmt.Fprintf(this.Logger, "Syncing local copy of %v\n", version)
+		// Rsync to versioned container to base app container.
+		rsyncCommand := "rsync --recursive --links --hard-links --devices --specials --acls --owner --perms --times --delete --xattrs --numeric-ids "
+		return e.BashCmd(rsyncCommand + LXC_DIR + "/" + versionedAppContainer + "/rootfs/ " + this.Application.RootFsDir())
 	}
 
 	// The requested app version doesn't exist locally, attempt to download it from S3.
-	fmt.Fprintln(this.Logger, "Downloading requested release from S3")
+	fmt.Fprintf(this.Logger, "Downloading %v release from S3\n", version)
 
 	r, err := getS3Bucket().GetReader("/releases/" + this.Application.Name + "/" + version + ".tar.gz")
 	if err != nil {
@@ -311,22 +314,25 @@ func (this *Deployment) extract(version string) error {
 	}
 	defer r.Close()
 
-	localFileName := "/tmp/" + this.Application.Name + DYNO_DELIMITER + version + ".tar.gz"
-	h, err := os.Create(localFileName)
+	localArchive := "/tmp/" + this.Application.Name + DYNO_DELIMITER + version + ".tar.gz"
+	h, err := os.Create(localArchive)
 	if err != nil {
 		return err
 	}
 	defer h.Close()
-	defer os.Remove(localFileName)
+	defer os.Remove(localArchive)
 
 	_, err = io.Copy(h, r)
 	if err != nil {
 		return err
 	}
 
-	e.CloneContainer("base-"+this.Application.BuildPack, this.Application.Name)
-	fmt.Fprintln(this.Logger, "Extracting..")
-	err = e.Run("sudo", "tar", "-C", this.Application.RootFsDir(), "-xzf", localFileName)
+	fmt.Fprintf(this.Logger, "Extracting %v\n", localArchive)
+	err = e.BashCmd("rm -rf " + this.Application.RootFsDir() + "/*")
+	if err != nil {
+		return err
+	}
+	err = e.BashCmd("tar -C / --extract --gzip --preserve-permissions --file " + localArchive)
 	if err != nil {
 		return err
 	}
@@ -350,11 +356,12 @@ func (this *Deployment) syncNode(node *Node) error {
 	err = e.Run("sudo", "rsync",
 		"--recursive",
 		"--links",
-		"--perms",
-		"--times",
+		"--hard-links",
 		"--devices",
 		"--specials",
-		"--hard-links",
+		"--owner",
+		"--perms",
+		"--times",
 		"--acls",
 		"--delete",
 		"--xattrs",
