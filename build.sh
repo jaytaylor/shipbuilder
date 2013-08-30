@@ -55,7 +55,7 @@ LXC_FS main.defaultLxcFs
 ZFS_POOL main.defaultZfsPool"); do
     envvar=$(echo "${pair}" | sed 's/^\([^ ]\{1,\}\).*$/\1/')
     govar=$(echo "${pair}" | sed 's/^[^ ]\{1,\} \(.*\)$/\1/')
-    if test -f "env/${envvar}" && test -n $(cat "env/${envvar}"); then
+    if test -f "env/${envvar}" && test -n "$(head -n1 "env/${envvar}")"; then
         if test -n "${ldflags}"; then
             ldflags="${ldflags} "
         fi
