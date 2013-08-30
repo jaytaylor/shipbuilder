@@ -292,8 +292,9 @@ func (this *Deployment) archive() error {
 func (this *Deployment) extract(version string) error {
 	e := Executor{this.Logger}
 
-	if !e.ContainerExists(this.Application.Name) {
-		e.CloneContainer(this.Application.BaseContainer(), this.Application.Name)
+	err := this.Application.CreateBaseContainerIfMissing(&e)
+	if err != nil {
+		return err
 	}
 
 	// Detect if the container is already present locally.
@@ -306,15 +307,18 @@ func (this *Deployment) extract(version string) error {
 	}
 
 	// The requested app version doesn't exist locally, attempt to download it from S3.
-	fmt.Fprintf(this.Logger, "Downloading %v release from S3\n", version)
+	return extractAppFromS3(&e, this.Application, version)
+}
 
-	r, err := getS3Bucket().GetReader("/releases/" + this.Application.Name + "/" + version + ".tar.gz")
+func extractAppFromS3(e *Executor, app *Application, version string) error {
+	fmt.Fprintf(e.logger, "Downloading release %v from S3\n", version)
+	r, err := getS3Bucket().GetReader("/releases/" + app.Name + "/" + version + ".tar.gz")
 	if err != nil {
 		return err
 	}
 	defer r.Close()
 
-	localArchive := "/tmp/" + this.Application.Name + DYNO_DELIMITER + version + ".tar.gz"
+	localArchive := "/tmp/" + app.Name + DYNO_DELIMITER + version + ".tar.gz"
 	h, err := os.Create(localArchive)
 	if err != nil {
 		return err
@@ -327,8 +331,8 @@ func (this *Deployment) extract(version string) error {
 		return err
 	}
 
-	fmt.Fprintf(this.Logger, "Extracting %v\n", localArchive)
-	err = e.BashCmd("rm -rf " + this.Application.RootFsDir() + "/*")
+	fmt.Fprintf(e.logger, "Extracting %v\n", localArchive)
+	err = e.BashCmd("rm -rf " + app.RootFsDir() + "/*")
 	if err != nil {
 		return err
 	}

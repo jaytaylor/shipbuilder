@@ -114,3 +114,7 @@ func (this *Executor) zfsRunAndResistDatasetIsBusy(cmd string, args ...string) e
 func (this *Executor) CloneContainer(oldName, newName string) error {
 	return this.Run("sudo", "lxc-clone", "-s", "-B", lxcFs, "-o", oldName, "-n", newName)
 }
+
+func (this *Executor) AttachContainer(name string, args ...string) *exec.Cmd {
+	return exec.Command("sudo", append([]string{"lxc-attach", "-n", name, "--", "sudo", "-u", "ubuntu"}, args...)...)
+}

@@ -103,7 +103,7 @@ func (this *Application) LocalAppDir() string {
 func (this *Application) LocalSrcDir() string {
 	return APP_DIR + "/src"
 }
-func (this *Application) BaseContainer() string {
+func (this *Application) BaseContainerName() string {
 	return "base-" + this.BuildPack
 }
 func (this *Application) GitDir() string {
@@ -186,6 +186,12 @@ func (this *Application) CalcPreviousVersion() (string, error) {
 		return "", err
 	}
 	return "v" + strconv.Itoa(v-1), nil
+}
+func (this *Application) CreateBaseContainerIfMissing(e *Executor) error {
+	if !e.ContainerExists(this.Name) {
+		return e.CloneContainer(this.BaseContainerName(), this.Name)
+	}
+	return nil
 }
 
 func (this *Server) IncrementAppVersion(app *Application) (*Application, *Config, error) {

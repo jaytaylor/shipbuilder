@@ -4,67 +4,81 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os/exec"
 
 	"github.com/kr/pty"
 )
 
 // TODO: Add support for opening a console when the app is scaled to 0.
-func (this *Server) Console(conn net.Conn, applicationName string) error {
-	err := this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
-		process := "web"
-		// Find a host running the latest version.
-		runningDynos, err := this.getRunningDynos(app.Name, process)
-		if err != nil {
-			return err
-		}
-		if len(runningDynos) == 0 {
-			return fmt.Errorf("No running web processes found, operation aborted.")
+func (this *Server) Console(conn net.Conn, applicationName string, args []string) error {
+	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
+		var err error = nil
+		if app.LastDeploy == "" {
+			return fmt.Errorf("console not unavailable - application has not yet had a first deploy")
 		}
 
-		host := runningDynos[0].Host
-
-		Logf(conn, "Opening SSH session to %v\n", host)
 		Send(conn, Message{Hijack, ""})
 
 		e := Executor{conn}
 
-		tempName := applicationName + DYNO_DELIMITER + process + DYNO_DELIMITER + "console"
+		// If the primary application container is missing for some reason, attempt to create it by
+		// pulling the most recent release from S3.
+		if !e.ContainerExists(applicationName) {
+			err = app.CreateBaseContainerIfMissing(&e)
+			if err != nil {
+				return err
+			}
+			err = extractAppFromS3(&e, app, app.LastDeploy)
+			if err != nil {
+				return err
+			}
+		}
 
-		err = e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+host, "sudo", "/bin/bash", "-c",
-			`"lxc-clone -B `+lxcFs+` -s -o `+runningDynos[0].Application+` -n `+tempName+` && lxc-start -n `+tempName+` -d"`,
-		)
+		containerName := applicationName + DYNO_DELIMITER + "console"
+
+		if e.ContainerExists(containerName) {
+			err = e.DestroyContainer(containerName)
+			if err != nil {
+				return err
+			}
+		}
+
+		err = e.CloneContainer(applicationName, containerName)
 		if err != nil {
 			return err
 		}
-		defer e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+host, "sudo", "/bin/bash", "-c",
-			`"lxc-stop -k -n `+tempName+`; lxc-destroy -n `+tempName+`"`,
-		)
 
-		// Setup a pseudo terminal
-		c := exec.Command("ssh", "-t", DEFAULT_NODE_USERNAME+"@"+host, "--", "sudo", "lxc-console", "-n", tempName, "-t", "2")
+		err = e.StartContainer(containerName)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			e.StopContainer(containerName)
+			e.DestroyContainer(containerName)
+		}()
+
+		// Setup a pseudo terminal.
+		c := e.AttachContainer(containerName, args...)
 		f, err := pty.Start(c)
 		if err != nil {
 			return err
 		}
 		defer f.Close()
 
-		ec := make(chan error, 1)
+		ch := make(chan error, 1)
 
-		// Read the output
+		// Read the output.
 		go func() {
 			_, err := io.Copy(conn, f)
-			ec <- err
+			ch <- err
 		}()
-		// Send the input
+		// Send the input.
 		go func() {
 			_, err := io.Copy(f, conn)
-			ec <- err
+			ch <- err
 		}()
 
 		// Wait for either end to complete
-		<-ec
+		<-ch
 		return nil
 	})
-	return err
 }

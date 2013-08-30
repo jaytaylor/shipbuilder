@@ -375,6 +375,15 @@ function prepareNode() {
         abortIfNonZero $? "sudo swapon --all"
     fi
 
+    # Install updated kernel if running Ubuntu 12.x series so lxc-attach will work.
+    majorVersion=$(lsb_release --release | sed 's/^[^0-9]*\([0-9]*\)\..*$/\1/')
+    if test $majorVersion -eq 12; then
+        echo 'info: installing 3.8 or newer kernel, a system restart will be required to complete installation'
+        sudo apt-get install -y linux-generic-lts-raring-eol-upgrade
+        abortIfNonZero $? 'installing linux-generic-lts-raring-eol-upgrade'
+        echo 1 | sudo tee -a /tmp/SB_RESTART_REQUIRED
+    fi
+
     echo 'info: prepareNode() succeeded'
 }
 
