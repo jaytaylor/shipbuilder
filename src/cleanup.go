@@ -12,7 +12,7 @@ func (this *Server) pruneDynos(nodeStatus NodeStatus) error {
 	}
 
 	logger := NewLogger(os.Stdout, "[dyno-cleanup] ")
-	fmt.Fprint(logger, "Pruning inactive dynos\n")
+	//fmt.Fprint(logger, "Pruning inactive dynos\n")
 
 	type Key struct {
 		application string
@@ -25,7 +25,7 @@ func (this *Server) pruneDynos(nodeStatus NodeStatus) error {
 	// Build mapping of current expected app-process-versions.
 	for _, app := range cfg.Applications {
 		for process, _ := range app.Processes {
-			fmt.Fprintf(logger, "Existing app found, name=%v version=%v\n", app.Name, app.LastDeploy)
+			//fmt.Fprintf(logger, "Existing app found, name=%v version=%v\n", app.Name, app.LastDeploy)
 			appMap[Key{app.Name, process, app.LastDeploy}] = true
 		}
 	}
