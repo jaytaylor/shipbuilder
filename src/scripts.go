@@ -261,9 +261,12 @@ def retriableCommand(*command):
     for _ in range(0, 30):
         try:
             return subprocess.check_call(command, stdout=sys.stdout, stderr=sys.stderr)
-        except subprocess.CalledProcessError:
-            time.sleep(0.25)
-            continue
+        except subprocess.CalledProcessError, e:
+            if 'dataset is busy' in str(e):
+                time.sleep(0.25)
+                continue
+            else:
+                raise e
 
 def main(argv):
     global container
@@ -275,7 +278,7 @@ def main(argv):
     subprocess.check_call(['/usr/bin/lxc-stop', '-k', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
 
     if lxcFs == 'zfs':
-        retriableCommand('/sbin/zfs', 'destroy', '-R', container)
+        retriableCommand('/sbin/zfs', 'destroy', '-R', zfsPool + '/' + container)
 
     retriableCommand('/usr/bin/lxc-destroy', '-n', container)
 
