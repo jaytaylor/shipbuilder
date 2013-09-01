@@ -16,7 +16,7 @@ Primary components:
 
 Build Packs
 -----------
-Any app server can be run on ShipBuilder, but if will need a build-pack! Current build-packs are:
+Any app server can run on ShipBuilder, but it will need a build-pack! Current build-packs are:
 * `python` - Any python app
 * `playframework2` - Play-framework 2.1.x
 
