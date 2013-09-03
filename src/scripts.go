@@ -199,6 +199,8 @@ var SHUTDOWN_CONTAINER = `#!/usr/bin/python -u
 
 import subprocess, sys, time
 
+lxcFs = '` + lxcFs + `'
+zfsPool = '` + zfsPool + `'
 container = None
 log = lambda message: sys.stdout.write('[{0}] {1}\n'.format(container, message))
 
@@ -255,15 +257,30 @@ def ipsForRulesMatchingPort(chain, port):
     ).strip()
     return rawOutput.split('\n') if len(rawOutput) > 0 else []
 
+def retriableCommand(*command):
+    for _ in range(0, 30):
+        try:
+            return subprocess.check_call(command, stdout=sys.stdout, stderr=sys.stderr)
+        except subprocess.CalledProcessError, e:
+            if 'dataset is busy' in str(e):
+                time.sleep(0.25)
+                continue
+            else:
+                raise e
+
 def main(argv):
     global container
     container = argv[1]
     port = container.split('` + DYNO_DELIMITER + `').pop()
 
-    # Stop all existing containers.
+    # Stop and destroy the container.
     log('stopping container')
     subprocess.check_call(['/usr/bin/lxc-stop', '-k', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
-    subprocess.check_call(['/usr/bin/lxc-destroy', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
+
+    if lxcFs == 'zfs':
+        retriableCommand('/sbin/zfs', 'destroy', '-R', zfsPool + '/' + container)
+
+    retriableCommand('/usr/bin/lxc-destroy', '-n', container)
 
     for chain in ('PREROUTING', 'OUTPUT'):
         rules = ipsForRulesMatchingPort(chain, port)

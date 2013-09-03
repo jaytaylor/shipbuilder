@@ -53,15 +53,17 @@ SB_AWS_REGION main.defaultAwsRegion
 SB_S3_BUCKET main.defaultS3BucketName
 SB_HAPROXY_CREDENTIALS main.defaultHaProxyCredentials
 SB_HAPROXY_STATS main.defaultHaProxyStats
-LXC_FS main.defaultLxcFs"); do
+LXC_FS main.defaultLxcFs
+ZFS_POOL main.defaultZfsPool"); do
     envvar=$(echo "${pair}" | sed 's/^\([^ ]\{1,\}\).*$/\1/')
     govar=$(echo "${pair}" | sed 's/^[^ ]\{1,\} \(.*\)$/\1/')
-    if test -f "env/${envvar}" && test -n $(cat "env/${envvar}"); then
+    if test -f "env/${envvar}" && test -n "$(head -n1 "env/${envvar}")"; then
         if test -n "${ldflags}"; then
             ldflags="${ldflags} "
         fi
-        ldflags="${ldflags}-X ${govar} $(cat "env/${envvar}")"
-        echo "info:     found var ${envvar}, value=$(cat env/${envvar})"
+        envval=$(head -n1 "env/${envvar}")
+        ldflags="${ldflags}-X ${govar} ${envval}"
+        echo "info:     found var ${envvar}, value=${envval}"
     fi
 done
 IFS="${IFS_BAK}"
