@@ -89,12 +89,12 @@ elif [ "${action}" = "install" ]; then
 
     if test -z "${denyRestart}"; then
         echo 'info: checking if system restart is necessary'
-        ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && reboot || echo 'no system restart is necessary'"
+        ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && sudo reboot || echo 'no system restart is necessary'"
         abortIfNonZero $? 'remote system restart check failed'
     else
         echo 'warn: a restart may be required on the shipbuilder server to complete installation, but the action was disabled by a flag' 1>&2
     fi
 
 else
-    echo 'unrecognized action: ${action}' 1>&2 && exit 1
+    echo "unrecognized action: ${action}" 1>&2 && exit 1
 fi
