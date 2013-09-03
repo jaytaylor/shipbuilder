@@ -116,5 +116,5 @@ func (this *Executor) CloneContainer(oldName, newName string) error {
 }
 
 func (this *Executor) AttachContainer(name string, args ...string) *exec.Cmd {
-	return exec.Command("sudo", append([]string{"lxc-attach", "-n", name, "--", "sudo", "-u", "ubuntu"}, args...)...)
+	return exec.Command("sudo", append([]string{"lxc-attach", "-n", name, "--", "sudo", "-u", "ubuntu", "--"}, args...)...)
 }
