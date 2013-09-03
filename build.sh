@@ -31,6 +31,8 @@ for dependency in $dependencies; do
     echo "info:     retrieving: ${dependency}"
     if test -n "${forceUpdate}" || ! test -d "${GOPATH}/src/${dependency}"; then
         go get -u $dependency
+        rc=$?
+        test $rc -ne 0 && echo "error: retrieving dependency ${dependency} exited with non-zero status code ${rc}" && exit $rc
     else
         echo 'info:         -> already exists, skipping'
     fi

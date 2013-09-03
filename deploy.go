@@ -50,10 +50,11 @@ echo 'info: fetching dependencies'
 #     ...
 # )
 # and appropriately filters the list down to the projects dependencies.
-dependencies=$(find . -wholename '*.go' -exec awk '{ if ($1 ~ /^import/ && $2 ~ /[(]/) { s=1; next; } if ($1 ~ /[)]/) { s=0; } if (s) print; }' {} \; | grep -v '^[^\.]*$' | tr -d '\t' | tr -d '"' | sed 's/^\. \{1,\}//g' | sort | uniq)
+dependencies=$(find . -wholename '*.go' -exec awk '{ if ($1 ~ /^import/ && $2 ~ /[(]/) { s=1; next; } if ($1 ~ /[)]/) { s=0; } if (s) print; }' {} \; | grep -v '^[^\.]*$' | tr -d '\t' | tr -d '"' | sed 's/^\. \{1,\}//g' | sort | uniq | grep -v '^\/\/')
 for dependency in $dependencies; do
     echo "    retrieving: ${dependency}"
-    if ! test -d "${GOPATH}/src/${dependency}"; then go get -u $dependency; else echo "        -> already exists, skipping"; fi
+    if ! test -d "${GOPATH}/src/${dependency}"; then go get -u $dependency; rc=$?; else echo "        -> already exists, skipping"; rc=0; fi
+    test $rc -ne 0 && echo "error: retrieving dependency ${dependency} exited with non-zero status code ${rc}" && exit $rc;
 done
 
 echo 'info: building daemon'
@@ -113,7 +114,7 @@ func getLdFlags() string {
 				if err != nil {
 					return err
 				}
-				value := strings.TrimSpace(string(data))
+				value := strings.Split(strings.TrimSpace(string(data)), "\n")[0]
 				ldflags += "-X " + flagName + " " + value
 			}
             return nil
@@ -183,7 +184,7 @@ func deploy() error {
 	if len(os.Args) > 1 && (os.Args[1] == "-u" || os.Args[1] == "--update") {
 		fmt.Printf("info: dependency updates will be forced\n")
 		run("bash", "-c",
-			`sed -i.bak 's/if ! test -d "\${GOPATH}\/src\/\${dependency}"; then go get -u \$dependency; else echo "        -> already exists, skipping"; fi/go get -u \${dependency}/g' '`+DEPLOYER_SCRIPT_PATH+`'; rm -f '`+DEPLOYER_SCRIPT_PATH+`.bak'`,
+			`sed -i.bak 's/if ! test -d "\${GOPATH}\/src\/\${dependency}"; then go get -u \$dependency; rc=\$?; else echo "        -> already exists, skipping"; rc=0; fi/go get -u \${dependency}; rc=\$?/g' '`+DEPLOYER_SCRIPT_PATH+`'; rm -f '`+DEPLOYER_SCRIPT_PATH+`.bak'`,
 		)
 	}
 
