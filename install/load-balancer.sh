@@ -14,6 +14,7 @@ while getopts "H:S:c:h" OPTION; do
             echo '  ACTION                  Action to perform. Available actions are: install'
             echo '  -H [load-balancer-host] Load-balancer user@hostname' 1>&2
             echo '  -S [shipbuilder-host]   ShipBuilder server user@hostname (flag can be omitted if auto-detected from env/SB_SSH_HOST)' 1>&2
+            echo '  -c [path-to-ssl-cert]   SSL certificate to use' 1>&2
             exit 1
             ;;
         H)
@@ -54,7 +55,7 @@ verifySshAndSudoForHosts "${sbHost} ${lbHost}"
 if [ "${action}" = "install" ]; then
     installAccessForSshHost $lbHost
     
-    rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" libfns.sh $certFile $lbHost:/tmp/
+    rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" libfns.sh "${certFile}" $lbHost:/tmp/
     ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $lbHost "source /tmp/libfns.sh && prepareLoadBalancer $(basename "${certFile}")"
 
 else

@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 
 ##
+# Ubuntu SSH system keys migration utility
+#
+# This utility enables the system-wide cloning of SSH keys located at /etc/ssh, ~/.ssh, and /root/.ssh from one host to
+# another.  This makes it possible to migrate a hostname from one machine to another without triggering SSH key mismatch
+# alerts.
+#
 # @author Jay Taylor [@jtaylor]
 #
 # @date 2013-09-03
-#
-# Ubuntu SSH system keys migration utility.
-#
-# Used to clone system-wide SSH keys located at /etc/ssh, ~/.ssh, and /root/.ssh from one host to another.  This makes
-# it possible to migrate a hostname from one machine to another without triggering SSH key mismatch alerts.
 #
 
 function abortWithError() {
