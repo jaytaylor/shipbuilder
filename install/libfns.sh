@@ -366,6 +366,9 @@ function prepareNode() {
 
     if ! test -z "${swapDevice}" && test -e "${swapDevice}"; then
         echo "info: activating swap device or partition: ${swapDevice}"
+        # Purge any pre-existing fstab entries before adding the swap device.
+        sudo sed -i "/^$(echo "${swapDevice}" | sed 's/\//\\&/g')[ \t].*/d" /etc/fstab
+        abortIfNonZero $? "purging pre-existing ${swapDevice} entries from /etc/fstab"
         echo "${swapDevice} none swap sw 0 0" | sudo tee -a /etc/fstab 1>/dev/null
         sudo swapoff --all
         abortIfNonZero $? "adding ${swapDevice} to /etc/fstab"
