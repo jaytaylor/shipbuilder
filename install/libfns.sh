@@ -259,6 +259,9 @@ function prepareNode() {
         echo "info: ${device} is already formatted with ${lxcFs}"
 
     else
+        # Purge any pre-existing fstab /mnt entries.
+        sudo sed -i '/.*[ \t]\/mnt[ \t].*/d' /etc/fstab
+
         echo "info: formatting ${device} with ${lxcFs}"
         if test "${lxcFs}" = 'btrfs'; then
             sudo mkfs.btrfs $device
