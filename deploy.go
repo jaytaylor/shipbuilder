@@ -29,6 +29,7 @@ var (
 		"SB_HAPROXY_CREDENTIALS": "main.defaultHaProxyCredentials",
 		"SB_HAPROXY_STATS":       "main.defaultHaProxyStats",
 		"LXC_FS":                 "main.defaultLxcFs",
+		"ZFS_POOL":               "main.defaultZfsPool",
 	}
 	deployerScriptContent = `#!/bin/bash
 ################################################################################
@@ -114,7 +115,8 @@ func getLdFlags() string {
 				if err != nil {
 					return err
 				}
-				value := strings.Split(strings.TrimSpace(string(data)), "\n")[0]
+				// Only use the value from the first line of the file.
+				value := strings.TrimSpace(strings.Split(string(data), "\n")[0])
 				ldflags += "-X " + flagName + " " + value
 			}
             return nil
@@ -191,7 +193,7 @@ func deploy() error {
 	// Upload latest code + deployment shell script to the server.
 	err := run("bash", "-c", `
 echo 'compressing..'
-tar -czf '`+COMPRESSED_PATH+`' .
+tar --exclude ./shipbuilder --exclude ./.git -czf '`+COMPRESSED_PATH+`' .
 echo 'uploading..'
 chmod a+x '`+DEPLOYER_SCRIPT_PATH+`'
 rsync -azve 'ssh -i "`+sshKey+`" -o "StrictHostKeyChecking no" -o "BatchMode yes"' '`+COMPRESSED_PATH+`' '`+DEPLOYER_SCRIPT_PATH+`' `+sshHost+`:/tmp/

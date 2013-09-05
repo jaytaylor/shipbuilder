@@ -106,10 +106,7 @@ def main(argv):
     global container
     #print 'main argv={0}'.format(argv)
     container = argv[1]
-    process = argv[1].split('` + DYNO_DELIMITER + `')[-3] # Process is always 3 from the end.
-
-    app = container.rsplit('` + DYNO_DELIMITER + `', 3)[0] # Get rid of port + version.
-    port = container.split('` + DYNO_DELIMITER + `')[-1] # Port is always at the end.
+    app, version, process, port = container.split('` + DYNO_DELIMITER + `') # Format is app_version_process_port
 
     # For safety, even though it's unlikley, try to kill/shutdown any existing container with the same name.
     subprocess.call(['/usr/bin/lxc-stop -k -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)
@@ -199,6 +196,8 @@ var SHUTDOWN_CONTAINER = `#!/usr/bin/python -u
 
 import subprocess, sys, time
 
+lxcFs = '` + lxcFs + `'
+zfsPool = '` + zfsPool + `'
 container = None
 log = lambda message: sys.stdout.write('[{0}] {1}\n'.format(container, message))
 
@@ -255,15 +254,30 @@ def ipsForRulesMatchingPort(chain, port):
     ).strip()
     return rawOutput.split('\n') if len(rawOutput) > 0 else []
 
+def retriableCommand(*command):
+    for _ in range(0, 30):
+        try:
+            return subprocess.check_call(command, stdout=sys.stdout, stderr=sys.stderr)
+        except subprocess.CalledProcessError, e:
+            if 'dataset is busy' in str(e):
+                time.sleep(0.25)
+                continue
+            else:
+                raise e
+
 def main(argv):
     global container
     container = argv[1]
     port = container.split('` + DYNO_DELIMITER + `').pop()
 
-    # Stop all existing containers.
+    # Stop and destroy the container.
     log('stopping container')
     subprocess.check_call(['/usr/bin/lxc-stop', '-k', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
-    subprocess.check_call(['/usr/bin/lxc-destroy', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
+
+    if lxcFs == 'zfs':
+        retriableCommand('/sbin/zfs', 'destroy', '-R', zfsPool + '/' + container)
+
+    retriableCommand('/usr/bin/lxc-destroy', '-n', container)
 
     for chain in ('PREROUTING', 'OUTPUT'):
         rules = ipsForRulesMatchingPort(chain, port)

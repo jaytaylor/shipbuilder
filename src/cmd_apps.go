@@ -100,12 +100,6 @@ func (this *Server) Apps_Create(conn net.Conn, applicationName string, buildPack
 	})
 }
 
-// Stops and destroys a local LXC container.
-func (this *Server) destroyContainer(e Executor, name string) {
-	e.Run("sudo", "lxc-stop", "-n", name, "-k")
-	e.Run("sudo", "lxc-destroy", "-n", name)
-}
-
 func (this *Server) Apps_Destroy(conn net.Conn, applicationName string) error {
 	err := this.validateAppName(applicationName)
 	if err != nil {
@@ -157,7 +151,7 @@ func (this *Server) Apps_Destroy(conn net.Conn, applicationName string) error {
 			e.Run("sudo", "rm", "-rf", gitPath)
 			// Remove LXC base app image + version snapshots.
 			// NB: BTRFS has restrictions on how subvolumes may be removed (in this case <path>/rootfs).
-			this.destroyContainer(e, applicationName)
+			err := e.DestroyContainer(applicationName)
 			relatedVersionedContainerPaths, err := filepath.Glob(LXC_DIR + "/" + applicationName + DYNO_DELIMITER + "v*")
 			if err != nil {
 				return err
@@ -165,7 +159,10 @@ func (this *Server) Apps_Destroy(conn net.Conn, applicationName string) error {
 			for _, path := range relatedVersionedContainerPaths {
 				tokens := strings.Split(path, "/")
 				container := tokens[len(tokens)-1]
-				this.destroyContainer(e, container)
+				err = e.DestroyContainer(container)
+				if err != nil {
+					fmt.Fprintf(dimLogger, "warn: Encountered error while destroying container '%v': %v", container, err)
+				}
 			}
 		}
 

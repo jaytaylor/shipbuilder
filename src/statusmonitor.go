@@ -117,7 +117,7 @@ func (this *Server) monitorFreeMemory() {
 		case result := <-myChan:
 			if deployLock.validateLatest(result.DeployCounter) {
 				hostStatusMap[result.Host] = result
-				this.pruneDynos(result)
+				this.PruneDynos(result)
 			}
 
 		case request := <-nodeStatusRequestChannel:
@@ -140,6 +140,6 @@ func (this *Server) getNodeStatus(node *Node) NodeStatus {
 	request := NodeStatusRequest{node.Host, make(chan NodeStatus)}
 	nodeStatusRequestChannel <- request
 	status := <-request.resultChannel
-	fmt.Printf("boom! %v\n", status)
+	//fmt.Printf("boom! %v\n", status)
 	return status
 }

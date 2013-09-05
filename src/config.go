@@ -65,6 +65,7 @@ var (
 	defaultSshHost            string
 	defaultSshKey             string
 	defaultLxcFs              string
+	defaultZfsPool            string
 )
 
 // Global configuration.
@@ -76,6 +77,7 @@ var (
 	awsRegion    = getAwsRegion("SB_AWS_REGION", defaultAwsRegion)
 	s3BucketName = OverridableByEnv("SB_S3_BUCKET", defaultS3BucketName)
 	lxcFs        = OverridableByEnv("LXC_FS", defaultLxcFs)
+	zfsPool      = OverridableByEnv("ZFS_POOL", defaultZfsPool)
 )
 
 var (
@@ -100,6 +102,9 @@ func (this *Application) LocalAppDir() string {
 }
 func (this *Application) LocalSrcDir() string {
 	return APP_DIR + "/src"
+}
+func (this *Application) BaseContainerName() string {
+	return "base-" + this.BuildPack
 }
 func (this *Application) GitDir() string {
 	return GIT_DIRECTORY + "/" + this.Name
@@ -181,6 +186,12 @@ func (this *Application) CalcPreviousVersion() (string, error) {
 		return "", err
 	}
 	return "v" + strconv.Itoa(v-1), nil
+}
+func (this *Application) CreateBaseContainerIfMissing(e *Executor) error {
+	if !e.ContainerExists(this.Name) {
+		return e.CloneContainer(this.BaseContainerName(), this.Name)
+	}
+	return nil
 }
 
 func (this *Server) IncrementAppVersion(app *Application) (*Application, *Config, error) {
