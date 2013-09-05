@@ -17,6 +17,7 @@ import (
 
 type (
 	Deployment struct {
+		StartedTs   time.Time
 		Server      *Server
 		Logger      io.Writer
 		Application *Application
@@ -602,7 +603,8 @@ func (this *Deployment) postDeployHooks() {
 		return
 	}
 
-	message := "Deployed " + this.Application.Name + " " + this.Version + " (" + this.Revision[0:7] + ")."
+	duration := time.Since(this.StartedTs)
+	message := "Deployed " + this.Application.Name + " " + this.Version + " in " + duration.String() + " (" + this.Revision[0:7] + ")."
 
 	if strings.Contains(theUrl, "https://api.hipchat.com/v1/rooms/message") {
 		theUrl += "&notify=0&from=ShipBuilder&message_format=text&message=" + url.QueryEscape(message)
@@ -687,6 +689,7 @@ func (this *Server) Deploy(conn net.Conn, applicationName, revision string) erro
 			Application: app,
 			Revision:    revision,
 			Version:     app.LastDeploy,
+			StartedTs:   time.Now(),
 		}
 		err = deployment.Deploy()
 		if err != nil {
@@ -720,6 +723,7 @@ func (this *Server) Redeploy(conn net.Conn, applicationName string) error {
 			Config:      cfg,
 			Application: app,
 			Version:     app.LastDeploy,
+			StartedTs:   time.Now(),
 		}
 		// Find the release that corresponds with the latest deploy.
 		releases, err := getReleases(applicationName)
@@ -803,6 +807,7 @@ func (this *Server) Rescale(conn net.Conn, applicationName string, args map[stri
 			Config:      cfg,
 			Application: app,
 			Version:     app.LastDeploy,
+			StartedTs:   time.Now(),
 			ScalingOnly: true,
 		}
 		return deployment.Deploy()

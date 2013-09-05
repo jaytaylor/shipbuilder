@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"time"
 )
 
 func (this *Server) Rollback(conn net.Conn, applicationName, version string) error {
@@ -36,6 +37,7 @@ func (this *Server) Rollback(conn net.Conn, applicationName, version string) err
 			Config:      cfg,
 			Application: app,
 			Version:     app.LastDeploy,
+			StartedTs:   time.Now(),
 		}
 
 		// Cleanup any hanging chads upon error.
