@@ -11,8 +11,14 @@ func (this *Server) Reset_App(conn net.Conn, applicationName string) error {
 		e := Executor{dimLogger}
 
 		fmt.Fprintf(titleLogger, "=== Resetting %v\n", app.Name)
-		this.destroyContainer(e, app.Name)
+
+		err := e.DestroyContainer(app.Name)
+		if err != nil {
+			return err
+		}
+
 		fmt.Fprintf(dimLogger, "Destroyed base image for %v, dependencies will be refreshed upon next deploy\n", app.Name)
+
 		return nil
 	})
 }

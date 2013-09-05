@@ -28,19 +28,27 @@ func (this *Executor) Run(name string, args ...string) error {
 func injectsshParameters(args ...string) []string {
 	return append([]string{"-o", "StrictHostKeyChecking no", "-o", "BatchMode yes"}, args...)
 }
+
+// Run a pre-quoted bash command.
 func (this *Executor) BashCmd(cmd string) error {
 	return this.Run("sudo", "/bin/bash", "-c", cmd)
 }
+
+// Check if a container exists locally.
 func (this *Executor) ContainerExists(name string) bool {
 	_, err := os.Stat(LXC_DIR + "/" + name)
 	return err == nil
 }
+
+// Start a local container.
 func (this *Executor) StartContainer(name string) error {
 	if this.ContainerExists(name) {
 		return this.Run("sudo", "lxc-start", "-d", "-n", name)
 	}
 	return nil // Don't operate on non-existent containers.
 }
+
+// Stop a local container.
 func (this *Executor) StopContainer(name string) error {
 	if this.ContainerExists(name) {
 		return this.Run("sudo", "lxc-stop", "-k", "-n", name)
@@ -48,6 +56,7 @@ func (this *Executor) StopContainer(name string) error {
 	return nil // Don't operate on non-existent containers.
 }
 
+// Destroy a local container.
 // NB: If using zfs, any child snapshot containers will be recursively destroyed to be able to destroy the requested container.
 func (this *Executor) DestroyContainer(name string) error {
 	if this.ContainerExists(name) {
@@ -62,6 +71,7 @@ func (this *Executor) DestroyContainer(name string) error {
 	return nil // Don't operate on non-existent containers.
 }
 
+// This is used internally when the filesystem type if zfs.
 // Recursively destroys children of the requested container before destroying.  This should only be invoked by an Executor to destroy containers.
 func (this *Executor) zfsDestroyContainerAndChildren(name string) error {
 	// NB: This is not working yet, and may not be required.
@@ -111,10 +121,12 @@ func (this *Executor) zfsRunAndResistDatasetIsBusy(cmd string, args ...string) e
 	return err
 }
 
+// Clone a local container.
 func (this *Executor) CloneContainer(oldName, newName string) error {
 	return this.Run("sudo", "lxc-clone", "-s", "-B", lxcFs, "-o", oldName, "-n", newName)
 }
 
+// Run a command in a local container.
 func (this *Executor) AttachContainer(name string, args ...string) *exec.Cmd {
 	return exec.Command("sudo", append([]string{"lxc-attach", "-n", name, "--", "sudo", "-u", "ubuntu", "--"}, args...)...)
 }

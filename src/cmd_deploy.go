@@ -615,7 +615,8 @@ func (this *Deployment) postDeployHooks() {
 }
 
 func (this *Deployment) undoVersionBump() {
-	this.Server.destroyContainer(Executor{this.Logger}, this.Application.Name+DYNO_DELIMITER+this.Version)
+	e := Executor{this.Logger}
+	e.DestroyContainer(this.Application.Name + DYNO_DELIMITER + this.Version)
 	this.Server.WithPersistentApplication(this.Application.Name, func(app *Application, cfg *Config) error {
 		// If the version hasn't been messed with since we incremented it, go ahead and decrement it because
 		// this deploy has failed.

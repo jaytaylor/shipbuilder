@@ -106,10 +106,7 @@ def main(argv):
     global container
     #print 'main argv={0}'.format(argv)
     container = argv[1]
-    process = argv[1].split('` + DYNO_DELIMITER + `')[-3] # Process is always 3 from the end.
-
-    app = container.rsplit('` + DYNO_DELIMITER + `', 3)[0] # Get rid of port + version.
-    port = container.split('` + DYNO_DELIMITER + `')[-1] # Port is always at the end.
+    app, version, process, port = container.split('` + DYNO_DELIMITER + `') # Format is app_version_process_port
 
     # For safety, even though it's unlikley, try to kill/shutdown any existing container with the same name.
     subprocess.call(['/usr/bin/lxc-stop -k -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)

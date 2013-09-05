@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
+	//"strconv"
 	"time"
 
 	"launchpad.net/goamz/aws"
@@ -19,12 +19,15 @@ type Release struct {
 	Config   map[string]string
 }
 
+var (
+	awsAuth aws.Auth = aws.Auth{awsKey, awsSecret}
+)
+
 func getS3Bucket() *s3.Bucket {
-	auth := aws.Auth{awsKey, awsSecret}
-	return s3.New(auth, awsRegion).Bucket(s3BucketName)
+	return s3.New(awsAuth, awsRegion).Bucket(s3BucketName)
 }
 
-func getNextReleaseVersion(applicationName string) (string, error) {
+/*func getNextReleaseVersion(applicationName string) (string, error) {
 	releases, err := getReleases(applicationName)
 	if err != nil {
 		return "", err
@@ -39,7 +42,7 @@ func getNextReleaseVersion(applicationName string) (string, error) {
 	}
 	fmt.Printf("Next version for %v will be %v", applicationName, version)
 	return version, nil
-}
+}*/
 
 func getReleases(applicationName string) ([]Release, error) {
 	var releases []Release
@@ -47,6 +50,15 @@ func getReleases(applicationName string) ([]Release, error) {
 		"/releases/" + applicationName + "/manifest.json",
 	)
 	if err != nil {
+		if err.Error() == "The specified key does not exist." {
+			// The manifest.json file for this app was missing, fill in an empty releases list and continue on our way.
+			err = setReleases(applicationName, []Release{})
+			if err != nil {
+				return releases, err
+			}
+			fmt.Printf("warn: getReleases S3 key was missing for application \"%v\", so an empty releases list was set", applicationName)
+			return []Release{}, err
+		}
 		return releases, err
 	}
 	err = json.Unmarshal(bs, &releases)
@@ -66,7 +78,7 @@ func setReleases(applicationName string, releases []Release) error {
 }
 func delReleases(applicationName string, logger io.Writer) error {
 	bucket := getS3Bucket()
-	keys, err := bucket.List("releases/"+applicationName, "/releases/"+applicationName, "", 9999999)
+	keys, err := bucket.List("releases/"+applicationName, "/releases/"+applicationName, "", 999999)
 	if err != nil {
 		return err
 	}
