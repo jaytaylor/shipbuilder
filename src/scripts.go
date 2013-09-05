@@ -20,7 +20,7 @@ while read oldrev newrev refname; do
 done`
 
 	LOGIN_SHELL = `#!/usr/bin/env bash
-/usr/bin/envdir /app/env /bin/bash`
+/usr/bin/envdir ` + ENV_DIR + ` /bin/bash`
 )
 
 var POSTDEPLOY = `#!/usr/bin/python -u
@@ -141,7 +141,7 @@ while read line || [ -n "$line" ]; do
     process="${{line%%:*}}"
     command="${{line#*: }}"
     if [ "$process" == "{process}" ]; then
-        envdir ../env /bin/bash -c "${{command}} 2>&1 | /app/` + BINARY + ` logger -h{host} -a{app} -p{process}.{port}"
+        envdir ` + ENV_DIR + ` /bin/bash -c "${{command}} 2>&1 | /app/` + BINARY + ` logger -h{host} -a{app} -p{process}.{port}"
     fi
 done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, app=app)
     runScriptFileName = '/var/lib/lxc/{0}/rootfs/app/run'.format(container)

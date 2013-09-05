@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -128,5 +129,18 @@ func (this *Executor) CloneContainer(oldName, newName string) error {
 
 // Run a command in a local container.
 func (this *Executor) AttachContainer(name string, args ...string) *exec.Cmd {
-	return exec.Command("sudo", append([]string{"lxc-attach", "-n", name, "--", "sudo", "-u", "ubuntu", "--"}, args...)...)
+	// Add hosts entry for container name to avoid error upon entering shell: "sudo: unable to resolve host `name`".
+	err := exec.Command("sudo", "/bin/bash", "-c", `echo "127.0.0.1`+"\t"+name+`" | sudo tee -a `+LXC_DIR+"/"+name+`/rootfs/etc/hosts`).Run()
+	if err != nil {
+		fmt.Fprintf(this.logger, "warn: host fix command failed for container '%v': %v\n", name, err)
+	}
+
+	prependArgs := []string{"lxc-attach", "-n", name, "--", "sudo", "-u", "ubuntu", "-n", "-i", "--", "/usr/bin/envdir", ENV_DIR}
+	if len(args) == 0 {
+		args = append(prependArgs, "/bin/bash")
+	} else {
+		args = append(prependArgs, args...)
+	}
+	fmt.Printf("AttachContainer name=%v, cmd=%v\n", name, args)
+	return exec.Command("sudo", args...)
 }

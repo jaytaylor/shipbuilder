@@ -40,6 +40,7 @@ type (
 
 const (
 	APP_DIR                    = "/app"
+	ENV_DIR                    = APP_DIR + "/env"
 	LXC_DIR                    = "/var/lib/lxc"
 	DIRECTORY                  = "/mnt/build"
 	BINARY                     = "shipbuilder"
