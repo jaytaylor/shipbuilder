@@ -276,7 +276,7 @@ def main(argv):
 
     if lxcFs == 'zfs':
         try:
-            retriableCommand('/sbin/zfs', 'destroy', '-R', zfsPool + '/' + container)
+            retriableCommand('/sbin/zfs', 'destroy', '-r', zfsPool + '/' + container)
         except subprocess.CalledProcessError, e:
             print 'warn: zfs destroy command failed: {0}'.format(e)
 
