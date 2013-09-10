@@ -54,6 +54,10 @@ func (this *Server) Rollback(conn net.Conn, applicationName, version string) err
 		if err != nil {
 			return err
 		}
+		err = deployment.archive()
+		if err != nil {
+			return err
+		}
 		err = deployment.deploy()
 		if err != nil {
 			return err
