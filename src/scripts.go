@@ -246,7 +246,7 @@ def ipsForRulesMatchingPort(chain, port):
     # NB: 'exit 0' added to avoid exit status code 1 when there were no results.
     rawOutput = subprocess.check_output(
         [
-            '/sbin/iptables --table nat --list {0} --numeric | grep -E -o "[0-9.]+:{1}" | grep -E -o "^[^:]+"; exit 0' \
+            '/sbin/iptables --table nat --list {0} --numeric | grep -E --only-matching "[0-9.]+:{1}" | grep -E --only-matching "^[^:]+"; exit 0' \
                 .format(chain, port),
         ],
         shell=True,
@@ -275,7 +275,10 @@ def main(argv):
     subprocess.check_call(['/usr/bin/lxc-stop', '-k', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
 
     if lxcFs == 'zfs':
-        retriableCommand('/sbin/zfs', 'destroy', '-R', zfsPool + '/' + container)
+        try:
+            retriableCommand('/sbin/zfs', 'destroy', '-R', zfsPool + '/' + container)
+        except subprocess.CalledProcessError, e:
+            print 'warn: zfs destroy command failed: {0}'.format(e)
 
     retriableCommand('/usr/bin/lxc-destroy', '-n', container)
 

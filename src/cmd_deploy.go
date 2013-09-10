@@ -133,7 +133,7 @@ func (this *Deployment) prepareEnvironmentVariables(e Executor) error {
 func (this *Deployment) prepareShellEnvironment(e Executor) error {
 	// Update the container's /etc/passwd file to use the `envdirbash` script and /app/src as the user's home directory.
 	escapedAppSrc := strings.Replace(this.Application.LocalSrcDir(), "/", `\/`, -1)
-	err = e.Run("sudo",
+	err := e.Run("sudo",
 		"sed", "-i",
 		`s/^\(`+DEFAULT_NODE_USERNAME+`:.*:\):\/home\/`+DEFAULT_NODE_USERNAME+`:\/bin\/bash$/\1:`+escapedAppSrc+`:\/bin\/bash/g`,
 		this.Application.RootFsDir()+"/etc/passwd",
