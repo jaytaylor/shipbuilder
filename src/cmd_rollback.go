@@ -8,6 +8,9 @@ import (
 
 func (this *Server) Rollback(conn net.Conn, applicationName, version string) error {
 	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
+		deployLock.start()
+		defer deployLock.finish()
+
 		if app.LastDeploy == "" {
 			return fmt.Errorf("Automatic rollback version detection is impossible because this app has not had any releases")
 		}
