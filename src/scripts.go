@@ -177,13 +177,14 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
             try:
                 subprocess.check_call([
                     '/usr/bin/curl',
-                    '-sL',
-                    '-w', '"%{http_code} %{url_effective}\\n"',
+                    '--silent',
+                    '--output', '/dev/null',
+                    '--write-out', '%{http_code} %{url_effective}\n',
                     '{0}:{1}/'.format(ip, port),
-                    '-o', '/dev/null',
                 ], stderr=sys.stderr, stdout=sys.stdout)
             except subprocess.CalledProcessError, e:
-                sys.stderr.write('- curl http check failed: {0}\n'.format(e))
+                sys.stderr.write('- error: curl http check failed, {0}\n'.format(e))
+                sys.exit(1)
 
     else:
         log('- error retrieving ip')
