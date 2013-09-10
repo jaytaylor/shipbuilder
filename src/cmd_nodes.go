@@ -36,7 +36,7 @@ func (this *Server) SyncContainer(e Executor, address string, container string, 
 		"--numeric-ids",
 		"-e", "ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes'",
 		LXC_DIR+"/"+container+"/rootfs/",
-		"root@"+address+":/var/lib/lxc/base/rootfs/",
+		"root@"+address+":"+LXC_DIR+"/base/rootfs/",
 	)
 	if err != nil {
 		return err

@@ -32,7 +32,7 @@ container = None
 log = lambda message: sys.stdout.write('[{0}] {1}\n'.format(container, message))
 
 def getIp(name):
-    with open('/var/lib/lxc/' + name + '/rootfs/app/ip') as f:
+    with open('` + LXC_DIR + `/' + name + '/rootfs/app/ip') as f:
         return f.read().split('/')[0]
 
 def modifyIpTables(action, chain, ip, port):
@@ -123,7 +123,7 @@ def main(argv):
     # This line, if present, will prevent the container from booting.
     #log('scrubbing any "lxc.cap.drop = mac_{0}" lines from container config'.format(container))
     subprocess.check_call(
-        ['sed', '-i', '/lxc.cap.drop = mac_{0}/d'.format(container), '/var/lib/lxc/{0}/config'.format(container)],
+        ['sed', '-i', '/lxc.cap.drop = mac_{0}/d'.format(container), '` + LXC_DIR + `/{0}/config'.format(container)],
         stdout=sys.stdout,
         stderr=sys.stderr
     )
@@ -144,7 +144,7 @@ while read line || [ -n "$line" ]; do
         envdir ` + ENV_DIR + ` /bin/bash -c "${{command}} 2>&1 | /app/` + BINARY + ` logger -h{host} -a{app} -p{process}.{port}"
     fi
 done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, app=app)
-    runScriptFileName = '/var/lib/lxc/{0}/rootfs/app/run'.format(container)
+    runScriptFileName = '` + LXC_DIR + `/{0}/rootfs/app/run'.format(container)
     with open(runScriptFileName, 'w') as fh:
         fh.write(runScript)
     # Chmod to be executable.
