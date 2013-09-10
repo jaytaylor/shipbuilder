@@ -113,6 +113,11 @@ func (this *Deployment) createContainer() error {
 	if this.err != nil {
 		return this.err
 	}
+	// Clear out and remove all git files from the container; they are unnecessary from this point forward.
+	this.err = e.BashCmd(`find ` + this.Application.SrcDir() + ` -regex '^.*\.git\(ignore\|modules\)?$' -exec rm -rf {} \;`)
+	if this.err != nil {
+		return err
+	}
 	return nil
 }
 
