@@ -16,6 +16,7 @@ import (
 )
 
 type (
+	// `ScalingOnly`: Flag to indicate whether this is a new release or a scaling activity.
 	Deployment struct {
 		StartedTs   time.Time
 		Server      *Server
@@ -24,7 +25,7 @@ type (
 		Config      *Config
 		Revision    string
 		Version     string
-		ScalingOnly bool // Flag to indicate whether this is a new release or a scaling activity.
+		ScalingOnly bool
 		err         error
 	}
 	DeployLock struct {
@@ -34,24 +35,30 @@ type (
 	}
 )
 
+// Notify the DeployLock of a newly started deployment.
 func (this *DeployLock) start() {
 	this.mutex.Lock()
 	this.numStarted++
 	this.mutex.Unlock()
 }
 
+// Mark a deployment as completed.
 func (this *DeployLock) finish() {
 	this.mutex.Lock()
 	this.numFinished++
 	this.mutex.Unlock()
 }
 
+// Obtain the current number of started deploys.  Used as a marker by the
+// Dyno cleanup system to protect against taking action with stale data.
 func (this *DeployLock) value() int {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 	return this.numStarted
 }
 
+// Return true if and only if no deploys are in progress and if a possibly
+// out-of-date value matches the current DeployLock.numStarted value.
 func (this *DeployLock) validateLatest(value int) bool {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
@@ -97,9 +104,7 @@ func (this *Deployment) createContainer() error {
 		return this.err
 	}
 	// Convert references to submodules to be read-only.
-	this.err = e.BashCmd(
-		"if [ -f '" + this.Application.SrcDir() + "/.gitmodules' ]; then echo 'converting submodule refs to be read-only'; sed -i 's,git@github.com:,git://github.com/,g' '" + this.Application.SrcDir() + "/.gitmodules'; else echo 'project does not appear to have any submodules'; fi",
-	)
+	this.err = e.BashCmd(`test -f '` + this.Application.SrcDir() + `/.gitmodules' && echo 'git: converting submodule refs to be read-only' && sed -i 's,git@github.com:,git://github.com/,g' '` + this.Application.SrcDir() + `/.gitmodules' || echo 'git: project does not appear to have any submodules'`)
 	if this.err != nil {
 		return this.err
 	}

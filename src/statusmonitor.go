@@ -9,12 +9,14 @@ import (
 )
 
 type (
+	// `Ts`: No need to specify, will be automatically filled by `.ParseStatus()`.
 	NodeStatus struct {
-		Host          string
-		FreeMemoryMb  int
-		Containers    []string
-		DeployCounter int
-		Err           error
+		Host         string
+		FreeMemoryMb int
+		Containers   []string
+		DeployMarker int
+		Ts           time.Time
+		Err          error
 	}
 	NodeStatusRequest struct {
 		host          string
@@ -22,9 +24,11 @@ type (
 	}
 )
 
-var nodeStatusRequestChannel = make(chan NodeStatusRequest)
+var (
+	nodeStatusRequestChannel = make(chan NodeStatusRequest)
+)
 
-func remoteCommand(sshHost string, sshArgs ...string) (string, error) {
+func RemoteCommand(sshHost string, sshArgs ...string) (string, error) {
 	sshFrontArgs := []string{DEFAULT_NODE_USERNAME + "@" + sshHost, "-o", "StrictHostKeyChecking no", "-o", "BatchMode yes"}
 	sshCombinedArgs := append(sshFrontArgs, sshArgs...)
 
@@ -38,7 +42,7 @@ func remoteCommand(sshHost string, sshArgs ...string) (string, error) {
 	return string(bs), nil
 }
 
-func (this *NodeStatus) parse(input string, err error) {
+func (this *NodeStatus) ParseStatus(input string, err error) {
 	if err != nil {
 		this.Err = err
 		return
@@ -57,21 +61,22 @@ func (this *NodeStatus) parse(input string, err error) {
 	}
 
 	this.Containers = tokens[1:]
+	this.Ts = time.Now()
 }
 
-func checkServer(sshHost string, currentDeployCounter int, ch chan NodeStatus) {
+func checkServer(sshHost string, currentDeployMarker int, ch chan NodeStatus) {
 	// Shell command which combines free MB with list of running containers.
 	statusCheck := `echo $(free -m | sed '1,2d' | head -n1 | grep --only '[0-9]\+$') $(sudo lxc-ls --fancy | grep '[^ ]\+ \+RUNNING \+' | cut -f1 -d' ' | tr '\n' ' ')`
 	done := make(chan NodeStatus)
 	go func() {
 		result := NodeStatus{
-			Host:          sshHost,
-			FreeMemoryMb:  -1,
-			Containers:    nil,
-			DeployCounter: currentDeployCounter,
-			Err:           nil,
+			Host:         sshHost,
+			FreeMemoryMb: -1,
+			Containers:   nil,
+			DeployMarker: currentDeployMarker,
+			Err:          nil,
 		}
-		result.parse(remoteCommand(sshHost, statusCheck))
+		result.ParseStatus(RemoteCommand(sshHost, statusCheck))
 		done <- result
 	}()
 	select {
@@ -79,11 +84,11 @@ func checkServer(sshHost string, currentDeployCounter int, ch chan NodeStatus) {
 		ch <- result // Sends result to channel.
 	case <-time.After(15 * time.Second):
 		ch <- NodeStatus{
-			Host:          sshHost,
-			FreeMemoryMb:  -1,
-			Containers:    nil,
-			DeployCounter: currentDeployCounter,
-			Err:           fmt.Errorf("Timed out for host %v", sshHost),
+			Host:         sshHost,
+			FreeMemoryMb: -1,
+			Containers:   nil,
+			DeployMarker: currentDeployMarker,
+			Err:          fmt.Errorf("Timed out for host %v", sshHost),
 		} // Sends timeout result to channel.
 	}
 }
@@ -93,29 +98,29 @@ func (this *Server) checkNodes(resultChan chan NodeStatus) error {
 	if err != nil {
 		return err
 	}
-	currentDeployCounter := deployLock.value()
+	currentDeployMarker := deployLock.value()
 
 	for _, node := range cfg.Nodes {
-		go checkServer(node.Host, currentDeployCounter, resultChan)
+		go checkServer(node.Host, currentDeployMarker, resultChan)
 	}
 	return nil
 }
 
 func (this *Server) monitorFreeMemory() {
-	repeater := time.Tick(15 * time.Second)
-	myChan := make(chan NodeStatus)
-	hostStatusMap := make(map[string]NodeStatus)
+	repeater := time.Tick(STATUS_MONITOR_INTERVAL_SECONDS * time.Second)
+	nodeStatusChan := make(chan NodeStatus)
+	hostStatusMap := map[string]NodeStatus{}
 
 	// Kick off the initial checks so we don't have to wait for the next tick.
-	this.checkNodes(myChan)
+	this.checkNodes(nodeStatusChan)
 
 	for {
 		select {
 		case <-repeater:
-			this.checkNodes(myChan)
+			this.checkNodes(nodeStatusChan)
 
-		case result := <-myChan:
-			if deployLock.validateLatest(result.DeployCounter) {
+		case result := <-nodeStatusChan:
+			if deployLock.validateLatest(result.DeployMarker) {
 				hostStatusMap[result.Host] = result
 				this.PruneDynos(result)
 			}
@@ -124,11 +129,11 @@ func (this *Server) monitorFreeMemory() {
 			status, ok := hostStatusMap[request.host]
 			if !ok {
 				status = NodeStatus{
-					Host:          request.host,
-					FreeMemoryMb:  -1,
-					Containers:    nil,
-					DeployCounter: -1,
-					Err:           fmt.Errorf("Unknown host %v", request.host),
+					Host:         request.host,
+					FreeMemoryMb: -1,
+					Containers:   nil,
+					DeployMarker: -1,
+					Err:          fmt.Errorf("Unknown host %v", request.host),
 				}
 			}
 			request.resultChannel <- status
