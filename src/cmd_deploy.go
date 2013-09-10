@@ -690,7 +690,6 @@ func (this *Server) Deploy(conn net.Conn, applicationName, revision string) erro
 		if err != nil {
 			return err
 		}
-		app.LastDeploy = deployment.Version
 		return nil
 	})
 }
