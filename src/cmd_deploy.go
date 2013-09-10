@@ -111,7 +111,7 @@ func (this *Deployment) createContainer() error {
 	return nil
 }
 
-func (this *Deployment) prepareEnvironmentVariables(e Executor) error {
+func (this *Deployment) prepareEnvironmentVariables(e *Executor) error {
 	// Write out the environmental variables.
 	err := e.BashCmd("rm -rf " + this.Application.AppDir() + "/env")
 	if err != nil {
@@ -130,7 +130,7 @@ func (this *Deployment) prepareEnvironmentVariables(e Executor) error {
 	return nil
 }
 
-func (this *Deployment) prepareShellEnvironment(e Executor) error {
+func (this *Deployment) prepareShellEnvironment(e *Executor) error {
 	// Update the container's /etc/passwd file to use the `envdirbash` script and /app/src as the user's home directory.
 	escapedAppSrc := strings.Replace(this.Application.LocalSrcDir(), "/", `\/`, -1)
 	err := e.Run("sudo",
@@ -149,7 +149,7 @@ func (this *Deployment) prepareShellEnvironment(e Executor) error {
 	return nil
 }
 
-func (this *Deployment) prepareAppFilePermissions(e Executor) error {
+func (this *Deployment) prepareAppFilePermissions(e *Executor) error {
 	// Chown the app src & output to default user by grepping the uid+gid from /etc/passwd in the container.
 	return e.BashCmd(
 		"touch " + this.Application.AppDir() + "/out && " +
@@ -160,11 +160,33 @@ func (this *Deployment) prepareAppFilePermissions(e Executor) error {
 	)
 }
 
+// Disable unnecessary services in container.
+func (this *Deployment) prepareDisabledServices(e *Executor) error {
+	// Disable `ondemand` power-saving service by unlinking it from /etc/rc*.d.
+	err := e.BashCmd(`find ` + this.Application.RootFsDir() + `/etc/rc*.d/ -wholename '*/S*ondemand' -exec unlink {} \;`)
+	if err != nil {
+		return err
+	}
+	// Disable `ntpdate` client from being triggered when networking comes up.
+	err = e.BashCmd(`chmod a-x ` + this.Application.RootFsDir() + `/etc/network/if-up.d/ntpdate`)
+	if err != nil {
+		return err
+	}
+	// Disable auto-start for unnecessary services in /etc/init/*.conf, such as: SSH, rsyslog, cron, tty1-6, and udev.
+	for _, service := range []string{"ssh", "rsyslog", "cron", "tty1", "tty2", "tty3", "tty4", "tty5", "tty6", "udev"} {
+		err = e.BashCmd("echo 'manual' > " + this.Application.RootFsDir() + "/etc/init/" + service + ".override")
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (this *Deployment) build() error {
 	dimLogger := NewFormatter(this.Logger, DIM)
 	titleLogger := NewFormatter(this.Logger, GREEN)
 
-	e := Executor{dimLogger}
+	e := &Executor{dimLogger}
 
 	fmt.Fprintf(titleLogger, "Building image\n")
 
@@ -239,6 +261,10 @@ func (this *Deployment) build() error {
 		return err
 	}
 	err = this.prepareAppFilePermissions(e)
+	if err != nil {
+		return err
+	}
+	err = this.prepareDisabledServices(e)
 	if err != nil {
 		return err
 	}
