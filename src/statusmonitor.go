@@ -55,7 +55,7 @@ func (this *NodeStatus) ParseStatus(input string, err error) {
 }
 
 func RemoteCommand(sshHost string, sshArgs ...string) (string, error) {
-	sshFrontArgs := []string{DEFAULT_NODE_USERNAME + "@" + sshHost, "-o", "StrictHostKeyChecking no", "-o", "BatchMode yes"}
+	sshFrontArgs := append([]string{DEFAULT_NODE_USERNAME + "@" + sshHost}, defaultSshParametersList...)
 	sshCombinedArgs := append(sshFrontArgs, sshArgs...)
 
 	//fmt.Printf("debug: cmd is -> ssh %v <-\n", sshCombinedArgs)

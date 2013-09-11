@@ -34,7 +34,7 @@ func (this *Server) SyncContainer(e Executor, address string, container string, 
 		"--delete",
 		"--xattrs",
 		"--numeric-ids",
-		"-e", "ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes'",
+		"-e", "ssh "+DEFAULT_SSH_PARAMETERS,
 		LXC_DIR+"/"+container+"/rootfs/",
 		"root@"+address+":"+LXC_DIR+"/base/rootfs/",
 	)

@@ -17,7 +17,8 @@ type (
 
 func (this *Executor) Run(name string, args ...string) error {
 	if name == "ssh" {
-		args = injectsshParameters(args...)
+		// Automatically inject ssh parameters.
+		args = append(defaultSshParametersList, args...)
 	}
 	io.WriteString(this.logger, "$ "+name+" "+strings.Join(args, " ")+"\n")
 	cmd := exec.Command(name, args...)
@@ -25,9 +26,6 @@ func (this *Executor) Run(name string, args ...string) error {
 	cmd.Stderr = this.logger
 	err := cmd.Run()
 	return err
-}
-func injectsshParameters(args ...string) []string {
-	return append([]string{"-o", "StrictHostKeyChecking no", "-o", "BatchMode yes"}, args...)
 }
 
 // Run a pre-quoted bash command.

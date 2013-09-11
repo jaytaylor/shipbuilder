@@ -53,6 +53,7 @@ const (
 	DYNO_START_TIMEOUT_SECONDS      = 120
 	DEPLOY_TIMEOUT_SECONDS          = 240
 	STATUS_MONITOR_INTERVAL_SECONDS = 15
+	DEFAULT_SSH_PARAMETERS          = "-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30" // NB: Notice 30s connect timeout.
 )
 
 // LDFLAGS can be specified by compiling with `-ldflags '-X main.defaultSshHost=.. ...'`.
@@ -76,15 +77,16 @@ var (
 	sshKey       = OverridableByEnv("SB_SSH_KEY", defaultSshKey)
 	awsKey       = OverridableByEnv("SB_AWS_KEY", defaultAwsKey)
 	awsSecret    = OverridableByEnv("SB_AWS_SECRET", defaultAwsSecret)
-	awsRegion    = getAwsRegion("SB_AWS_REGION", defaultAwsRegion)
+	awsRegion    = GetAwsRegion("SB_AWS_REGION", defaultAwsRegion)
 	s3BucketName = OverridableByEnv("SB_S3_BUCKET", defaultS3BucketName)
 	lxcFs        = OverridableByEnv("LXC_FS", defaultLxcFs)
 	zfsPool      = OverridableByEnv("ZFS_POOL", defaultZfsPool)
 )
 
 var (
-	configLock           sync.Mutex
-	syncLoadBalancerLock sync.Mutex
+	defaultSshParametersList = strings.Split(DEFAULT_SSH_PARAMETERS, " ")
+	configLock               sync.Mutex
+	syncLoadBalancerLock     sync.Mutex
 )
 
 func (this *Application) LxcDir() string {
@@ -506,7 +508,7 @@ func (this *Server) SyncLoadBalancers(e Executor, addDynos []Dyno, removeDynos [
 
 	for _, lb := range cfg.LoadBalancers {
 		err := e.Run("rsync",
-			"-azve", "ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes'",
+			"-azve", "ssh "+DEFAULT_SSH_PARAMETERS,
 			"/tmp/haproxy.cfg", "root@"+lb+":/etc/haproxy/",
 		)
 		if err != nil {

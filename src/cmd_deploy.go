@@ -402,7 +402,7 @@ func (this *Deployment) syncNode(node *Node) error {
 		"--delete",
 		"--xattrs",
 		"--numeric-ids",
-		"-e", "ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes'",
+		"-e", "ssh "+DEFAULT_SSH_PARAMETERS,
 		this.Application.LxcDir()+"/rootfs/",
 		"root@"+node.Host+":"+this.Application.LxcDir()+"/rootfs/",
 	)
@@ -410,7 +410,7 @@ func (this *Deployment) syncNode(node *Node) error {
 		return err
 	}
 	err = e.Run("rsync",
-		"-azve", "ssh -o 'StrictHostKeyChecking no' -o 'BatchMode yes'",
+		"-azve", "ssh "+DEFAULT_SSH_PARAMETERS,
 		"/tmp/postdeploy.py", "/tmp/shutdown_container.py",
 		"root@"+node.Host+":/tmp/",
 	)

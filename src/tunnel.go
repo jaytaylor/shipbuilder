@@ -17,7 +17,7 @@ type (
 func OpenTunnel() (Tunnel, error) {
 	fmt.Printf("Client connecting via '%v'..\n", sshHost)
 
-	sshArgs := []string{"-o", "StrictHostKeyChecking no", "-o", "BatchMode yes", "-N", "-L", "9999:127.0.0.1:9999"}
+	sshArgs := append(defaultSshParametersList, "-N", "-L", "9999:127.0.0.1:9999")
 	if len(sshKey) > 0 {
 		sshArgs = append(sshArgs, "-i", sshKey)
 	}
