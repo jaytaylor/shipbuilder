@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -635,8 +636,10 @@ func (this *Deployment) postDeployHooks() {
 		return
 	}
 
-	duration := time.Since(this.StartedTs)
-	message := "Deployed " + this.Application.Name + " " + this.Version + " in " + duration.String() + " (" + this.Revision[0:7] + ")."
+	durationFractionStripper, _ := regexp.Compile(`^(.*)\.[0-9]*(s)$`)
+	duration := durationFractionStripper.ReplaceAllString(time.Since(this.StartedTs).String(), "$1$2")
+
+	message := "Deployed " + this.Application.Name + " " + this.Version + " in " + duration + " (" + this.Revision[0:7] + ")."
 
 	if strings.Contains(theUrl, "https://api.hipchat.com/v1/rooms/message") {
 		theUrl += "&notify=0&from=ShipBuilder&message_format=text&message=" + url.QueryEscape(message)
