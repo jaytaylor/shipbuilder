@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -259,75 +260,7 @@ func (this *Server) getConfig(lock bool) (*Config, error) {
 	return &config, nil
 }
 
-// // This function exists to adhere to D.R.Y. WRT config updates.
-// // Only to be invoked by safe locking getters/setters, never externally!!!
-// func (this *Server) saveConfig(lock bool, fn func(*Config) error) error {
-// 	config, err := this.getConfig(lock)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	err = fn(config)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	if lock {
-// 		configLock.Lock()
-// 		defer configLock.Unlock()
-// 	}
-
-// 	f, err := os.Create(CONFIG)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer f.Close()
-// 	err = json.NewEncoder(f).Encode(config)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	return nil
-// }
-
-// // Only to be invoked by safe locking getters/setters, never externally!!!
-// func (this *Server) saveApplicationConfig(lock bool, app *Application) error {
-// 	return saveConfig(lock, func(config *Config) error {
-// 		// Update or append app.
-// 		found := false
-// 		for i, a := range config.Applications {
-// 			if a.Name == app.Name {
-// 				found = true
-// 				config.Applications[i] = app
-// 			}
-// 		}
-// 		if !found {
-// 			config.Applications = append(config.Applications, app)
-// 		}
-// 		return nil
-// 	})
-// }
-
-// // Only to be invoked by safe locking getters/setters, never externally!!!
-// func (this *Server) saveSystemConfig(lock bool, sys *System) error {
-// 	return saveConfig(lock, func(config *Config) error {
-// 		// Update System configuration.
-// 		config.System = sys
-// 		return nil
-// 	})
-// }
-
-// func (this *Server) withConfig(fn func(*Config) error) error {
-// 	cfg, err := this.getConfig()
-// 	if err != nil {
-// 		return err
-// 	}
-// 	err = fn(cfg)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	return this.saveConfig(cfg)
-// }
-
+// IMPORTANT: Only to be invoked by `WithPersistentConfig`.
 func (this *Server) writeConfig(config *Config) error {
 	f, err := os.Create(CONFIG)
 	if err != nil {
@@ -522,9 +455,44 @@ func (this *Server) SyncLoadBalancers(e Executor, addDynos []Dyno, removeDynos [
 		}
 	}
 
+	// Uddate `currentLoadBalancerConfig` with updated HAProxy configuration.
+	cfgBuffer := bytes.Buffer{}
+	err = HAPROXY_CONFIG.Execute(&cfgBuffer, lb)
+	if err != nil {
+		return err
+	}
+	this.currentLoadBalancerConfig = cfgBuffer.String()
+
+	// Pause briefly to ensure HAProxy has time to complete it's reload.
 	time.Sleep(time.Second * 1)
 
 	return nil
+}
+
+// The first time this method is invoked the current config will read from a load-balancer, if one is available.
+// Subsequent invocations will use the current version.
+// After a deployment, the `SyncLoadBalancers` method automatically updates `currentLoadBalancerConfig`.
+func (this *Server) GetActiveLoadBalancerConfig() (string, error) {
+	if len(this.currentLoadBalancerConfig) == 0 {
+		cfg, err := this.getConfig(true)
+		if err != nil {
+			return this.currentLoadBalancerConfig, err
+		}
+		if len(cfg.LoadBalancers) == 0 {
+			return this.currentLoadBalancerConfig, fmt.Errorf("There are currently no load-balancers configured to pull LB config from")
+		}
+
+		syncLoadBalancerLock.Lock()
+		defer syncLoadBalancerLock.Unlock()
+		this.currentLoadBalancerConfig, err = RemoteCommand(cfg.LoadBalancers[0], "sudo cat /etc/haproxy/haproxy.cfg")
+		if err != nil {
+			return this.currentLoadBalancerConfig, err
+		}
+	} else {
+		syncLoadBalancerLock.Lock()
+		defer syncLoadBalancerLock.Unlock()
+	}
+	return this.currentLoadBalancerConfig, nil
 }
 
 func PathExists(path string) (bool, error) {
@@ -575,7 +543,7 @@ func OverridableByEnv(key string, ldflagsValue string) string {
 }
 
 // Validate that the configured key exists in the provided options.
-func getAwsRegion(key string, ldflagsValue string) aws.Region {
+func GetAwsRegion(key string, ldflagsValue string) aws.Region {
 	regionKey := OverridableByEnv(key, ldflagsValue)
 	region, ok := aws.Regions[regionKey]
 	if !ok {

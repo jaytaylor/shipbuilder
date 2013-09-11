@@ -127,7 +127,7 @@ func (this *Server) monitorFreeMemory() {
 		case result := <-nodeStatusChan:
 			if deployLock.validateLatest(result.DeployMarker) {
 				hostStatusMap[result.Host] = result
-				this.PruneDynos(result, &hostStatusMap)
+				this.pruneDynos(result, &hostStatusMap)
 			}
 
 		case request := <-nodeStatusRequestChannel:

@@ -17,7 +17,8 @@ import (
 
 type (
 	Server struct {
-		LogServer *server.Server
+		LogServer                 *server.Server
+		currentLoadBalancerConfig string
 	}
 )
 

@@ -58,8 +58,6 @@ func NodeStatusToDynos(nodeStatus *NodeStatus) ([]Dyno, error) {
 	return dynos, nil
 }
 
-//func (this *Dyno)
-
 func (this *Dyno) Shutdown(e *Executor) error {
 	fmt.Fprintf(e.logger, "Shutting down dyno, host=%v app=%v version=%v proc=%v port=%v", this.Host, this.Application, this.Version, this.Process, this.Port)
 	return e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+this.Host, "sudo", "/tmp/shutdown_container.py", this.Container)
