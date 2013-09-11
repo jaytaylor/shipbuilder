@@ -483,7 +483,7 @@ func (this *Deployment) deploy() error {
 	// Build list of running dynos to be deactivated in the LB config upon successful deployment.
 	removeDynos := []Dyno{}
 	for process, numDynos := range this.Application.Processes {
-		runningDynos, err := this.Server.getRunningDynos(this.Application.Name, process)
+		runningDynos, err := this.Server.GetRunningDynos(this.Application.Name, process)
 		if err != nil {
 			return err
 		}
@@ -616,7 +616,7 @@ func (this *Deployment) deploy() error {
 		for _, removeDyno := range removeDynos {
 			fmt.Fprintf(titleLogger, "Shutting down dyno: %v\n", removeDyno.Container)
 			go func(rd Dyno) {
-				rd.shutdown(Executor{os.Stdout})
+				rd.Shutdown(&Executor{os.Stdout})
 			}(removeDyno)
 		}
 	}

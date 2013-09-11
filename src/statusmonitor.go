@@ -24,23 +24,13 @@ type (
 	}
 )
 
+const (
+	STATUS_MONITOR_CHECK_COMMAND = `echo $(free -m | sed '1,2d' | head -n1 | grep --only '[0-9]\+$') $(sudo lxc-ls --fancy | grep '[^ ]\+ \+RUNNING \+' | cut -f1 -d' ' | tr '\n' ' ')`
+)
+
 var (
 	nodeStatusRequestChannel = make(chan NodeStatusRequest)
 )
-
-func RemoteCommand(sshHost string, sshArgs ...string) (string, error) {
-	sshFrontArgs := []string{DEFAULT_NODE_USERNAME + "@" + sshHost, "-o", "StrictHostKeyChecking no", "-o", "BatchMode yes"}
-	sshCombinedArgs := append(sshFrontArgs, sshArgs...)
-
-	//fmt.Printf("debug: cmd is -> ssh %v <-\n", sshCombinedArgs)
-	bs, err := exec.Command("ssh", sshCombinedArgs...).CombinedOutput()
-
-	if err != nil {
-		return "", err
-	}
-
-	return string(bs), nil
-}
 
 func (this *NodeStatus) ParseStatus(input string, err error) {
 	if err != nil {
@@ -64,10 +54,24 @@ func (this *NodeStatus) ParseStatus(input string, err error) {
 	this.Ts = time.Now()
 }
 
+func RemoteCommand(sshHost string, sshArgs ...string) (string, error) {
+	sshFrontArgs := []string{DEFAULT_NODE_USERNAME + "@" + sshHost, "-o", "StrictHostKeyChecking no", "-o", "BatchMode yes"}
+	sshCombinedArgs := append(sshFrontArgs, sshArgs...)
+
+	//fmt.Printf("debug: cmd is -> ssh %v <-\n", sshCombinedArgs)
+	bs, err := exec.Command("ssh", sshCombinedArgs...).CombinedOutput()
+
+	if err != nil {
+		return "", err
+	}
+
+	return string(bs), nil
+}
+
 func checkServer(sshHost string, currentDeployMarker int, ch chan NodeStatus) {
 	// Shell command which combines free MB with list of running containers.
-	statusCheck := `echo $(free -m | sed '1,2d' | head -n1 | grep --only '[0-9]\+$') $(sudo lxc-ls --fancy | grep '[^ ]\+ \+RUNNING \+' | cut -f1 -d' ' | tr '\n' ' ')`
 	done := make(chan NodeStatus)
+
 	go func() {
 		result := NodeStatus{
 			Host:         sshHost,
@@ -76,9 +80,10 @@ func checkServer(sshHost string, currentDeployMarker int, ch chan NodeStatus) {
 			DeployMarker: currentDeployMarker,
 			Err:          nil,
 		}
-		result.ParseStatus(RemoteCommand(sshHost, statusCheck))
+		result.ParseStatus(RemoteCommand(sshHost, STATUS_MONITOR_CHECK_COMMAND))
 		done <- result
 	}()
+
 	select {
 	case result := <-done: // Captures completed status update.
 		ch <- result // Sends result to channel.
@@ -122,7 +127,7 @@ func (this *Server) monitorFreeMemory() {
 		case result := <-nodeStatusChan:
 			if deployLock.validateLatest(result.DeployMarker) {
 				hostStatusMap[result.Host] = result
-				this.PruneDynos(result)
+				this.PruneDynos(result, &hostStatusMap)
 			}
 
 		case request := <-nodeStatusRequestChannel:

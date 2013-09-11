@@ -30,6 +30,7 @@ const (
 	DYNO_DELIMITER = "_"
 )
 
+// NB: Container name format is: appName-version-process-port
 func ContainerToDyno(host string, container string) (Dyno, error) {
 	tokens := strings.Split(container, DYNO_DELIMITER)
 	if len(tokens) != 4 {
@@ -45,12 +46,26 @@ func ContainerToDyno(host string, container string) (Dyno, error) {
 	}, nil
 }
 
-func (this *Dyno) shutdown(e Executor) error {
+func NodeStatusToDynos(nodeStatus *NodeStatus) ([]Dyno, error) {
+	dynos := make([]Dyno, len(nodeStatus.Containers))
+	for i, container := range nodeStatus.Containers {
+		dyno, err := ContainerToDyno(nodeStatus.Host, container)
+		if err != nil {
+			return dynos, err
+		}
+		dynos[i] = dyno
+	}
+	return dynos, nil
+}
+
+//func (this *Dyno)
+
+func (this *Dyno) Shutdown(e *Executor) error {
 	fmt.Fprintf(e.logger, "Shutting down dyno, host=%v app=%v version=%v proc=%v port=%v", this.Host, this.Application, this.Version, this.Process, this.Port)
 	return e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+this.Host, "sudo", "/tmp/shutdown_container.py", this.Container)
 }
 
-func (this *Server) getRunningDynos(application, process string) ([]Dyno, error) {
+func (this *Server) GetRunningDynos(application, process string) ([]Dyno, error) {
 	dynos := []Dyno{}
 
 	cfg, err := this.getConfig(true)

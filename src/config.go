@@ -112,6 +112,17 @@ func (this *Application) GitDir() string {
 	return GIT_DIRECTORY + "/" + this.Name
 }
 
+// Get total requested number of Dynos (based on Processes).
+func (this *Application) TotalRequestedDynos() int {
+	n := 0
+	for _, value := range this.Processes {
+		if value > 0 { // Ensure negative values are never added.
+			n += value
+		}
+	}
+	return n
+}
+
 // Entire maintenance page URL (e.g. "http://example.com/static/maintenance.html").
 func (this *Application) MaintenancePageUrl() string {
 	maintenanceUrl, ok := this.Environment["MAINTENANCE_PAGE_URL"]
@@ -427,7 +438,7 @@ func (this *Server) SyncLoadBalancers(e Executor, addDynos []Dyno, removeDynos [
 		for proc, _ := range app.Processes {
 			if proc == "web" {
 				// Find and don't add `removeDynos`.
-				runningDynos, err := this.getRunningDynos(app.Name, proc)
+				runningDynos, err := this.GetRunningDynos(app.Name, proc)
 				if err != nil {
 					return err
 				}
