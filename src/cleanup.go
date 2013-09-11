@@ -71,10 +71,10 @@ func (this *Server) pruneDynos(nodeStatus NodeStatus, hostStatusMap *map[string]
 						return err
 					}
 					if dyno.Version != app.LastDeploy && numAtCurrentVersion > 0 {
-						fmt.Fprintf(logger, "app container '%v' looks like an old version, terminating it (%v dynos running at latest version)\n", dyno.Container, numAtCurrentVersion)
+						fmt.Fprintf(logger, "app container '%v' looks like an old version, terminating it (%v dynos running at latest version=%v)\n", dyno.Container, numAtCurrentVersion, app.LastDeploy)
 						destroy = true
 					} else {
-						fmt.Fprintf(logger, "app for container '%v' doesn't appear to have any current dynos running at version=%v, refusing to take any action\n", dyno.Container, app.LastDeploy)
+						fmt.Fprintf(logger, "app for container '%v' doesn't appear to have any dynos running at latest version=%v, refusing to take any action\n", dyno.Container, app.LastDeploy)
 					}
 				} else {
 					fmt.Fprintf(logger, "app '%v' has no processes scaled up, terminating it\n", dyno.Application)

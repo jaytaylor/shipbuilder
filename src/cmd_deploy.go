@@ -114,7 +114,7 @@ func (this *Deployment) createContainer() error {
 		return this.err
 	}
 	// Clear out and remove all git files from the container; they are unnecessary from this point forward.
-	this.err = e.BashCmd(`find ` + this.Application.SrcDir() + ` -regex '^.*\.git\(ignore\|modules\)?$' -exec rm -rf {} \;`)
+	this.err = e.BashCmd(`find ` + this.Application.SrcDir() + ` -regex '^.*\.git\(ignore\|modules\|attributes\)?$' -exec rm -rf {} \; 2>/dev/null`)
 	if this.err != nil {
 		return err
 	}
@@ -199,6 +199,7 @@ func (this *Deployment) build() error {
 	e := &Executor{dimLogger}
 
 	fmt.Fprintf(titleLogger, "Building image\n")
+	e.StopContainer(this.Application.Name) // To be sure we are starting with a container in the stopped state.
 
 	// Create upstart script.
 	f, err := os.OpenFile(this.Application.RootFsDir()+"/etc/init/app.conf", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0444)
