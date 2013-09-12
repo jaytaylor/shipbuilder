@@ -115,7 +115,7 @@ func (this *Deployment) createContainer() error {
 		return this.err
 	}
 	// Clear out and remove all git files from the container; they are unnecessary from this point forward.
-	this.err = e.BashCmd(`find ` + this.Application.SrcDir() + ` -regex '^.*\.git\(ignore\|modules\|attributes\)?$' -exec rm -rf {} \; 2>/dev/null`)
+	this.err = e.BashCmd(`find ` + this.Application.SrcDir() + ` -regex '^.*\.git\(ignore\|modules\|attributes\)?$' -exec rm -rf {} \; 1>/dev/null 2>/dev/null`)
 	if this.err != nil {
 		return err
 	}
@@ -502,12 +502,12 @@ func (this *Deployment) deploy() error {
 		}
 	}
 
-	type SyncResult struct {
+	type NodeSyncResult struct {
 		node *Node
 		err  error
 	}
 
-	syncStep := make(chan SyncResult)
+	syncStep := make(chan NodeSyncResult)
 	for _, node := range this.Config.Nodes {
 		go func(node *Node) {
 			c := make(chan error, 1)
@@ -517,7 +517,7 @@ func (this *Deployment) deploy() error {
 				c <- fmt.Errorf("Sync operation to node '%v' timed out after %v seconds", node.Host, NODE_SYNC_TIMEOUT_SECONDS)
 			}()
 			// Block until chan has something, at which point syncStep will be notified.
-			syncStep <- SyncResult{node, <-c}
+			syncStep <- NodeSyncResult{node, <-c}
 		}(node)
 	}
 
@@ -587,7 +587,7 @@ func (this *Deployment) deploy() error {
 		}
 	}
 
-	err = this.Server.SyncLoadBalancers(e, addDynos, removeDynos)
+	err = this.Server.SyncLoadBalancers(&e, addDynos, removeDynos)
 	if err != nil {
 		return err
 	}

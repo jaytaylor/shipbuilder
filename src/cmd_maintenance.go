@@ -13,7 +13,7 @@ func (this *Server) Maintenance_Off(conn net.Conn, applicationName string) error
 	if err != nil {
 		return err
 	}
-	e := Executor{NewLogger(NewMessageLogger(conn), "[maintenance:off] ")}
+	e := &Executor{NewLogger(NewMessageLogger(conn), "[maintenance:off] ")}
 	return this.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
 }
 
@@ -25,7 +25,7 @@ func (this *Server) Maintenance_On(conn net.Conn, applicationName string) error 
 	if err != nil {
 		return err
 	}
-	e := Executor{NewLogger(NewMessageLogger(conn), "[maintenance:on] ")}
+	e := &Executor{NewLogger(NewMessageLogger(conn), "[maintenance:on] ")}
 	return this.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
 }
 

@@ -40,21 +40,22 @@ type (
 )
 
 const (
-	APP_DIR                         = "/app"
-	ENV_DIR                         = APP_DIR + "/env"
-	LXC_DIR                         = "/var/lib/lxc"
-	DIRECTORY                       = "/mnt/build"
-	BINARY                          = "shipbuilder"
-	EXE                             = DIRECTORY + "/" + BINARY
-	CONFIG                          = DIRECTORY + "/config.json"
-	GIT_DIRECTORY                   = "/git"
-	DEFAULT_NODE_USERNAME           = "ubuntu"
-	VERSION                         = "0.1.1"
-	NODE_SYNC_TIMEOUT_SECONDS       = 180
-	DYNO_START_TIMEOUT_SECONDS      = 120
-	DEPLOY_TIMEOUT_SECONDS          = 240
-	STATUS_MONITOR_INTERVAL_SECONDS = 15
-	DEFAULT_SSH_PARAMETERS          = "-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30" // NB: Notice 30s connect timeout.
+	APP_DIR                            = "/app"
+	ENV_DIR                            = APP_DIR + "/env"
+	LXC_DIR                            = "/var/lib/lxc"
+	DIRECTORY                          = "/mnt/build"
+	BINARY                             = "shipbuilder"
+	EXE                                = DIRECTORY + "/" + BINARY
+	CONFIG                             = DIRECTORY + "/config.json"
+	GIT_DIRECTORY                      = "/git"
+	DEFAULT_NODE_USERNAME              = "ubuntu"
+	VERSION                            = "0.1.1"
+	NODE_SYNC_TIMEOUT_SECONDS          = 180
+	DYNO_START_TIMEOUT_SECONDS         = 120
+	LOAD_BALANCER_SYNC_TIMEOUT_SECONDS = 45
+	DEPLOY_TIMEOUT_SECONDS             = 240
+	STATUS_MONITOR_INTERVAL_SECONDS    = 15
+	DEFAULT_SSH_PARAMETERS             = "-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30" // NB: Notice 30s connect timeout.
 )
 
 // LDFLAGS can be specified by compiling with `-ldflags '-X main.defaultSshHost=.. ...'`.
@@ -329,7 +330,7 @@ func (this *Server) WithApplication(name string, fn func(*Application, *Config) 
 	})
 }
 
-func (this *Server) SyncLoadBalancers(e Executor, addDynos []Dyno, removeDynos []Dyno) error {
+func (this *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDynos []Dyno) error {
 	syncLoadBalancerLock.Lock()
 	defer syncLoadBalancerLock.Unlock()
 
@@ -439,20 +440,57 @@ func (this *Server) SyncLoadBalancers(e Executor, addDynos []Dyno, removeDynos [
 		return err
 	}
 
+	type LbSyncResult struct {
+		lbHost string
+		err    error
+	}
+
+	syncChannel := make(chan LbSyncResult)
 	for _, lb := range cfg.LoadBalancers {
-		err := e.Run("rsync",
-			"-azve", "ssh "+DEFAULT_SSH_PARAMETERS,
-			"/tmp/haproxy.cfg", "root@"+lb+":/etc/haproxy/",
-		)
-		if err != nil {
-			return err
+		go func(lb string) {
+			c := make(chan error, 1)
+			go func() {
+				err := e.Run("rsync",
+					"-azve", "ssh "+DEFAULT_SSH_PARAMETERS,
+					"/tmp/haproxy.cfg", "root@"+lb+":/etc/haproxy/",
+				)
+				if err != nil {
+					c <- err
+					return
+				}
+				err = e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+lb,
+					`sudo /bin/bash -c 'if [ "$(sudo service haproxy status)" = "haproxy not running." ]; then sudo service haproxy start; else sudo service haproxy reload; fi'`,
+				)
+				if err != nil {
+					c <- err
+					return
+				}
+				c <- nil
+			}()
+			go func() {
+				time.Sleep(LOAD_BALANCER_SYNC_TIMEOUT_SECONDS * time.Second)
+				c <- fmt.Errorf("LB sync operation to '%v' timed out after %v seconds", lb, LOAD_BALANCER_SYNC_TIMEOUT_SECONDS)
+			}()
+			// Block until chan has something, at which point syncChannel will be notified.
+			syncChannel <- LbSyncResult{lb, <-c}
+		}(lb)
+	}
+
+	nLoadBalancers := len(cfg.LoadBalancers)
+	errors := []error{}
+	for i := 1; i <= nLoadBalancers; i++ {
+		syncResult := <-syncChannel
+		if syncResult.err != nil {
+			errors = append(errors, syncResult.err)
 		}
-		err = e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+lb,
-			`sudo /bin/bash -c 'if [ "$(sudo service haproxy status)" = "haproxy not running." ]; then sudo service haproxy start; else sudo service haproxy reload; fi'`,
-		)
-		if err != nil {
-			return err
-		}
+		fmt.Fprintf(e.logger, "%v/%v load-balancer sync finished (%v succeeded, %v failed, %v outstanding)\n", i, nLoadBalancers, i-len(errors), len(errors), nLoadBalancers-i)
+	}
+
+	// If all LB updates failed, abort with error.
+	if len(errors) == nLoadBalancers {
+		err = fmt.Errorf("error: all load-balancer updates failed: %v", errors)
+		fmt.Fprintf(e.logger, "%v", err)
+		return err
 	}
 
 	// Uddate `currentLoadBalancerConfig` with updated HAProxy configuration.
