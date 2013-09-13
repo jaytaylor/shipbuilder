@@ -348,22 +348,23 @@ frontend frontend
 {{range $app := .Applications}}
     {{if .Domains}}use_backend {{$app.Name}}{{if $app.Maintenance}}-maintenance{{end}} if { {{range .Domains}} hdr(host) -i {{.}} {{end}} }{{end}}
 {{end}}
+    {{if and .HaProxyStatsEnabled .HaProxyCredentials .LoadBalancers}}use_backend load_balancer if { {{range .LoadBalancers }} hdr(host) -i {{.}} {{end}} }{{end}}
 
-{{range .Applications}}
+{{with $context := .}}{{range $app := .Applications}}
 backend {{.Name}}
     balance roundrobin
     reqadd X-Forwarded-Proto:\ https if { ssl_fc }
     option forwardfor
     option abortonclose
     option httpchk GET /
-  {{range .Servers}}
+  {{range $app.Servers}}
     server {{.Host}}-{{.Port}} {{.Host}}:{{.Port}} check port {{.Port}} observe layer7
-  {{end}}{{if .HaProxyStatsEnabled}}
+  {{end}}{{if and $context.HaProxyStatsEnabled $context.HaProxyCredentials}}
     stats enable
     stats uri /haproxy
-    stats auth {{.HaProxyCredentials}}
+    stats auth {{$context.HaProxyCredentials}}
   {{end}}
-{{end}}
+{{end}}{{end}}
 
 {{range .Applications}}
 backend {{.Name}}-maintenance
@@ -377,6 +378,13 @@ backend {{.Name}}-maintenance
     rspirep ^HTTP/([^0-9\.]+)\ 200\ OK    HTTP/\1\ 503\ 
     rspadd Retry-After:\ 60
     server s3 {{.MaintenancePageDomain}}:80
+{{end}}
+
+{{if and .HaProxyStatsEnabled .HaProxyCredentials .LoadBalancers}}
+backend load_balancer
+    stats enable
+    stats uri /haproxy
+    stats auth {{.HaProxyCredentials}}
 {{end}}
 `))
 

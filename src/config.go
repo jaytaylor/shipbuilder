@@ -351,13 +351,19 @@ func (this *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDynos 
 		MaintenancePageFullPath string
 		MaintenancePageBasePath string
 		MaintenancePageDomain   string
-		HaProxyStatsEnabled     bool
-		HaProxyCredentials      string
 	}
 	type Lb struct {
-		Applications []*App
+		Applications        []*App
+		LoadBalancers       []string
+		HaProxyStatsEnabled bool
+		HaProxyCredentials  string
 	}
-	lb := &Lb{[]*App{}}
+	lb := &Lb{
+		Applications:        []*App{},
+		LoadBalancers:       cfg.LoadBalancers,
+		HaProxyStatsEnabled: HaProxyStatsEnabled(),
+		HaProxyCredentials:  HaProxyCredentials(),
+	}
 
 	for _, app := range cfg.Applications {
 		a := &App{
@@ -368,8 +374,6 @@ func (this *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDynos 
 			MaintenancePageFullPath: app.MaintenancePageFullPath(),
 			MaintenancePageBasePath: app.MaintenancePageBasePath(),
 			MaintenancePageDomain:   app.MaintenancePageDomain(),
-			HaProxyStatsEnabled:     HaProxyStatsEnabled(),
-			HaProxyCredentials:      HaProxyCredentials(),
 		}
 		for proc, _ := range app.Processes {
 			if proc == "web" {
@@ -487,7 +491,7 @@ func (this *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDynos 
 	}
 
 	// If all LB updates failed, abort with error.
-	if len(errors) == nLoadBalancers {
+	if nLoadBalancers > 0 && len(errors) == nLoadBalancers {
 		err = fmt.Errorf("error: all load-balancer updates failed: %v", errors)
 		fmt.Fprintf(e.logger, "%v", err)
 		return err
