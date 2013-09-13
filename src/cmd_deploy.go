@@ -464,33 +464,19 @@ func writeDeployScripts() error {
 	return nil
 }
 
-// Deploy and launch the container to nodes.
-func (this *Deployment) deploy() error {
-	if len(this.Application.Processes) == 0 {
-		return fmt.Errorf("No processes scaled up, adjust with `ps:scale procType=#` before deploying")
-	}
-
-	titleLogger := NewFormatter(this.Logger, GREEN)
-	dimLogger := NewFormatter(this.Logger, DIM)
-
-	e := Executor{dimLogger}
-
-	this.autoDetectRevision()
-
-	err := writeDeployScripts()
-	if err != nil {
-		return err
-	}
-
+func (this *Deployment) calculateDynosToDestroy() ([]Dyno, bool, error) {
+	// Track whether or not new dynos will be allocated.  If no new allocations are necessary, no rsync'ing will be necessary.
+	allocatingNewDynos := false
 	// Build list of running dynos to be deactivated in the LB config upon successful deployment.
 	removeDynos := []Dyno{}
 	for process, numDynos := range this.Application.Processes {
 		runningDynos, err := this.Server.GetRunningDynos(this.Application.Name, process)
 		if err != nil {
-			return err
+			return removeDynos, allocatingNewDynos, err
 		}
 		if !this.ScalingOnly {
 			removeDynos = append(removeDynos, runningDynos...)
+			allocatingNewDynos = true
 		} else if numDynos < 0 {
 			// Scaling down this type of process.
 			if len(runningDynos) >= -1*numDynos {
@@ -499,9 +485,14 @@ func (this *Deployment) deploy() error {
 			} else {
 				removeDynos = append(removeDynos, runningDynos...)
 			}
+		} else {
+			allocatingNewDynos = true
 		}
 	}
+	return removeDynos, allocatingNewDynos, nil
+}
 
+func (this *Deployment) syncNodes() ([]*Node, error) {
 	type NodeSyncResult struct {
 		node *Node
 		err  error
@@ -532,15 +523,18 @@ func (this *Deployment) deploy() error {
 	}
 
 	if len(availableNodes) == 0 {
-		return fmt.Errorf("No available nodes. This is probably very bad for all apps running on this deployment system.")
+		return availableNodes, fmt.Errorf("No available nodes. This is probably very bad for all apps running on this deployment system.")
 	}
+	return availableNodes, nil
+}
 
+func (this *Deployment) startDynos(availableNodes []*Node, titleLogger io.Writer) ([]Dyno, error) {
 	// Now we've successfully sync'd and we have a list of nodes available to deploy to.
 	addDynos := []Dyno{}
 
 	dynoGenerator, err := this.Server.newDynoGenerator(availableNodes, this.Application.Name, this.Version)
 	if err != nil {
-		return err
+		return addDynos, err
 	}
 
 	type StartResult struct {
@@ -582,14 +576,52 @@ func (this *Deployment) deploy() error {
 					}
 				}
 			case <-timeout:
-				return fmt.Errorf("Start operation timed out after %v seconds", DEPLOY_TIMEOUT_SECONDS)
+				return addDynos, fmt.Errorf("Start operation timed out after %v seconds", DEPLOY_TIMEOUT_SECONDS)
 			}
 		}
 	}
+	return addDynos, nil
+}
 
-	err = this.Server.SyncLoadBalancers(&e, addDynos, removeDynos)
+// Deploy and launch the container to nodes.
+func (this *Deployment) deploy() error {
+	if len(this.Application.Processes) == 0 {
+		return fmt.Errorf("No processes scaled up, adjust with `ps:scale procType=#` before deploying")
+	}
+
+	titleLogger := NewFormatter(this.Logger, GREEN)
+	dimLogger := NewFormatter(this.Logger, DIM)
+
+	e := Executor{dimLogger}
+
+	this.autoDetectRevision()
+
+	err := writeDeployScripts()
 	if err != nil {
 		return err
+	}
+
+	removeDynos, allocatingNewDynos, err := this.calculateDynosToDestroy()
+	if err != nil {
+		return err
+	}
+
+	if allocatingNewDynos {
+		availableNodes, err := this.syncNodes()
+		if err != nil {
+			return err
+		}
+
+		// Now we've successfully sync'd and we have a list of nodes available to deploy to.
+		addDynos, err := this.startDynos(availableNodes, titleLogger)
+		if err != nil {
+			return err
+		}
+
+		err = this.Server.SyncLoadBalancers(&e, addDynos, removeDynos)
+		if err != nil {
+			return err
+		}
 	}
 
 	if !this.ScalingOnly {
