@@ -10,10 +10,16 @@ import (
 )
 
 func (this *Server) validateAppName(applicationName string) error {
-	if strings.ToLower(applicationName) == "base" {
-		return fmt.Errorf("Application name cannot be 'base'")
+	forbiddenNames := []string{"base"}
+	for bp, _ := range BUILD_PACKS {
+		forbiddenNames = append(forbiddenNames, "base-"+bp)
 	}
-	expr := `^[a-z0-9]+([a-z0-9-]*[a-z0-9])?$`
+	for _, forbiddenName := range forbiddenNames {
+		if strings.ToLower(applicationName) == forbiddenName || strings.HasSuffix(strings.ToLower(applicationName), "-maintenance") {
+			return fmt.Errorf(`Forbidden application name "` + applicationName + `"`)
+		}
+	}
+	expr := `^[a-z]+([a-z0-9-]*[a-z0-9])?$`
 	matcher := regexp.MustCompile(expr)
 	if !matcher.MatchString(applicationName) {
 		return fmt.Errorf("Application name must match `%v`", expr)
