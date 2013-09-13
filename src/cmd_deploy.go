@@ -622,32 +622,57 @@ func (this *Deployment) deploy() error {
 			}(removeDyno)
 		}
 	}
-
+	fmt.Fprintf(titleLogger, "bye!\n")
 	return nil
 }
 
-func (this *Deployment) postDeployHooks() {
-	if this.ScalingOnly {
-		return
+func (this *Deployment) postDeployHooks(err error) {
+	var message string
+	notify := "0"
+	color := "green"
+
+	revision := "."
+	if len(this.Revision) > 0 {
+		revision = " (" + this.Revision[0:7] + ")."
 	}
 
-	theUrl, ok := this.Application.Environment["DEPLOYHOOKS_HTTP_URL"]
-	if !ok {
-		return
-	}
-
-	durationFractionStripper, _ := regexp.Compile(`^(.*)\.[0-9]*(s)$`)
+	durationFractionStripper, _ := regexp.Compile(`^(.*)\.[0-9]*(s)?$`)
 	duration := durationFractionStripper.ReplaceAllString(time.Since(this.StartedTs).String(), "$1$2")
 
-	message := "Deployed " + this.Application.Name + " " + this.Version + " in " + duration + " (" + this.Revision[0:7] + ")."
-
-	if strings.Contains(theUrl, "https://api.hipchat.com/v1/rooms/message") {
-		theUrl += "&notify=0&from=ShipBuilder&message_format=text&message=" + url.QueryEscape(message)
-		fmt.Printf("info: dispatching app deployhook url, app=%v url=%v\n", this.Application.Name, theUrl)
-		go http.Get(theUrl)
-
+	hookUrl, ok := this.Application.Environment["DEPLOYHOOKS_HTTP_URL"]
+	if !ok {
+		fmt.Printf("app '%v' doesn't have a DEPLOYHOOKS_HTTP_URL\n", this.Application.Name)
+		return
+	} else if err != nil {
+		task := "Deployment"
+		if this.ScalingOnly {
+			task = "Scaling"
+		}
+		message = task + " operation failed after " + duration + ": " + err.Error() + revision
+		notify = "1"
+		color = "red"
+	} else if err == nil && this.ScalingOnly {
+		procInfo := ""
+		err := this.Server.WithApplication(this.Application.Name, func(app *Application, cfg *Config) error {
+			for proc, val := range app.Processes {
+				procInfo += " " + proc + "=" + strconv.Itoa(val)
+			}
+			return nil
+		})
+		if err != nil {
+			fmt.Printf("warn: postDeployHooks scaling caught: %v", err)
+		}
+		message = "Scaled " + this.Application.Name + " to" + procInfo + " in " + duration + revision
 	} else {
-		fmt.Printf("error: unrecognized app deployhook url, app=%v url=%v\n", this.Application.Name, theUrl)
+		message = "Deployed " + this.Application.Name + " " + this.Version + " in " + duration + revision
+	}
+
+	if strings.HasPrefix(hookUrl, "https://api.hipchat.com/v1/rooms/message") {
+		hookUrl += "&notify=" + notify + "&color=" + color + "&from=ShipBuilder&message_format=text&message=" + url.QueryEscape(message)
+		fmt.Printf("info: dispatching app deployhook url, app=%v url=%v\n", this.Application.Name, hookUrl)
+		go http.Get(hookUrl)
+	} else {
+		fmt.Printf("error: unrecognized app deployhook url, app=%v url=%v\n", this.Application.Name, hookUrl)
 	}
 }
 
@@ -676,6 +701,7 @@ func (this *Deployment) Deploy() error {
 		if err != nil {
 			this.undoVersionBump()
 		}
+		this.postDeployHooks(err)
 	}()
 
 	if !this.ScalingOnly {
@@ -700,7 +726,6 @@ func (this *Deployment) Deploy() error {
 		return err
 	}
 
-	this.postDeployHooks()
 	return nil
 }
 
