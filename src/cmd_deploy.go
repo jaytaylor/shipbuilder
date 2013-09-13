@@ -654,7 +654,7 @@ func (this *Deployment) deploy() error {
 			}(removeDyno)
 		}
 	}
-	fmt.Fprintf(titleLogger, "bye!\n")
+
 	return nil
 }
 

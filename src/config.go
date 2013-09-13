@@ -49,7 +49,7 @@ const (
 	CONFIG                             = DIRECTORY + "/config.json"
 	GIT_DIRECTORY                      = "/git"
 	DEFAULT_NODE_USERNAME              = "ubuntu"
-	VERSION                            = "0.1.1"
+	VERSION                            = "0.1.2"
 	NODE_SYNC_TIMEOUT_SECONDS          = 180
 	DYNO_START_TIMEOUT_SECONDS         = 120
 	LOAD_BALANCER_SYNC_TIMEOUT_SECONDS = 45
