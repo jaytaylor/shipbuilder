@@ -38,10 +38,10 @@ func (this *Server) Config_List(conn net.Conn, applicationName string) error {
 	})
 }
 
-func (this *Server) Config_Set(conn net.Conn, applicationName string, args map[string]string) error {
-	err := this.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
-		titleLogger, dimLogger := this.getTitleAndDimLoggers(conn)
+func (this *Server) Config_Set(conn net.Conn, applicationName, deferred string, args map[string]string) error {
+	titleLogger, dimLogger := this.getTitleAndDimLoggers(conn)
 
+	err := this.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
 		fmt.Fprintf(titleLogger, "=== Setting environment variables..\n\n")
 
 		for key, value := range args {
@@ -53,13 +53,18 @@ func (this *Server) Config_Set(conn net.Conn, applicationName string, args map[s
 	if err != nil {
 		return err
 	}
-	return this.Redeploy(conn, applicationName)
+	if deferred != "" {
+		fmt.Fprintf(titleLogger, "NOTICE: Redeploy deferred, changes will not be active until next deploy is triggered\n")
+		return nil
+	} else {
+		return this.Redeploy(conn, applicationName)
+	}
 }
 
-func (this *Server) Config_Remove(conn net.Conn, applicationName string, configNames []string) error {
-	err := this.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
-		titleLogger, dimLogger := this.getTitleAndDimLoggers(conn)
+func (this *Server) Config_Remove(conn net.Conn, applicationName, deferred string, configNames []string) error {
+	titleLogger, dimLogger := this.getTitleAndDimLoggers(conn)
 
+	err := this.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
 		fmt.Fprintf(titleLogger, "=== Removing environment variables..\n\n")
 		for _, key := range configNames {
 			fmt.Fprintf(dimLogger, "    Removing '%v'\n", key)
@@ -70,5 +75,10 @@ func (this *Server) Config_Remove(conn net.Conn, applicationName string, configN
 	if err != nil {
 		return err
 	}
-	return this.Redeploy(conn, applicationName)
+	if deferred != "" {
+		fmt.Fprintf(titleLogger, "NOTICE: Redeploy deferred, changes will not be active until next deploy is triggered\n")
+		return nil
+	} else {
+		return this.Redeploy(conn, applicationName)
+	}
 }

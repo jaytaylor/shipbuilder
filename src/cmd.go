@@ -47,7 +47,7 @@ func (this Command) Parse(args []string) ([]interface{}, error) {
 				flags[args[i][2:]] = args[i+1]
 				i++
 			} else {
-				return nil, fmt.Errorf("expected `%v=value` or `%v value` or", args[i], args[i])
+				return nil, fmt.Errorf("expected `%v=value` or `%v value`", args[i], args[i])
 			}
 		} else if strings.HasPrefix(args[i], "-") && len(args[i]) >= 1 {
 			if len(args[i]) > 1 {
@@ -178,10 +178,10 @@ func init() {
 			required("app"),
 		),
 		writer("config:set", "config:add", "Config_Set",
-			required("app"), mapped("args"),
+			required("app"), optional("deferred", ""), mapped("args"),
 		),
 		writer("config:remove", "config:unset", "Config_Remove",
-			required("app"), list("names"),
+			required("app"), optional("deferred", ""), list("names"),
 		),
 		reader("run", "console", "Console",
 			required("app"), list("args"),
