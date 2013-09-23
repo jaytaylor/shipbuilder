@@ -115,9 +115,10 @@ func (this *Deployment) createContainer() error {
 		return this.err
 	}
 	// Clear out and remove all git files from the container; they are unnecessary from this point forward.
-	this.err = e.BashCmd(`find ` + this.Application.SrcDir() + ` -regex '^.*\.git\(ignore\|modules\|attributes\)?$' -exec rm -rf {} \; 1>/dev/null 2>/dev/null`)
-	if this.err != nil {
-		return err
+	// NB: If this command fails, don't abort anything, just log the error.
+	maybeErr := e.BashCmd(`find ` + this.Application.SrcDir() + ` . -regex '^.*\.git\(ignore\|modules\|attributes\)?$' -exec rm -rf {} \; 1>/dev/null 2>/dev/null`)
+	if maybeErr != nil {
+		fmt.Fprintf(dimLogger, ".git* cleanup failed: %v\n", err)
 	}
 	return nil
 }
