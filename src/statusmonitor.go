@@ -87,7 +87,7 @@ func checkServer(sshHost string, currentDeployMarker int, ch chan NodeStatus) {
 	select {
 	case result := <-done: // Captures completed status update.
 		ch <- result // Sends result to channel.
-	case <-time.After(15 * time.Second):
+	case <-time.After(30 * time.Second):
 		ch <- NodeStatus{
 			Host:         sshHost,
 			FreeMemoryMb: -1,
