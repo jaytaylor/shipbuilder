@@ -55,11 +55,11 @@ func (this *NodeStatus) ParseStatus(input string, err error) {
 }
 
 func RemoteCommand(sshHost string, sshArgs ...string) (string, error) {
-	sshFrontArgs := append([]string{DEFAULT_NODE_USERNAME + "@" + sshHost}, defaultSshParametersList...)
-	sshCombinedArgs := append(sshFrontArgs, sshArgs...)
+	frontArgs := append([]string{"1m", "ssh", DEFAULT_NODE_USERNAME + "@" + sshHost}, defaultSshParametersList...)
+	combinedArgs := append(frontArgs, sshArgs...)
 
 	//fmt.Printf("debug: cmd is -> ssh %v <-\n", sshCombinedArgs)
-	bs, err := exec.Command("ssh", sshCombinedArgs...).CombinedOutput()
+	bs, err := exec.Command("timeout", combinedArgs...).CombinedOutput()
 
 	if err != nil {
 		return "", err
