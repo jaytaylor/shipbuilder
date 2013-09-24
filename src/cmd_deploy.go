@@ -116,9 +116,9 @@ func (this *Deployment) createContainer() error {
 	}
 	// Clear out and remove all git files from the container; they are unnecessary from this point forward.
 	// NB: If this command fails, don't abort anything, just log the error.
-	maybeErr := e.BashCmd(`find ` + this.Application.SrcDir() + ` . -regex '^.*\.git\(ignore\|modules\|attributes\)?$' -exec rm -rf {} \; 1>/dev/null 2>/dev/null`)
-	if maybeErr != nil {
-		fmt.Fprintf(dimLogger, ".git* cleanup failed: %v\n", err)
+	ignorableErr := e.BashCmd(`find ` + this.Application.SrcDir() + ` . -regex '^.*\.git\(ignore\|modules\|attributes\)?$' -exec rm -rf {} \; 1>/dev/null 2>/dev/null`)
+	if ignorableErr != nil {
+		fmt.Fprintf(dimLogger, ".git* cleanup failed: %v\n", ignorableErr)
 	}
 	return nil
 }
@@ -490,6 +490,7 @@ func (this *Deployment) calculateDynosToDestroy() ([]Dyno, bool, error) {
 			allocatingNewDynos = true
 		}
 	}
+	fmt.Fprintf(this.Logger, "calculateDynosToDestroy :: calculated to remove the following dynos: %v\n", removeDynos)
 	return removeDynos, allocatingNewDynos, nil
 }
 
