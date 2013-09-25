@@ -73,9 +73,25 @@ __apps:create__
 
     [apps:]create [application-name] [buildpack]
 
+Alternative flag combinations:
+    [apps:]create -a[application-name] [buildpack]
+
 Create an appication named `name` with the build pack `buildpack`. Available buildpacks are:
 
 * python
+* playframework2
+
+
+__apps:clone__
+
+    [apps:]clone [old-application-name] [new-application-name]
+
+Alternative flag combinations:
+    [apps:]clone -o[old-application-name] -n[new-application-name]
+    [apps:]clone --oldName=[old-application-name] --newName=[new-application-name]
+
+Clone (copy) an application with it's config and processes settings into a new app.
+
 
 __apps:destroy__
 

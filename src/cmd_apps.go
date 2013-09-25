@@ -181,6 +181,26 @@ func (this *Server) Apps_Destroy(conn net.Conn, applicationName string) error {
 	})
 }
 
+func (this *Server) Apps_Clone(conn net.Conn, oldApplicationName, newApplicationName string) error {
+	var oldApp *Application
+	err := this.WithApplication(oldApplicationName, func(app *Application, cfg *Config) error {
+		oldApp = app
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	err = this.Apps_Create(conn, newApplicationName, oldApp.BuildPack)
+	if err != nil {
+		return err
+	}
+	return this.WithPersistentApplication(newApplicationName, func(newApp *Application, cfg *Config) error {
+		newApp.Environment = oldApp.Environment
+		newApp.Processes = oldApp.Processes
+		return nil
+	})
+}
+
 func (this *Server) Apps_List(conn net.Conn) error {
 	return this.WithConfig(func(cfg *Config) error {
 		for _, app := range cfg.Applications {
