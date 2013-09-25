@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 )
 
 type (
@@ -24,11 +26,73 @@ type (
 		version     string
 		usedPorts   []int
 	}
+	DynoPortTracker struct {
+		allocations map[string][]int
+		lock        sync.Mutex
+	}
 )
 
 const (
 	DYNO_DELIMITER = "_"
 )
+
+var (
+	dynoPortTracker = DynoPortTracker{allocations: map[string][]int{}, lock: sync.Mutex{}}
+)
+
+// Check if a port is already in use.
+func (this *DynoPortTracker) AlreadyInUse(host string, port int) bool {
+	this.lock.Lock()
+	defer this.lock.Unlock()
+	if ports, ok := this.allocations[host]; ok {
+		for _, p := range ports {
+			if p == port {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Attempt to allocate a port for a node host.
+func (this *DynoPortTracker) Allocate(host string, port int) error {
+	this.lock.Lock()
+	defer this.lock.Unlock()
+	if ports, ok := this.allocations[host]; ok {
+		// Require that the port not be already in use.
+		for _, p := range ports {
+			if p == port {
+				return fmt.Errorf("Host/port combination %v/%v is already in use", host, port)
+			}
+		}
+		this.allocations[host] = append(ports, port)
+	} else {
+		this.allocations[host] = []int{port}
+	}
+	// Schedule the port to be automatically freed once the status monitor will have picked up the in-use port.
+	go func(host string, port int) {
+		time.Sleep(300 * time.Second)
+		this.Release(host, port)
+	}(host, port)
+	fmt.Printf("DynoPortTracker.Allocate :: added host=%v port=%v\n", host, port)
+	return nil
+}
+
+// Release a previously allocated host/port pair if it is still in the allocations table.
+func (this *DynoPortTracker) Release(host string, port int) {
+	fmt.Printf("DynoPortTracker.Release :: removing host=%v port=%v\n", host, port)
+	this.lock.Lock()
+	defer this.lock.Unlock()
+	if ports, ok := this.allocations[host]; ok {
+		newPorts := []int{}
+		for _, p := range ports {
+			if p != port {
+				newPorts = append(newPorts, p)
+			}
+		}
+		this.allocations[host] = newPorts
+	}
+}
 
 // NB: Container name format is: appName-version-process-port
 func ContainerToDyno(host string, container string) (Dyno, error) {
@@ -210,15 +274,21 @@ func (this *Server) getNextPort(nodeStatus *NodeStatus, usedPorts *[]int) int {
 		}
 	}
 	sort.Ints(*usedPorts)
-	fmt.Printf("Found ports: %v\n", *usedPorts)
+	fmt.Printf("Server.getNextPort :: Found used ports: %v\n", *usedPorts)
 	for _, usedPort := range *usedPorts {
-		if port == usedPort {
+		if port == usedPort || dynoPortTracker.AlreadyInUse(nodeStatus.Host, port) {
 			port++
 		} else if usedPort > port {
 			break
 		}
 	}
-	fmt.Printf("Result port: %v\n", port)
+	err := dynoPortTracker.Allocate(nodeStatus.Host, port)
+	if err != nil {
+		fmt.Printf("Server.getNextPort :: host/port combination %v/%v already in use, will find another\n", nodeStatus.Host, port)
+		*usedPorts = AppendIfMissing(*usedPorts, port)
+		return this.getNextPort(nodeStatus, usedPorts)
+	}
+	fmt.Printf("Server.getNextPort :: Result port: %v\n", port)
 	*usedPorts = AppendIfMissing(*usedPorts, port)
 	return port
 }

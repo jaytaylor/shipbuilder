@@ -314,7 +314,7 @@ pre-start script
     touch /app/ip /app/env/PORT || true
     chown ubuntu:ubuntu /app/ip /app/PORT || true
 end script
-exec start-stop-daemon --start -u ubuntu --exec /app/run
+exec start-stop-daemon --start --user ubuntu --exec /app/run
 `))
 
 	template.Must(HAPROXY_CONFIG.Parse(`
