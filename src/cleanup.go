@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -132,6 +133,7 @@ func (this *Server) dynoRoutingActive(dyno *Dyno) (bool, error) {
 		return true, err
 	}
 
-	inUse := strings.Contains(lbConfig, dyno.Host+`-`+dyno.Port)
+	expr := regexp.MustCompile(` backend ` + dyno.Application + ` ([^b]|b[^a]|ba[^c]|bac[^k]|back[^e]|backe[^n]|backen[^d])* ` + dyno.Host + `-` + dyno.Port)
+	inUse := expr.MatchString(strings.Replace(lbConfig, "\n", " ", -1))
 	return inUse, nil
 }

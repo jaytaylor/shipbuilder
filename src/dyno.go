@@ -132,7 +132,7 @@ func (this *Server) selectNextDynos(nodes []*Node, application, process string, 
 }*/
 
 // Decicde which nodes to run the next N-count dynos on.
-func (this *Server) newDynoGenerator(nodes []*Node, application string, version string) (*DynoGenerator, error) {
+func (this *Server) NewDynoGenerator(nodes []*Node, application string, version string) (*DynoGenerator, error) {
 	// Produce sorted sequence of NodeStatuses.
 	allStatuses := []NodeStatusRunning{}
 	for _, node := range nodes {
@@ -166,7 +166,7 @@ func (this *Server) newDynoGenerator(nodes []*Node, application string, version 
 
 }
 
-func (this *DynoGenerator) next(process string) Dyno {
+func (this *DynoGenerator) Next(process string) Dyno {
 	nodeStatus := this.statuses[this.position%len(this.statuses)].status
 	this.position++
 	port := fmt.Sprint(this.server.getNextPort(&nodeStatus, &this.usedPorts))
@@ -174,10 +174,13 @@ func (this *DynoGenerator) next(process string) Dyno {
 	return dyno
 }
 
+// NodeStatus sorting.
 func (this NodeStatuses) Len() int { return len(this) } // boilerplate.
 
+// NodeStatus sorting.
 func (this NodeStatuses) Swap(i int, j int) { this[i], this[j] = this[j], this[i] } // boilerplate.
 
+// NodeStatus sorting.
 func (this NodeStatuses) Less(i int, j int) bool { // actual sorting logic.
 	if this[i].running && !this[j].running {
 		return true

@@ -64,7 +64,23 @@ func (this *Server) addNode(addAddress string, logger io.Writer) (string, error)
 	return addAddress, nil
 }
 
+// Require that the node name does not contain the word "backend",
+// as it would break Server.dynoRoutingActive().
+func (this *Server) validateNodeNames(addresses *[]string) error {
+	for _, address := range *addresses {
+		if strings.Contains(strings.ToLower(address), "backend") {
+			return fmt.Errorf(`Invalid name "%v", must not contain "backend"`, address)
+		}
+	}
+	return nil
+}
+
 func (this *Server) Node_Add(conn net.Conn, addresses []string) error {
+	err := this.validateNodeNames(&addresses)
+	if err != nil {
+		return err
+	}
+
 	type AddResult struct {
 		address string
 		err     error

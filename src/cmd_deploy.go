@@ -424,7 +424,7 @@ func (this *Deployment) syncNode(node *Node) error {
 }
 
 func (this *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) (Dyno, error) {
-	dyno := dynoGenerator.next(process)
+	dyno := dynoGenerator.Next(process)
 
 	logger := NewLogger(this.Logger, "["+dyno.Host+"] ")
 	e := Executor{logger}
@@ -534,7 +534,7 @@ func (this *Deployment) startDynos(availableNodes []*Node, titleLogger io.Writer
 	// Now we've successfully sync'd and we have a list of nodes available to deploy to.
 	addDynos := []Dyno{}
 
-	dynoGenerator, err := this.Server.newDynoGenerator(availableNodes, this.Application.Name, this.Version)
+	dynoGenerator, err := this.Server.NewDynoGenerator(availableNodes, this.Application.Name, this.Version)
 	if err != nil {
 		return addDynos, err
 	}
