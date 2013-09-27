@@ -99,8 +99,8 @@ ShipBuilder Server
 ------------------
 
 - `tcp/22` - Remote SSH access from SB clients (that's you!)
-- `udp/514` - For app logging
-- `tcp/9998` - For app logging (note: this needs verification)
+- `tcp/9998` - App logging
+- `udp/9998` - HAProxy request logging
 
 Container Node(s)
 -----------------

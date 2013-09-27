@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Sendhub/logserver"
 	"launchpad.net/goamz/aws"
 )
 
@@ -49,7 +51,7 @@ const (
 	CONFIG                             = DIRECTORY + "/config.json"
 	GIT_DIRECTORY                      = "/git"
 	DEFAULT_NODE_USERNAME              = "ubuntu"
-	VERSION                            = "0.1.3"
+	VERSION                            = "0.1.4"
 	NODE_SYNC_TIMEOUT_SECONDS          = 180
 	DYNO_START_TIMEOUT_SECONDS         = 120
 	LOAD_BALANCER_SYNC_TIMEOUT_SECONDS = 45
@@ -330,11 +332,29 @@ func (this *Server) WithApplication(name string, fn func(*Application, *Config) 
 	})
 }
 
+// Returns the ShipBuilder log server ip:port to send HAProxy UDP logs to.
+// Autmatically takes care of transforming ssh hostname into just a hostname.
+func (this *Server) ResolveLogServerIpAndPort() (string, error) {
+	hostname := sshHost[int(math.Max(float64(strings.Index(sshHost, "@")+1), 0)):]
+	ipAddr, err := net.ResolveIPAddr("ip", hostname)
+	if err != nil {
+		return "", err
+	}
+	ip := ipAddr.IP.String()
+	port := strconv.Itoa(log.Port)
+	return ip + ":" + port, nil
+}
+
 func (this *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDynos []Dyno) error {
 	syncLoadBalancerLock.Lock()
 	defer syncLoadBalancerLock.Unlock()
 
 	cfg, err := this.getConfig(true)
+	if err != nil {
+		return err
+	}
+
+	logServerIpAndPort, err := this.ResolveLogServerIpAndPort()
 	if err != nil {
 		return err
 	}
@@ -353,12 +373,14 @@ func (this *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDynos 
 		MaintenancePageDomain   string
 	}
 	type Lb struct {
+		LogServerIpAndPort  string // ShipBuilder server ip:port to send HAProxy UDP logs to.
 		Applications        []*App
 		LoadBalancers       []string
 		HaProxyStatsEnabled bool
 		HaProxyCredentials  string
 	}
 	lb := &Lb{
+		LogServerIpAndPort:  logServerIpAndPort,
 		Applications:        []*App{},
 		LoadBalancers:       cfg.LoadBalancers,
 		HaProxyStatsEnabled: HaProxyStatsEnabled(),

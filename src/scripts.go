@@ -317,11 +317,13 @@ end script
 exec start-stop-daemon --start --user ubuntu --exec /app/run
 `))
 
+	// NB: sshHost has `.*@` portion stripped if an `@` symbol is found.
 	template.Must(HAPROXY_CONFIG.Parse(`
 global
     maxconn 4096
     # NB: Base HAProxy logging configuration is as per: http://kvz.io/blog/2010/08/11/haproxy-logging/
-    log 127.0.0.1 local1 info
+    #log 127.0.0.1 local1 info
+    log {{.LogServerIpAndPort}} local1 info
 
 defaults
     log global
