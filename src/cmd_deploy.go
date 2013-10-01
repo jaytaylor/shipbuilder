@@ -682,7 +682,7 @@ func (this *Deployment) postDeployHooks(err error) {
 		if this.ScalingOnly {
 			task = "Scaling"
 		}
-		message = task + " operation failed after " + duration + ": " + err.Error() + revision
+		message = this.Application.Name + ": " + task + " operation failed after " + duration + ": " + err.Error() + revision
 		notify = "1"
 		color = "red"
 	} else if err == nil && this.ScalingOnly {
