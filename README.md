@@ -28,7 +28,7 @@ Requirements:
 * Amazon AWS credentials + an s3 bucket
 
 Server Installation
-----------------------------
+-------------------
 
 See [SERVER.md](https://github.com/sendhub/shipbuilder/blob/master/SERVER.md)
 
@@ -51,4 +51,8 @@ IRC: [#shipbuilder on FreeNode](irc://chat.freenode.node/shipbuilder)
 Twitter: [ShipBuilderIO](https://twitter.com/ShipBuilderIO)
 
 Or open a GitHub issue.
+
+Thanks
+------
+Thank you to [SendHub](https://www.sendhub.com) for supporting the initial development of this project.
 
