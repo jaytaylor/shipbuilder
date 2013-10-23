@@ -51,7 +51,7 @@ echo 'info: fetching dependencies'
 #     ...
 # )
 # and appropriately filters the list down to the projects dependencies.
-dependencies=$(find . -wholename '*.go' -exec awk '{ if ($1 ~ /^import/ && $2 ~ /[(]/) { s=1; next; } if ($1 ~ /[)]/) { s=0; } if (s) print; }' {} \; | grep -v '^[^\.]*$' | tr -d '\t' | tr -d '"' | sed 's/^\. \{1,\}//g' | sort | uniq | grep -v '^\/\/')
+dependencies=$(find . -wholename '*.go' -exec awk '{ if ($1 ~ /^import/ && $2 ~ /[(]/) { s=1; next; } if ($1 ~ /[)]/) { s=0; } if (s) print; }' {} \; | grep -v '^[^\.]*$' | tr -d '\t' | tr -d '"' | sed 's/^\. \{1,\}//g' | sort | uniq | grep -v '^[ \t]*\/\/' | sed 's/_ //g')
 for dependency in $dependencies; do
     echo "    retrieving: ${dependency}"
     if ! test -d "${GOPATH}/src/${dependency}"; then go get -u $dependency; rc=$?; else echo "        -> already exists, skipping"; rc=0; fi

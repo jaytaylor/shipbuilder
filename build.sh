@@ -26,7 +26,7 @@ echo 'info: fetching dependencies'
 #     ...
 # )
 # and appropriately filters the list down to the projects dependencies.  It also ignores any lines which start with "//", as those are comments.
-dependencies=$(find src -wholename '*.go' -exec awk '{ if ($1 ~ /^import/ && $2 ~ /[(]/) { s=1; next; } if ($1 ~ /[)]/) { s=0; } if (s) print; }' {} \; | grep -v '^[^\.]*$' | tr -d '\t' | tr -d '"' | sed 's/^\. \{1,\}//g' | sort | uniq | grep -v '^[ \t]*\/\/')
+dependencies=$(find src -wholename '*.go' -exec awk '{ if ($1 ~ /^import/ && $2 ~ /[(]/) { s=1; next; } if ($1 ~ /[)]/) { s=0; } if (s) print; }' {} \; | grep -v '^[^\.]*$' | tr -d '\t' | tr -d '"' | sed 's/^\. \{1,\}//g' | sort | uniq | grep -v '^[ \t]*\/\/' | sed 's/_ //g')
 for dependency in $dependencies; do
     echo "info:     retrieving: ${dependency}"
     if test -n "${forceUpdate}" || ! test -d "${GOPATH}/src/${dependency}"; then
