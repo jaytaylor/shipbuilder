@@ -120,7 +120,7 @@ __config:set__
 
 Set one or more configuration environment variables for the named application. Redeploys the app.
 
-There is also a `--deferrable=1`/`-d1` flag which can be passed to cause the config change to take effect the next time the app is deployed (avoids the default immediate redeploy).
+There is also a `--deferred=1`/`-d1` flag which can be passed to cause the config change to take effect the next time the app is deployed (avoids the default immediate redeploy).
 
 
 __config:remove__
@@ -129,7 +129,7 @@ __config:remove__
 
 Delete one or more configuration environment variables for the named application. Redeploys the app.
 
-There is also a `--deferrable=1`/`-d1` flag which can be passed to cause the config change to take effect the next time the app is deployed (avoids the default immediate redeploy).
+There is also a `--deferred=1`/`-d1` flag which can be passed to cause the config change to take effect the next time the app is deployed (avoids the default immediate redeploy).
 
 
 __deploy__
