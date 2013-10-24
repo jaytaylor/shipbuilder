@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sendhub/logserver"
+	"github.com/jaytaylor/logserver"
 	"launchpad.net/goamz/aws"
 )
 

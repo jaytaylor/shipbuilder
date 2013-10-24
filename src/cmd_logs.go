@@ -4,7 +4,7 @@ import (
 	"net"
 	"regexp"
 
-	"github.com/Sendhub/logserver"
+	"github.com/jaytaylor/logserver"
 )
 
 func (this *Server) Logs_Get(conn net.Conn, applicationName, process, filter string) error {

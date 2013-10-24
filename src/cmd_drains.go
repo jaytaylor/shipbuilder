@@ -5,8 +5,8 @@ import (
 	"net"
 	"strings"
 
-	. "github.com/Sendhub/logserver"
-	"github.com/Sendhub/logserver/server"
+	. "github.com/jaytaylor/logserver"
+	"github.com/jaytaylor/logserver/server"
 )
 
 var (

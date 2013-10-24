@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Sendhub/logserver/server"
+	"github.com/jaytaylor/logserver/server"
 )
 
 type (

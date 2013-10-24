@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Sendhub/logserver/logger"
+	"github.com/jaytaylor/logserver/logger"
 )
 
 func (this *Local) Logger(host, applicationName, process string) error {
