@@ -81,12 +81,15 @@ EOF
     sudo service shipbuilder stop
     echo 'info: starting service'
     sudo service shipbuilder start
+    exitCode=0
 
 else
     echo 'error: build failed, operation aborted'
+    exitCode=1
 fi
 sudo rm -f '` + COMPRESSED_PATH + `' '` + DEPLOYER_SCRIPT_PATH + `'
-sudo rm -rf /tmp/build`
+sudo rm -rf /tmp/build
+exit $exitCode`
 )
 
 func getLdFlags() string {

@@ -450,7 +450,7 @@ function prepareLoadBalancer() {
 
 function installGo() {
     if [ -z "$(which go)" ]; then
-        echo 'info: installing go 1.1 on the build-server'
+        echo 'info: installing go v1.1 on the build-server'
         curl --location --silent https://launchpad.net/ubuntu/+archive/primary/+files/golang-src_1.1-1_amd64.deb > /tmp/golang-src_1.1-1_amd64.deb
         abortIfNonZero $? 'golang-src package download'
         curl --location --silent https://launchpad.net/ubuntu/+archive/primary/+files/golang-go_1.1-1_amd64.deb > /tmp/golang-go_1.1-1_amd64.deb

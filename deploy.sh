@@ -15,3 +15,5 @@ test -z "$(which envdir)" && echo 'fatal: no "envdir" binary found, make sure da
 test ! -d './env' && echo 'fatal: missing "env" configuration directory, see "Compilation" in the README' 1>&2 && exit 1
 
 envdir env go run deploy.go $*
+# Preserve exit status code.
+exit $?
