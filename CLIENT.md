@@ -267,7 +267,7 @@ Project Compilation
 
 Requirements:
 
-- go-alng v1.1
+- go-lang v1.2 or v1.1
 - daemontools (the package which contains `envdir`)
 
 First set up your env:
