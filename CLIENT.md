@@ -269,6 +269,9 @@ Requirements:
 
 - go-lang v1.2 or v1.1
 - daemontools (the package which contains `envdir`)
+- ssh
+- git
+- bzr
 
 First set up your env:
 
