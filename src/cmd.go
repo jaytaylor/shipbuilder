@@ -272,5 +272,6 @@ func init() {
 		writer("restart", "restart", "Restart_App",
 			required("app"),
 		),
+		global("runtime:tests", "runtimetests", "LocalRuntimeTests"),
 	}
 }

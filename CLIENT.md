@@ -262,6 +262,14 @@ __run__
 Starts up a temporary container and hooks the current connection to a shell.  If `shell-command` is omitted, by default a bash shell will launched.
 
 
+__runtime:tests__
+
+    runtime[:]tests
+
+Runs and reports the status of ShipBuilder server system and environment checks and tests.  Including:
+    - S3 read/write capability to the configured bucket.
+
+
 Project Compilation
 -------------------
 

@@ -35,8 +35,12 @@ func run(name string, args ...string) error {
 	return cmd.Run()
 }
 
+func (this *Server) getSimpleLogger(conn net.Conn) io.Writer {
+	return NewMessageLogger(conn)
+}
+
 func (this *Server) getLogger(conn net.Conn) io.Writer {
-	return NewTimeLogger(NewMessageLogger(conn))
+	return NewTimeLogger(this.getSimpleLogger(conn))
 }
 
 func (this *Server) getTitleAndDimLoggers(conn net.Conn) (io.Writer, io.Writer) {
