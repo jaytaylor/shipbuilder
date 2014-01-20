@@ -1,0 +1,168 @@
+body {
+    padding-top: 60px;
+    color: #595959;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: #36678c;
+    /*color: #5AB71D;*/
+}
+
+a { color: #5AB71D; }
+a:hover, a:focus { color: #157400; }
+
+/*label { font-weight: bolder; }*/
+
+
+.active-dot {
+    background: transparent url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAATNJREFUeNrUk09Og0AUhx9opWhpotJg/ZMQo+C2h+AUeIwew70XkFOw9wrampjGVFuqpHWwwLQwzxkXak06G1a+5FvMfJNf5uXNKIgIVUqFilU5YPP3Qrlp8R2lyWN9vvQ4bc6IEwKDAAokePm6PoBXExheXRw5nnvoWttbujanKb1/6XX6w4cO910OWd8CQ985OPPclmNnJNXjt1jNk0x3zXP71LQ94aUtwAK9k91jK4oiYIwBpfQLMSljp2EJz09dSwJYG0vUpskUBMti+a3qi7omvPwGlI3GZEwnONGhsXowL3IqvHyMFMPh81NUM2sA+/DDHkA6SyLh5QEFBqQfh8ldPGBKmYEBrIQiS3vvA/o4D4WXtyBG9FF2s9uZz1l9B8ZGAJpK/gYo//8vVA74FGAAvhGX8tzWEGcAAAAASUVORK5CYII=) no-repeat center;
+}
+.inactive-dot {
+    background: transparent url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAVRJREFUeNrUk79rwkAUxy8x5EiMWqRYKJ0qdGupq3GrQwMZ0j+g/RtTUFGoSDQdCorQjoXORtsgNrmYn/bdYJFCsmTqgw/c997dl3fv7pjdbofyBItyRm4D7lBomoY4jsMMw1yBPAdKwDfwAUd9jaLI13U93QACJ0lyq6qqJstyWxTFE9d1LdM0n3q9Ht3ZB/xUgziOrxVFuWs2m/eEEBag02egH7bbLTMYDBagX1INwjC8aDQabcuyWHo7QRDQOQRVsfV6vQ3jYaYBbKjA+WuO4yDHIVBR9Jvjeb5G85lN9H3fXS6/Vp4XnxYKGFH2QYi7ovnMa4QF74ZhjAWhlGBcRHt4vpjMZrMxzWdWAE2cdjqPXUICrtW6aZXLlePNZv05mQzN0ajfxRhP/xowh08ZGohs2xagBzLIS+AIWANvkiQ9V6tVbz6fpxv8z7+Q2+BHgAEAHG6lklcQKVAAAAAASUVORK5CYII=) no-repeat center;
+}
+
+
+/** User search page */
+.user-search-form, .user-search-form * { display: inline; }
+.user-search-form select#limit {
+    width: 75px;
+}
+.user-search-form select#sort {
+    width: 125px;
+}
+.user-search-form select#order {
+    width: 100px;
+}
+.user-search-results table { width: 100%; }
+.user-search-results tr th { text-align: left; }
+.searchCount {
+    color: #949494;
+    font-size: 12px;
+    margin-left: 5px;
+    display: inline-block;
+    line-height: 0;
+}
+/*.user-search-results tr th, .user-search-results tr td {
+    width: 25%;
+}*/
+
+
+/** User edit page */
+.user-form input, .user-form textarea, .user-form select, .editing-widget { display: none; }
+
+.user-form td[colspan="2"] { width: 100%; }
+.user-form td[colspan="2"] div {
+    float: left;
+    padding: 0 10px 0 10px;
+}
+.zuser-form td div { display: inline; }
+table#user-phone-numbers tr td, table#twilio-phone-number tr td {
+    margin: 5px;
+    padding: 10px;
+}
+table#user-phone-numbers, table#twilio-phone-number { width: 100%; }
+
+input.confirmation-code { width: 4em; }
+input.phone-number { width: 12em; }
+input.sid { width: 30em; }
+input.area-code {
+    width: 5em;
+    margin-right:7px;
+}
+
+#buyPhoneNumberDialogBody {
+    display:inline-block;
+    float: left;
+    width: 100%;
+    height: 250px;
+    color: black;
+}
+
+.table { font-size: 13px; }
+.table select, .table textarea, .table input { margin-bottom: 0; }
+
+.user-search-results .table th, 
+.user-search-results .table td {
+    white-space: nowrap;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.table td.auto-width {
+    max-width: none;
+}
+
+/*fixed second navbar*/
+.container .navbar-fixed-top {
+    margin-top: 40px;
+    z-index: 1020;
+}
+.navfix { height: 40px; }
+
+/*Truncate user name class*/
+.userName {
+    display: inline-block;
+    max-width: 110px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.scroll-table {
+    height: 200px;
+    overflow: scroll;
+}
+.scroll-table table {
+    width: 100%
+}
+
+.navbar .input-append {
+    margin-bottom: 0;
+}
+.navbar .search-spinner {
+    margin: 8px 0 0 5px;
+}
+.navbar form .search-spinner {
+    margin: 5px 0 0 5px;
+}
+.wrap-text {
+    display: inline-block;
+    max-width: 195px;
+    word-wrap: break-word;
+}
+
+/*Shortcode modal styles*/
+.shortcodeModal {
+    width: 700px;
+    margin-left: -350px;
+}
+.shortcodeModal select {
+    width: 325px;
+}
+.shortcodeModal select option {
+    padding: 5px 0;
+}
+
+/*temporary styles to be fixed with custom bootstrap*/
+.navbar-inverse .navbar-inner {
+    background: #5AB71D;
+    border-color: #157400;
+}
+.navbar-inverse .brand, .navbar-inverse .nav > li > a {
+color: #fff;
+text-shadow: none;
+}
+.navbar-inverse .nav li.dropdown > .dropdown-toggle .caret {
+    border-top-color: #ffffff;
+    border-bottom-color: #ffffff;
+}
+.navbar-inverse .nav li.dropdown.open > .dropdown-toggle, 
+.navbar-inverse .nav li.dropdown.active > .dropdown-toggle, 
+.navbar-inverse .nav li.dropdown.open.active > .dropdown-toggle,
+.navbar-inverse .nav .active > a, .navbar-inverse .nav .active > a:hover, 
+.navbar-inverse .nav .active > a:focus {
+    background: #157400;
+}
+
+
+

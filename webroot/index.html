@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="sb">
+    <head>
+        <title>ShipBuilder Web</title>
+
+        <link rel="shortcut icon" href="/favicon.ico"/>
+        <meta charset="utf-8"/>
+        <meta name="description" content=""/>
+        <meta name="author" content="Jay Taylor"/>
+
+        <!-- NB: Load jQuery first otherwise you'll end up with angular's jQuery-lite and jQuery won't load because it's already defined. -->
+        <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.js"></script>
+        <script src="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.1/jquery-ui.js"></script>
+        <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.1.4/angular.js"></script>
+        <script src="/web/js/libs/promise-tracker.js"></script>
+        <script src="/web/js/libs/ui-bootstrap-0.2.0.js"></script>
+        <script src="/web/js/libs/ui-bootstrap-tpls-0.2.0.min.js"></script>
+        <script src="/web/js/app.js"></script>
+        <script src="/web/js/controllers.js"></script>
+        <script src="/web/js/services.js"></script>
+        <script src="//ajax.googleapis.com/ajax/libs/angularjs/1.1.4/angular-resource.js"></script>
+        <script src="/web/js/util.js"></script>
+        <script src="/web/js/libs/angular-ui.js"></script>
+        <script src="/web/js/libs/underscore.js"></script>
+        <script src="/web/js/libs/date.js"></script>
+        <script src="//cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/2.3.1/js/bootstrap.min.js"></script>
+        <script src="//cdnjs.cloudflare.com/ajax/libs/angular-strap/0.7.4/angular-strap.min.js"></script>
+
+        <!--<link href="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.1/themes/redmond/jquery-ui.css" rel="stylesheet" type="text/css"/>-->
+    </head>
+
+    <body>
+        <div class="navbar navbar-inverse navbar-fixed-top">
+            <div class="navbar-inner">
+                <div class="container">
+                    <button type="button" class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+                        <span class="icon-bar"></span>
+                        <span class="icon-bar"></span>
+                        <span class="icon-bar"></span>
+                    </button>
+                    <a class="brand" href="/">ShipBuilder Web</a>
+                    <div class="nav-collapse collapse">
+                        <ul class="nav">
+                            <!-- <li class="active"><a href="#">Home</a></li> -->
+                            <li class="dropdown pagekey pagekey_user active">
+                                <a href="#" class="dropdown-toggle" data-toggle="dropdown">
+                                    <span>Search</span>
+                                    <b class="caret"></b>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="nav-collapse collapse pull-right">
+                        <ul class="nav">
+                            <li class="dropdown">
+                                <a href="#" class="dropdown-toggle" data-toggle="dropdown">
+                                    <span class="userName">{{authUser.first_name}} {{authUser.last_name}} </span>
+                                    <b class="caret"></b></a>
+                                <ul class="dropdown-menu">
+                                    <li><a onclick="window.location='/logout?_={{ts}}'" href="/logout?_={{ts}}"><i class="icon-signout"></i> Logout</a></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="container" ng-view></div>
+
+        <!--<link href="//ajax.googleapis.com/ajax/libs/jqueryui/1.10.1/themes/base/jquery-ui.css" rel="stylesheet" type="text/css"/>-->
+        <link href="/web/css/libs/angular-ui.css" rel="stylesheet" type="text/css"/>
+        <!--<script src="/web/js/libs/bootstrap.js"></script>-->
+        <link href="/web/css/libs/bootstrap.css" rel="stylesheet" type="text/css"/>
+        <link rel="stylesheet" href="/web/css/libs/font-awesome.min.css">
+        <script src="/web/js/libs/toastr.js"></script>
+        <link href="/web/css/libs/toastr.css" rel="stylesheet" type="text/css"/>
+        <link href="/web/css/styles.css" rel="stylesheet" type="text/css"/>
+
+        <!--<script type="text/javascript">
+            var userMetaData = {{userMetaData | safe}};
+            var chargeMetaData = {{chargeMetaData | safe}};
+            var customerMetaData = {{ chargeMetaData | safe }};
+            var enterpriseMetaData = {{ enterpriseMetaData | safe }};
+            var csrfToken = '{{csrfToken() | safe}}';
+        </script>-->
+    </body>
+</html>

@@ -209,3 +209,36 @@ func (this *Server) Apps_List(conn net.Conn) error {
 		return nil
 	})
 }
+
+// Get all applications.
+func (this *Server) Applications() ([]Application, error) {
+	applications := []Application{}
+	err := this.WithConfig(func(cfg *Config) error {
+		for _, app := range cfg.Applications {
+			applications = append(applications, *app)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return applications, nil
+}
+
+// Get a particular application by name.
+func (this *Server) Application(name string) (Application, error) {
+	var application Application
+	err := this.WithConfig(func(cfg *Config) error {
+		for _, app := range cfg.Applications {
+			if app.Name == name {
+				application = *app
+				return nil
+			}
+		}
+		return fmt.Errorf("Application not found: %v", name)
+	})
+	if err != nil {
+		return Application{}, err
+	}
+	return application, nil
+}

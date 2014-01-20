@@ -238,7 +238,9 @@ func (this *Server) start() error {
 	initDrains(this)
 	go this.monitorFreeMemory()
 
-	log.Println("starting server on :9999")
+	go StartWebServer(this, 8080)
+
+	log.Println("starting ShipBuilder server on :9999")
 	ln, err := net.Listen("tcp", ":9999")
 	if err != nil {
 		return err
@@ -258,5 +260,6 @@ func (this *Server) start() error {
 		log.Printf("new connection %v", conn.RemoteAddr())
 		go this.handleConnection(conn)
 	}
+
 	return nil
 }

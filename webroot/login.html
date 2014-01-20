@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="sb">
+    <head>
+        <title>ShipBuilder Web</title>
+
+        <link rel="shortcut icon" href="/favicon.png"/>
+        <meta charset="utf-8"/>
+        <meta name="description" content=""/>
+        <meta name="author" content="Jay Taylor"/>
+
+        <script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+        <script src="/web/js/libs/date.js"></script>
+
+        <style type="text/css">
+            body {
+                padding-top: 40px;
+                padding-bottom: 40px;
+                background-color: #f5f5f5;
+            }
+
+            .navbar-inner {
+            display: none;
+            }
+
+            .form-signin {
+                max-width: 300px;
+                padding: 19px 29px 29px;
+                margin: 0 auto 20px;
+                background-color: #fff;
+                border: 1px solid #e5e5e5;
+                -webkit-border-radius: 5px;
+                -moz-border-radius: 5px;
+                border-radius: 5px;
+                -webkit-box-shadow: 0 1px 2px rgba(0,0,0,.05);
+                -moz-box-shadow: 0 1px 2px rgba(0,0,0,.05);
+                box-shadow: 0 1px 2px rgba(0,0,0,.05);
+            }
+            .form-signin .form-signin-heading,
+            .form-signin .checkbox {
+                margin-bottom: 10px;
+            }
+            .form-signin input[type="text"],
+            .form-signin input[type="password"] {
+                font-size: 16px;
+                height: auto;
+                margin-bottom: 15px;
+                padding: 7px 9px;
+            }
+        </style>
+    </head>
+    <body>
+
+        <div class="container">
+            <form name="login" method="post" class="form-signin">
+                <h2 class="form-signin-heading">Please sign in</h2>
+                <input name="username" id="username" type="text" class="input-block-level" placeholder="Username"/>
+                <input name="password" id="password" type="password" class="input-block-level" placeholder="Password"/>
+                <label class="checkbox"><input name="remember" type="checkbox" value="remember-me"/>Remember me</label>
+                <input type="hidden" name="XSRF-TOKEN" value="{{csrfToken()}}"/>
+                <button type="submit" id="submit" class="btn btn-large btn-primary">Sign in</button>
+            </form>
+        </div>
+
+        <div class="container text-center">
+            <h3 class="text-error">{{error}}</h3>
+        </div>
+
+        <script src="/web/js/libs/bootstrap.js"></script>
+        <link href="/web/css/libs/bootstrap.css" rel="stylesheet" type="text/css"/>
+        <script src="/web/js/libs/toastr.js"></script>
+        <link href="/web/css/libs/toastr.css" rel="stylesheet" type="text/css"/>
+        <link href="/web/css/styles.css" rel="stylesheet" type="text/css"/>
+    </body>
+</html>
