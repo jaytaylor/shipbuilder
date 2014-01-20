@@ -49,3 +49,9 @@ function AppListController($scope, $routeParams, $location, App, promiseTracker)
     $scope.apps = App.query();
 }
 
+function AppDetailController($scope, $routeParams, $location, App, promiseTracker) {
+    $scope.name = $routeParams.name;
+    $scope.app = App.get({name: $scope.name});
+    window.scope = $scope;
+}
+

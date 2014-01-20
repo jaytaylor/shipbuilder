@@ -1,15 +1,16 @@
 body {
     padding-top: 60px;
-    color: #595959;
+    color: #FFFFFF;
+    background: #121417;
 }
 
 h1, h2, h3, h4, h5, h6 {
     color: #36678c;
-    /*color: #5AB71D;*/
+    /*color: #000000;*/
 }
 
-a { color: #5AB71D; }
-a:hover, a:focus { color: #157400; }
+a { color: #33b5e5; }
+a:hover, a:focus { color: #33b5e5; }
 
 /*label { font-weight: bolder; }*/
 
@@ -144,13 +145,17 @@ input.area-code {
 }
 
 /*temporary styles to be fixed with custom bootstrap*/
+.navbar .navbar-inner {
+    background: #103644;
+    border-color: #000;
+}
 .navbar-inverse .navbar-inner {
-    background: #5AB71D;
-    border-color: #157400;
+    background: #000000;
+    border-color: #33b5e5;
 }
 .navbar-inverse .brand, .navbar-inverse .nav > li > a {
-color: #fff;
-text-shadow: none;
+    color: #fff;
+    text-shadow: none;
 }
 .navbar-inverse .nav li.dropdown > .dropdown-toggle .caret {
     border-top-color: #ffffff;
@@ -161,8 +166,13 @@ text-shadow: none;
 .navbar-inverse .nav li.dropdown.open.active > .dropdown-toggle,
 .navbar-inverse .nav .active > a, .navbar-inverse .nav .active > a:hover, 
 .navbar-inverse .nav .active > a:focus {
-    background: #157400;
+    background: #33b5e5;
 }
 
-
+.inner-table {
+    border: 1px solid #666;
+}
+.inner-table td {
+    border: 1px solid #666;
+}
 

@@ -1,0 +1,84 @@
+
+<div class="navbar navbar-fixed-top">
+  <div class="navbar-inner">
+    <div class="container">
+        <div class="nav-collapse collapse">
+            <div class="pull-left">
+                <button class="btn btn-back" onclick="window.history.back();"><i class="icon-arrow-left"></i> Back</button>
+                <!--<button class="btn btn-success editing-widget" x-ng-click="save()"><i class="icon-save"></i> Save</button>
+                <button class="btn toggleUserEditMode" x-ng-model="editing" x-active-clean-note="Cancel" x-active-dirty-note="Discard changes" x-inactive-note="<i class='icon-edit'></i> Edit this record" x-dirty="$parent.dirty" x-ng-click="toggleEditing()"><i class="icon-edit"></i> Edit Account</button>-->
+            </div>
+            <div class="pull-right" x-ng-show="editing">
+                <span ng-show="enableSuspend()">
+                    <button class="btn btn-warning editing-widget" x-ng-click="suspendUserDialog=true"><i class="icon-flag"></i> Suspend user</button>
+                </span>
+                <button class="btn btn-danger editing-widget" x-ng-disabled="!!user[meta.deleteUserQueueKey]" x-ng-click="deleteUserDialog=true"><i class="icon-trash"></i> Delete user</button>
+            </div>
+        </div>
+    </div>
+  </div>
+</div>
+<div class="navfix"></div>
+
+<div class="navbar navbar-inverse">
+    <div class="navbar-inner">
+        <div class="container">
+        <div class="nav-collapse collapse">
+            <div class="pull-left">
+            <ul class="nav">
+                <li><a class="brand" href="#">{{ app.Objects.Name }}</a></li>
+            </ul>
+    </div></div>
+        </div>
+    </div>
+</div>
+<div class="navfix"></div>
+
+<form x-novalidate name="appForm" class="app-form">
+    <table class="table table-bordered">
+        <tbody>
+            <tr>
+                <td><label for="LastDeploy">Last Deploy</label></td>
+                <td>{{ app.Objects.LastDeploy }}</td>
+            </tr>
+            <tr>
+                <td><label for="BuildPack">Build Pack</label></td>
+                <td>{{ app.Objects.BuildPack }}</td>
+            </tr>
+            <tr>
+                <td><label for="Maintenance">Maintenance Mode</label></td>
+                <td>{{ app.Objects.Maintenance }}</td>
+            </tr>
+            <tr>
+                <td>Processes</td>
+                <td>
+                    <table class="inner-table">
+                        <tbody>
+                            <tr x-ng-repeat="(process, count) in app.Objects.Processes">
+                                <td><label for="process-{{ process }}">{{ process }}</label></td>
+                                <td>{{ count }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </td>
+            </tr>
+            <tr>
+                <td><label for="domains">Domains</label></td>
+                <td>
+                    <ul x-ng-repeat="domain in app.Objects.Domains">
+                        <li class="auto-width">{{ domain }}</li>
+                    </ul>
+                </td>
+            </tr>
+            <tr>
+                <td><label for="drains">Drains</label></td>
+                <td>
+                    <ul x-ng-repeat="drain in app.Objects.Drains">
+                        <li class="auto-width">{{ drain }}</li>
+                    </ul>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</form>
+

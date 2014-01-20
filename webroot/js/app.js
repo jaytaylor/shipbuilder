@@ -9,7 +9,8 @@ var sb = angular.module('sb', ['ajoslin.promise-tracker', 'ui', 'ui.bootstrap', 
         $routeProvider.
             when('/web/login', { templateUrl: '/web/partials/login.html', pageKey: 'login' }).
             when('/web/', { templateUrl: '/web/partials/app-list.html', pageKey: 'app', controller: AppListController }).
-            when('/web/apps', { templateUrl: '/web/partials/app-list.html', pageKey: 'app', controller: AppListController }).
+            when('/web/app', { templateUrl: '/web/partials/app-list.html', pageKey: 'app', controller: AppListController }).
+            when('/web/app/:name', { templateUrl: '/web/partials/app-detail.html', pageKey: 'app', controller: AppDetailController }).
             otherwise({ redirectTo: '/web' });
     }]).
     run(function ($rootScope, $http, $route) {

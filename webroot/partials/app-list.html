@@ -2,45 +2,6 @@
     $('#query').focus();
 </script>
 
-<div class="navbar">
-  <div class="navbar-inner">
-    <div class="container">
-        <form class="navbar-form pull-left" action="">
-            <div class="input-append">
-                <input type="text" class="span3" placeholder="Search Criteria" id="query" value="{{query}}" x-ng-model="query"/>
-                <!-- { { users && users.meta && 'Results ' + (users.meta.offset + 1) + '-' + (users.meta.offset + users.objects.length) + ' of ' + users.meta.totalResults + ' total' || '&nbsp;' } } -->
-                <input type="submit" class="btn submit" value="search" x-ng-click="search()"/>
-            </div>
-            <img x-ng-show="userSearchTracker.active()" src="/web/images/cube-24x24.gif" class="search-spinner" />
-            <span class="searchCount">{{apps && apps.meta && apps.meta.totalResults + ' results found' || '&nbsp;'}}</span>
-        </form>
-        <div class="nav-collapse collapse">
-            <ul class="nav pull-right">
-                <li><a class="brand" href="#">Sort By:</a></li>
-                <li class="dropdown">
-                    <a href="#" class="dropdown-toggle" data-toggle="dropdown">{{sorts[sort]}}<b class="caret"></b></a>
-                    <ul class="dropdown-menu">
-                        <li x-ng-repeat="s in sortsList | filter:{id:'!'+sort}"><a x-ng-click="$parent.sort=s.id;search()">{{s.name}}</a></li>
-                    </ul>
-                </li>
-                <li class="dropdown">
-                    <a href="#" class="dropdown-toggle" data-toggle="dropdown">{{orders[order]}}<b class="caret"></b></a>
-                    <ul class="dropdown-menu">
-                        <li x-ng-repeat="o in ordersList | filter:{id:'!'+order}"><a x-ng-click="$parent.order=o.id;search()">{{o.name}}</a></li>
-                    </ul>
-                </li>
-                <li class="dropdown">
-                    <a href="#" class="dropdown-toggle" data-toggle="dropdown">{{limits[limits.indexOf(limit)]}} per page<b class="caret"></b></a>
-                    <ul class="dropdown-menu">
-                        <li x-ng-repeat="l in limits | filter:notLimit"><a x-ng-click="$parent.limit=l;search()">{{l}}</a></li>
-                    </ul>
-                </li>
-            </ul>
-        </div>
-    </div>
-  </div>
-</div>
-
 <div class="user-search-results">
     <table class="user-list table table-condensed table-striped table-bordered">
         <tr>
@@ -54,7 +15,7 @@
         </tr>
         <!--<tr x-ng-repeat="user in apps.Objects | filter:query | orderBy:orderProp">-->
         <tr x-ng-repeat="app in apps.Objects">
-            <td class="auto-width"><a ng-href="/app/{{ app.Name }}">{{ app.Name }}</a></td>
+            <td class="auto-width"><a ng-href="/web/app/{{ app.Name }}">{{ app.Name }}</a></td>
         </table>
         <tr>
             <td colspan="7"><span x-ng-show="!apps.Objects.length">No apps found</span></td>

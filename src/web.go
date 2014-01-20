@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,7 +16,7 @@ import (
 
 type (
 	JsonResponse struct {
-		Meta    map[string]interface{}
+		Meta	map[string]interface{}
 		Objects interface{}
 	}
 )
@@ -121,11 +122,28 @@ func WebRoot() string {
 	}
 }*/
 
+func indexHandler(w http.ResponseWriter, req *http.Request) {
+	content, err := ioutil.ReadFile(WebRoot() + "/index.html")
+	if err != nil {
+		jsonErrorResponse(w, err)
+		return
+	}
+	httpResponse(w, 200, content, "text/html")
+}
+
 func apiRouting(sbServer *Server) *pat.Router {
 	r := pat.New()
 
 	r.Get("/api/v1/app/{name}", apiGetAppHandler(sbServer))
 	r.Get("/api/v1/app", apiGetAppsHandler(sbServer))
+
+	for _, path := range []string{
+		//"/",
+		"/web/app",
+		"/web/app/{name}",
+	} {
+		r.Get(path, indexHandler)
+	}
 
 	// NB: This is a way to server static files with gorilla/pat or gorilla/mux.
 	r.PathPrefix("/web").Handler(http.StripPrefix("/web/", http.FileServer(http.Dir(WebRoot()))))
