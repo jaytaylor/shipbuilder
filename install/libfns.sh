@@ -399,13 +399,14 @@ function prepareLoadBalancer() {
 
     version=$(lsb_release -a 2>/dev/null | grep "Release" | grep -o "[0-9\.]\+$")
 
-    if [ "${version}" = "12.04" ]; then
+    if [ "${version}" = "13.10" ] || [ "${version}" = "12.04" ]; then
         ppa=ppa:vbernat/haproxy-1.5
     elif [ "${version}" = "13.04" ]; then
         ppa=ppa:nilya/haproxy-1.5
     else
         echo "error: unrecognized version of ubuntu: ${version}" 1>&2 && exit 1
     fi
+
     echo "info: adding ppa repository for ${version}: ${ppa}"
     sudo apt-add-repository -y ${ppa}
     abortIfNonZero $? "adding apt repository ppa ${ppa}"
