@@ -93,7 +93,9 @@ Installation
 Port Mappings
 =============
 
-Specific ports must be open for each module.
+Specific ports must be open for each module to communicate with the others.
+
+TROUBLESHOOTING ADVICE: Be careful with your firewall rules and if/when things aren't working (like application logging, for example), always check that the port(s) in question are reachable from the load-balancer and nodes to the ShipBuilder server.
 
 ShipBuilder Server
 ------------------
