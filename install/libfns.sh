@@ -197,8 +197,8 @@ function installLxc() {
     test -z "${lxcFs}" && echo 'error: installLxc() missing required parameter: $lxcFs' 1>&2 && exit 1
     echo 'info: a supported version of lxc must be installed (as of 2013-07-02, `buntu comes with 0.7.x by default, we require is 0.9.0 or greater)'
     echo 'info: adding lxc daily ppa'
-    sudo apt-add-repository -y ppa:ubuntu-lxc/daily
-    abortIfNonZero $? "command 'sudo apt-add-repository -y ppa:ubuntu-lxc/daily'"
+    sudo apt-add-repository -y ppa:ubuntu-lxc/stable
+    abortIfNonZero $? "command 'sudo apt-add-repository -y ppa:ubuntu-lxc/stable'"
     sudo apt-get update
     abortIfNonZero $? "command 'sudo add-get update'"
     sudo apt-get install -y lxc lxc-templates
