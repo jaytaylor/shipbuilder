@@ -53,6 +53,16 @@ Twitter: [ShipBuilderIO](https://twitter.com/ShipBuilderIO)
 
 Or open a GitHub issue.
 
+Contributing
+------------
+1. "Fork"
+2. Make a feature branch.
+3. Do your commits
+4. Send "pull request". This can be
+	1. A github pull request
+	2. A issue with a pointer to your publicly readable git repo
+	3. An email to me with a pointer to your publicly readable git repo
+
 Thanks
 ------
 Thank you to [SendHub](https://www.sendhub.com) for supporting the initial development of this project.
