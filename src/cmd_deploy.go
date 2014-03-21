@@ -445,11 +445,13 @@ func (this *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) 
 }
 
 func (this *Deployment) autoDetectRevision() error {
-	revision, err := ioutil.ReadFile(this.Application.SrcDir() + "/.git/refs/heads/master")
-	if err != nil {
-		return err
+	if len(this.Revision) == 0 {
+		revision, err := ioutil.ReadFile(this.Application.SrcDir() + "/.git/refs/heads/master")
+		if err != nil {
+			return err
+		}
+		this.Revision = strings.Trim(string(revision), "\n")
 	}
-	this.Revision = strings.Trim(string(revision), "\n")
 	return nil
 }
 
