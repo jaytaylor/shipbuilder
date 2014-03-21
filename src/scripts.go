@@ -269,11 +269,16 @@ def retriableCommand(*command):
 def main(argv):
     global container
     container = argv[1]
+    destroyOnly = len(argv) > 2 and argv[2] == 'destroy-only'
     port = container.split('` + DYNO_DELIMITER + `').pop()
 
-    # Stop and destroy the container.
-    log('stopping container')
-    subprocess.check_call(['/usr/bin/lxc-stop', '-k', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
+    try:
+        # Stop and destroy the container.
+        log('stopping container')
+        subprocess.check_call(['/usr/bin/lxc-stop', '-k', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
+    except Exception, e:
+        if not destroyOnly:
+            raise e # Otherwise ignore.
 
     if lxcFs == 'zfs':
         try:

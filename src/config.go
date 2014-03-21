@@ -117,6 +117,9 @@ func (this *Application) BaseContainerName() string {
 func (this *Application) GitDir() string {
 	return GIT_DIRECTORY + "/" + this.Name
 }
+func (this *Application) LastDeployNumber() (int, error) {
+	return strconv.Atoi(strings.TrimPrefix(this.LastDeploy, "v"))
+}
 
 // Get total requested number of Dynos (based on Processes).
 func (this *Application) TotalRequestedDynos() int {

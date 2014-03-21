@@ -57,53 +57,75 @@ func (this *Server) pruneDynos(nodeStatus NodeStatus, hostStatusMap *map[string]
 	if err != nil {
 		return err
 	}
+
+	// Cleanup running dynos which don't meet our criteria.
 	for _, dyno := range dynos {
 		destroy := false
-		key := Key{dyno.Application, dyno.Version, dyno.Process}
-		_, ok := appMap[key]
-		if !ok {
-			// Verify that the app has some dynos running at the current version.
-			app, ok := appsByName[dyno.Application]
 
+		if dyno.State == DYNO_STATE_STOPPED {
+			// Cleanup old stopped dynos which haven't already been reclaimed.
+			app, ok := appsByName[dyno.Application]
 			if ok {
-				if app.TotalRequestedDynos() > 0 {
-					numAtCurrentVersion, err := this.numDynosAtVersion(app.Name, app.LastDeploy, hostStatusMap)
-					if err != nil {
-						return err
-					}
-					if dyno.Version != app.LastDeploy && numAtCurrentVersion > 0 {
-						fmt.Fprintf(logger, "app container '%v' looks like an old version, terminating it (%v dynos running at latest version=%v)\n", dyno.Container, numAtCurrentVersion, app.LastDeploy)
-						destroy = true
-					} else {
-						fmt.Fprintf(logger, "app for container '%v' doesn't appear to have any dynos running at latest version=%v, refusing to take any action\n", dyno.Container, app.LastDeploy)
-					}
-				} else {
-					fmt.Fprintf(logger, "app '%v' has no processes scaled up, terminating it\n", dyno.Application)
+				appVersionNumber, err := app.LastDeployNumber()
+				if err != nil {
+					// Not that bad
+					fmt.Fprintf(logger, "error: failed to parse last deploy version number for app '%v'/'%v', ignoring..\n", app.Name, app.LastDeploy)
+				}
+				// If dyno is more than 5 revisions behind the latest, kill it.
+				if dyno.VersionNumber+5 < appVersionNumber {
+					fmt.Fprintf(logger, "stopped app container '%v' is more than 5 versions behind the latest, terminating it (latest version=%v)\n", dyno.Container, app.LastDeploy)
 					destroy = true
 				}
 			} else {
-				fmt.Fprintf(logger, "warning: unrecognized application, ignoring..'%v'\n", dyno.Application)
+				fmt.Fprintf(logger, "warning: unrecognized application '%v', ignoring..\n", dyno.Application)
 			}
 
-			if destroy {
-				dynoInUseByLoadBalancer, err := this.dynoRoutingActive(&dyno)
-				if err != nil {
-					return err
+		} else if dyno.State == DYNO_STATE_RUNNING {
+			key := Key{dyno.Application, dyno.Version, dyno.Process}
+			_, ok := appMap[key]
+			if !ok {
+				// Verify that the app has some dynos running at the current version.
+				app, ok := appsByName[dyno.Application]
+				if ok {
+					if app.TotalRequestedDynos() > 0 {
+						numAtCurrentVersion, err := this.numDynosAtVersion(app.Name, app.LastDeploy, hostStatusMap)
+						if err != nil {
+							return err
+						}
+						if dyno.Version != app.LastDeploy && numAtCurrentVersion > 0 {
+							fmt.Fprintf(logger, "app container '%v' looks like an old version, terminating it (%v dynos running at latest version=%v)\n", dyno.Container, numAtCurrentVersion, app.LastDeploy)
+							destroy = true
+						} else {
+							fmt.Fprintf(logger, "app for container '%v' doesn't appear to have any dynos running at latest version=%v, refusing to take any action\n", dyno.Container, app.LastDeploy)
+						}
+					} else {
+						fmt.Fprintf(logger, "app '%v' has no processes scaled up, terminating it\n", dyno.Application)
+						destroy = true
+					}
+				} else {
+					fmt.Fprintf(logger, "warning: unrecognized application '%v', ignoring..\n", dyno.Application)
 				}
-				if dynoInUseByLoadBalancer {
-					fmt.Fprintf(logger, "app container '%v' is still in use by the current load-balancer configuration, termination cancelled\n", dyno.Container)
-					destroy = false
-				}
-			}
 
-			if destroy {
-				// TODO: Add LB config check to ensure that dyno.Node + "-" + dyno.Port does not appear anywhere in the haproxy config.
-				//"ssh", DEFAULT_NODE_USERNAME + "@" dyno.Host,
-				fmt.Fprintf(logger, "Cleaning up trash name=%v version=%v\n", dyno.Application, dyno.Version)
-				go func(dyno Dyno) {
-					dyno.Shutdown(e)
-				}(dyno)
+				if destroy {
+					dynoInUseByLoadBalancer, err := this.dynoRoutingActive(&dyno)
+					if err != nil {
+						return err
+					}
+					if dynoInUseByLoadBalancer {
+						fmt.Fprintf(logger, "app container '%v' is still in use by the current load-balancer configuration, termination cancelled\n", dyno.Container)
+						destroy = false
+					}
+				}
 			}
+		}
+
+		if destroy {
+			// TODO: Add LB config check to ensure that dyno.Node + "-" + dyno.Port does not appear anywhere in the haproxy config.
+			//"ssh", DEFAULT_NODE_USERNAME + "@" dyno.Host,
+			fmt.Fprintf(logger, "Cleaning up trash name=%v version=%v\n", dyno.Application, dyno.Version)
+			go func(dyno Dyno) {
+				dyno.Shutdown(e)
+			}(dyno)
 		}
 	}
 
