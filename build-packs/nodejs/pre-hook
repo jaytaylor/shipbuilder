@@ -1,0 +1,6 @@
+#!/bin/bash
+cd /app/src
+stdbuf -o0 npm install 2>&1 >> /app/out
+rc=$?
+echo "RETURN_CODE: ${rc}" >> /app/out
+exit $rc
