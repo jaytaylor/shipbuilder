@@ -1,6 +1,48 @@
 #!/bin/bash
+
+function abortIfNonZero() {
+    # @param $1 command return code/exit status (e.g. $?, '0', '1').
+    # @param $2 error message if exit status was non-zero.
+    local rc=$1
+    local what=$2
+    test $rc -ne 0 && echo "error: ${what} exited with non-zero status ${rc}" >> /app/out && exit $rc || :
+}
+
+nodejsDeps='/app/.nodejs'
+
 cd /app/src
-stdbuf -o0 npm install 2>&1 >> /app/out
-rc=$?
+abortIfNonZero $? 'Changing directory to "/app/src"'
+
+if [ -r 'package.json' ]; then
+    if [ -L 'node_modules' ]; then
+        unlink node_modules
+        abortIfNonZero $? 'Unlinking "node_modules" symlink'
+    elif [ -d 'node_modules' ]; then
+        rm -r node_modules
+        abortIfNonZero $? 'Removing "node_modules" directory'
+    fi
+
+    if ! [ -d "${nodejsDeps}" ]; then
+        mkdir "${nodejsDeps}"
+        abortIfNonZero $? "Creating ${nodejsDeps} directory"
+    fi
+
+    cp package.json "${nodejsDeps}"
+    abortIfNonZero $? "Copying packages.json to ${nodejsDeps}"
+
+    cd "${nodejsDeps}"
+    abortIfNonZero $? "Changing directory to ${nodejsDeps}"
+
+    stdbuf -o0 npm install 2>&1 >> /app/out
+    rc=$?
+
+    ln -s "${nodejsDeps}/node_modules" /app/src/node_modules
+    abortIfNonZero $? "Linking ${nodejsDeps} to /app/src/node_modules"
+
+else
+    echo 'WARN: No "packages.json" file found' >> /app/out
+    rc=0
+fi
+
 echo "RETURN_CODE: ${rc}" >> /app/out
 exit $rc

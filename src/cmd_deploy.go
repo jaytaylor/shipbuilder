@@ -87,7 +87,7 @@ func (this *Deployment) createContainer() error {
 		}
 	}
 
-	e.BashCmd("rm -rf " + this.Application.AppDir())
+	e.BashCmd("rm -rf " + this.Application.AppDir() + "/*")
 	e.BashCmd("mkdir -p " + this.Application.SrcDir())
 	// Copy the binary into the container.
 	this.err = e.BashCmd("cp " + EXE + " " + this.Application.AppDir() + "/" + BINARY)
@@ -238,7 +238,7 @@ func (this *Deployment) build() error {
 			n, _ := f.Read(buf)
 			if n > 0 {
 				dimLogger.Write(buf[:n])
-				if bytes.Contains(buf, []byte("RETURN_CODE")) {
+				if bytes.Contains(buf, []byte("RETURN_CODE")) || bytes.Contains(buf, []byte("exited with non-zero status")) {
 					if !bytes.Contains(buf, []byte("RETURN_CODE: 0")) {
 						err = fmt.Errorf("build failed")
 					}

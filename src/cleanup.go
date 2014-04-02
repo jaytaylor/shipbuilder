@@ -159,3 +159,5 @@ func (this *Server) dynoRoutingActive(dyno *Dyno) (bool, error) {
 	inUse := expr.MatchString(strings.Replace(lbConfig, "\n", " ", -1))
 	return inUse, nil
 }
+
+// containers=$(sudo lxc-ls --fancy | sed "1,2d" | cut -f1 -d" "") ; for x in $(sudo zfs list | sed "1d" | cut -d" "" -f1); do if [ "${x}" = "tank/git" ] || [ "${x}" = "tank/lxc" ]; then echo "skipping git or lxc: ${x}"; continue; fi; if [ -n "$(echo $x | grep '@')" ]; then search=$(echo $x | sed "s/^.*@//"); else search=$(echo $x | sed "s/^[^\/]\{1,\}\///"); fi; if [ -z "$(echo -e "${containers}" | grep "${search}")" ]; then echo "destroying non-container zfs volume: $x" ; sudo zfs destroy $x; fi; done
