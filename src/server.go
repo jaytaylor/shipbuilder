@@ -236,7 +236,7 @@ func (this *Server) start() error {
 	}
 
 	initDrains(this)
-	go this.monitorFreeMemory()
+	go this.monitorNodes()
 
 	log.Println("starting server on :9999")
 	ln, err := net.Listen("tcp", ":9999")

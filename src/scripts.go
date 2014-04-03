@@ -316,10 +316,11 @@ stop on [!12345]
 #exec su ` + DEFAULT_NODE_USERNAME + ` -c "/app/run"
 #exec /app/run
 pre-start script
+    test ! -d /app/env && mkdir /app/env || true
     touch /app/ip /app/env/PORT || true
-    chown ubuntu:ubuntu /app/ip /app/PORT || true
+    chown -R ubuntu:ubuntu /app || true
 end script
-exec start-stop-daemon --start --user ubuntu --exec /app/run
+exec start-stop-daemon --start --user ubuntu --chuid ubuntu --exec /app/run
 `))
 
 	// NB: sshHost has `.*@` portion stripped if an `@` symbol is found.

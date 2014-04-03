@@ -111,7 +111,7 @@ func (this *Server) checkNodes(resultChan chan NodeStatus) error {
 	return nil
 }
 
-func (this *Server) monitorFreeMemory() {
+func (this *Server) monitorNodes() {
 	repeater := time.Tick(STATUS_MONITOR_INTERVAL_SECONDS * time.Second)
 	nodeStatusChan := make(chan NodeStatus)
 	hostStatusMap := map[string]NodeStatus{}

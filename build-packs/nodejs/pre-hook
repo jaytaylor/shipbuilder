@@ -33,6 +33,7 @@ if [ -r 'package.json' ]; then
     cd "${nodejsDeps}"
     abortIfNonZero $? "Changing directory to ${nodejsDeps}"
 
+    echo '--> Installing npm dependencies' >> /app/out
     stdbuf -o0 npm install 2>&1 >> /app/out
     rc=$?
 

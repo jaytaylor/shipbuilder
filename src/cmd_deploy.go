@@ -254,6 +254,7 @@ func (this *Deployment) build() error {
 	if err != nil {
 		return err
 	}
+	fmt.Fprintf(titleLogger, "Waiting for container pre-hook\n")
 
 	select {
 	case err = <-c:

@@ -1,7 +1,12 @@
 #!/bin/bash
 cd /app/src
-stdbuf -o0 python -m compileall -q . 2>&1 >> /app/out
+
+echo '--> Installing requirements.txt' >> /app/out
 stdbuf -o0 pip install -r requirements.txt 2>&1 >> /app/out
+
+echo '--> Precompiling python files' >> /app/out
+stdbuf -o0 python -m compileall -q . 2>&1 >> /app/out
+
 rc=$?
 echo "RETURN_CODE: ${rc}" >> /app/out
 exit $rc
