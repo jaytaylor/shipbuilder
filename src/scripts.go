@@ -235,13 +235,13 @@ def modifyIpTables(action, chain, ip, port):
         exitCode = child.returncode
         if exitCode == 0:
             return
-        elif exitCode == 4 and attempts < 5:
+        elif exitCode == 4 and attempts < 15:
             log('iptables: Resource temporarily unavailable (exit status 4), retrying.. ({0} previous attempts)'.format(attempts))
             attempts += 1
             time.sleep(1)
             continue
         else:
-            raise subprocess.CalledProcessError('iptables exited with status code {0}'.format(exitCode))
+            raise subprocess.CalledProcessError('iptables exited with non-zero status code {0}'.format(exitCode))
 
 def ipsForRulesMatchingPort(chain, port):
     # NB: 'exit 0' added to avoid exit status code 1 when there were no results.
@@ -261,7 +261,7 @@ def retriableCommand(*command):
             return subprocess.check_call(command, stdout=sys.stdout, stderr=sys.stderr)
         except subprocess.CalledProcessError, e:
             if 'dataset is busy' in str(e):
-                time.sleep(0.25)
+                time.sleep(0.5)
                 continue
             else:
                 raise e
