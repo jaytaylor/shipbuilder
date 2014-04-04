@@ -1,5 +1,9 @@
 #!/bin/bash
 
+##
+# Node.js dependencies hook.
+#
+
 function abortIfNonZero() {
     # @param $1 command return code/exit status (e.g. $?, '0', '1').
     # @param $2 error message if exit status was non-zero.
@@ -8,40 +12,37 @@ function abortIfNonZero() {
     test $rc -ne 0 && echo "error: ${what} exited with non-zero status ${rc}" >> /app/out && exit $rc || :
 }
 
-nodejsDeps='/app/.nodejs'
-
 cd /app/src
 abortIfNonZero $? 'Changing directory to "/app/src"'
+
+dependenciesPath='/app/.shipbuilder'
+
+test ! -d "${dependenciesPath}" && mkdir "${dependenciesPath}"
 
 if [ -r 'package.json' ]; then
     if [ -L 'node_modules' ]; then
         unlink node_modules
-        abortIfNonZero $? 'Unlinking "node_modules" symlink'
+        abortIfNonZero $? 'Unlinking inner "node_modules" symlink'
     elif [ -d 'node_modules' ]; then
         rm -r node_modules
-        abortIfNonZero $? 'Removing "node_modules" directory'
+        abortIfNonZero $? 'Removing inner "node_modules" directory'
     fi
 
-    if ! [ -d "${nodejsDeps}" ]; then
-        mkdir "${nodejsDeps}"
-        abortIfNonZero $? "Creating ${nodejsDeps} directory"
-    fi
+    cp package.json "${dependenciesPath}"
+    abortIfNonZero $? "Copying packages.json to ${dependenciesPath}"
 
-    cp package.json "${nodejsDeps}"
-    abortIfNonZero $? "Copying packages.json to ${nodejsDeps}"
-
-    cd "${nodejsDeps}"
-    abortIfNonZero $? "Changing directory to ${nodejsDeps}"
+    cd "${dependenciesPath}"
+    abortIfNonZero $? "Changing directory to ${dependenciesPath}"
 
     echo '--> Installing npm dependencies' >> /app/out
     stdbuf -o0 npm install 2>&1 >> /app/out
     rc=$?
 
-    ln -s "${nodejsDeps}/node_modules" /app/src/node_modules
-    abortIfNonZero $? "Linking ${nodejsDeps} to /app/src/node_modules"
+    ln -s "${dependenciesPath}/node_modules" /app/src/node_modules
+    abortIfNonZero $? "Linking ${dependenciesPath} to /app/src/node_modules"
 
 else
-    echo 'WARN: No "packages.json" file found' >> /app/out
+    echo 'warning: no "packages.json" file found' >> /app/out
     rc=0
 fi
 

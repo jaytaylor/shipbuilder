@@ -1,11 +1,39 @@
 #!/bin/bash
+
+##
+# Python dependencies hook.
+#
+
+function abortIfNonZero() {
+    # @param $1 command return code/exit status (e.g. $?, '0', '1').
+    # @param $2 error message if exit status was non-zero.
+    local rc=$1
+    local what=$2
+    test $rc -ne 0 && echo "error: ${what} exited with non-zero status ${rc}" >> /app/out && exit $rc || :
+}
+
 cd /app/src
+abortIfNonZero $? 'Changing directory to "/app/src"'
 
-echo '--> Installing requirements.txt' >> /app/out
-stdbuf -o0 pip install -r requirements.txt 2>&1 >> /app/out
+dependenciesPath='/app/.shipbuilder'
 
-echo '--> Precompiling python files' >> /app/out
-stdbuf -o0 python -m compileall -q . 2>&1 >> /app/out
+test ! -d "${dependenciesPath}" && mkdir "${dependenciesPath}"
+
+# Ensure virtualenv is avaiable.
+test ! -d "${dependenciesPath}/venv" && virtualenv "${dependenciesPath}/venv"
+
+. "${dependenciesPath}/venv/bin/activate"
+
+if [ -r 'requirements.txt' ]; then
+    echo '--> Installing requirements.txt' >> /app/out
+    stdbuf -o0 pip install -r requirements.txt 2>&1 >> /app/out
+
+    echo '--> Precompiling python files' >> /app/out
+    stdbuf -o0 python -m compileall -q . 2>&1 >> /app/out
+else
+    echo 'warning: no "requirements.txt" file found' >> /app/out
+    rc=0
+fi
 
 rc=$?
 echo "RETURN_CODE: ${rc}" >> /app/out
