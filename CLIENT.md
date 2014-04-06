@@ -97,7 +97,7 @@ __apps:destroy__
 
     [apps:]destroy -a[application-name]
 
-Destroy the app with the name `name`.
+Destroy the app with the name `name`.  This permanently and irreversibly deletes the application configuration, the base container image, and all prior releases archived on S3.
 
 
 __config:list__
