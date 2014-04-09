@@ -1,6 +1,19 @@
 Creating an app: Python example
 ===============================
 
+Step 0: Ensure your app returns a 2xx or 3xx HTTP status code for index page GET requests on `/`
+------------------------------------------------------------------------------------------------
+
+There is a check near the end of each deployment which requires that all `web` dyno process types must pass in order for the deploy to go through.  A 2xx or 3xx range status code must be in the response of http `GET /`.  This is to guard against an unbootable build of a web-app from taking the website offline*.
+
+Q: Why have this check?
+
+A: ShipBuilder automatically builds and applies configuration files for the venerable [HAProxy](http://haproxy.1wt.eu/) load-balancer, which offers industrial strength fault-tolerance with uncompromising performance.  In the automatically-generated HAProxy configuration, the LB daemon will periodically check the index page on every app dyno to measure responsiveness.  It then avoids routing further traffic to any `web` dyno which repeatedly fails by taking more than 3.000s to respond to `GET /` checks.  If/when the `web` dyno returns to a responsive state it will be reactivated in the server pool.
+
+To avoid deploying broken app builds we require an equivalent passing check as a precondition for any deploy to succeed and for the app to transition into a "running" state.
+
+* If you wish to make the web-portion of the app unavailable on purpose, use the `maintenance:on -aMyApp`and `maintenance:off -aMyApp` commands (fastest way but leaves dynos running), or scale the web dynos down to 0 with `ps:scale web=0 -aMyApp`.
+
 Step 1: Add your preferred (WSGI)[http://en.wikipedia.org/wiki/Web_Server_Gateway_Interface] server to `requirements.txt`
 -------------------------------------------------------------------------------------------------------------------------
 
