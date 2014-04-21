@@ -627,8 +627,8 @@ function lxcConfigBuildPacks() {
     test -z "${lxcFs}" && echo 'error: lxcConfigBuildPacks() missing required parameter: $lxcFs' 1>&2 && exit 1
     for buildPack in $(ls -1 /mnt/build/build-packs); do
         echo "info: initializing build-pack: ${buildPack}"
-        packages="$(cat /mnt/build/build-packs/$buildPack/container-packages 2>/dev/null)"
         customCommands="$(cat /mnt/build/build-packs/$buildPack/container-custom-commands 2>/dev/null)"
+        packages="$(cat /mnt/build/build-packs/$buildPack/container-packages 2>/dev/null)"
         lxcConfigBuildPack "${buildPack}" "${packages}" "${customCommands}" "${lxcFs}"
         echo 'info: build-pack initialized succeeded'
     done
