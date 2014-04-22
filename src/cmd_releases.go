@@ -46,9 +46,7 @@ func getS3Bucket() *s3.Bucket {
 
 func getReleases(applicationName string) ([]Release, error) {
 	var releases []Release
-	bs, err := getS3Bucket().Get(
-		"/releases/" + applicationName + "/manifest.json",
-	)
+	bs, err := getS3Bucket().Get("/releases/" + applicationName + "/manifest.json")
 	if err != nil {
 		if err.Error() == "The specified key does not exist." {
 			// The manifest.json file for this app was missing, fill in an empty releases list and continue on our way.

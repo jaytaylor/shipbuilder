@@ -364,7 +364,7 @@ backend {{.Name}}
     reqadd X-Forwarded-Proto:\ https if { ssl_fc }
     option forwardfor
     option abortonclose
-    option httpchk GET /
+    option httpchk GET / HTTP/1.1\r\nHost:\ {{.FirstDomain}}
   {{range $app.Servers}}
     server {{.Host}}-{{.Port}} {{.Host}}:{{.Port}} check port {{.Port}} observe layer7
   {{end}}{{if and $context.HaProxyStatsEnabled $context.HaProxyCredentials}}

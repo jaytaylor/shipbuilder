@@ -132,6 +132,17 @@ func (this *Application) TotalRequestedDynos() int {
 	return n
 }
 
+// Get any valid domain for the app.  HAProxy will use this to formulate checks which are maximally valid, compliant and compatible.
+// Note: Not a pointer because this needs to be available for invocation from inside templates.
+// Also see: http://stackoverflow.com/questions/10200178/call-a-method-from-a-go-template
+func (this *Application) FirstDomain() string {
+	if len(this.Domains) > 0 {
+		return this.Domains[0]
+	} else {
+		return "example.com"
+	}
+}
+
 // Entire maintenance page URL (e.g. "http://example.com/static/maintenance.html").
 func (this *Application) MaintenancePageUrl() string {
 	maintenanceUrl, ok := this.Environment["MAINTENANCE_PAGE_URL"]
@@ -140,13 +151,7 @@ func (this *Application) MaintenancePageUrl() string {
 	}
 	// Fall through to searching for a universal maintenance page URL in an environment variable, and
 	// defaulting to a potentially useful page.
-	var firstDomain string
-	if len(this.Domains) > 0 {
-		firstDomain = this.Domains[0]
-	} else {
-		firstDomain = "example.com"
-	}
-	return ConfigFromEnv("SB_DEFAULT_MAINTENANCE_URL", "http://www.downforeveryoneorjustme.com/"+firstDomain)
+	return ConfigFromEnv("SB_DEFAULT_MAINTENANCE_URL", "http://www.downforeveryoneorjustme.com/"+this.FirstDomain())
 }
 
 // Maintenance page URL path. (e.g. "/static/maintenance.html").
@@ -369,6 +374,7 @@ func (this *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDynos 
 	type App struct {
 		Name                    string
 		Domains                 []string
+		FirstDomain             string
 		Servers                 []*Server
 		Maintenance             bool
 		MaintenancePageFullPath string
@@ -394,6 +400,7 @@ func (this *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDynos 
 		a := &App{
 			Name:                    app.Name,
 			Domains:                 app.Domains,
+			FirstDomain:             app.FirstDomain(),
 			Servers:                 []*Server{},
 			Maintenance:             app.Maintenance,
 			MaintenancePageFullPath: app.MaintenancePageFullPath(),
