@@ -1,0 +1,28 @@
+#!/bin/bash
+
+##
+# Python dependencies hook.
+#
+
+function abortIfNonZero() {
+    # @param $1 command return code/exit status (e.g. $?, '0', '1').
+    # @param $2 error message if exit status was non-zero.
+    local rc=$1
+    local what=$2
+    test $rc -ne 0 && echo "error: ${what} exited with non-zero status ${rc}" >> /app/out && exit $rc || :
+}
+
+cd /app/src
+abortIfNonZero $? 'Changing directory to "/app/src"'
+
+dependenciesPath='/app/.shipbuilder'
+
+test ! -d "${dependenciesPath}" && mkdir "${dependenciesPath}"
+
+echo '--> Fetching dependencies and compiling app' >> /app/out
+stdbuf -o0 sbt compile
+rc=$?
+abortIfNonZero $rc 'Project compilation failed'
+
+echo "RETURN_CODE: ${rc}" >> /app/out
+exit $rc

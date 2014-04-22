@@ -79,6 +79,8 @@ Alternative flag combinations:
 Create an appication named `name` with the build pack `buildpack`. Available buildpacks are:
 
 * python
+* nodejs
+* scala-sbt
 * playframework2
 
 
