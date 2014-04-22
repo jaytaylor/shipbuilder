@@ -20,7 +20,7 @@ dependenciesPath='/app/.shipbuilder'
 test ! -d "${dependenciesPath}" && mkdir "${dependenciesPath}"
 
 echo '--> Fetching dependencies and compiling app' >> /app/out
-stdbuf -o0 sbt compile
+stdbuf -o0 sbt compile >> /app/out >> /app/out >> /app/out >> /app/out
 rc=$?
 abortIfNonZero $rc 'Project compilation failed'
 
