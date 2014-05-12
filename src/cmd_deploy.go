@@ -303,13 +303,16 @@ func (this *Deployment) archive() error {
 		if err != nil {
 			return
 		}
-		defer e.BashCmd("rm -f " + archiveName)
 
 		h, err := os.Open(archiveName)
 		if err != nil {
 			return
 		}
-		defer h.Close()
+		defer func(archiveName string, e Executor) {
+			fmt.Fprintf(e.logger, "Closing filehandle and removing archive file \"%v\"\n", archiveName)
+			h.Close()
+			e.BashCmd("rm -f " + archiveName)
+		}(archiveName, e)
 		stat, err := h.Stat()
 		if err != nil {
 			return
