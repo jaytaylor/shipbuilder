@@ -19,10 +19,19 @@ dependenciesPath='/app/.shipbuilder'
 
 test ! -d "${dependenciesPath}" && mkdir "${dependenciesPath}"
 
-echo '--> Fetching dependencies and compiling app' >> /app/out
-stdbuf -o0 sbt compile >> /app/out >> /app/out >> /app/out >> /app/out
-rc=$?
-abortIfNonZero $rc 'Project compilation failed'
+# Support sbt-assembly deployments, @see https://github.com/sbt/sbt-assembly for more information.
+if test -e 'assembly.sbt'; then
+    echo '--> sbt-assembly detected' >> /app/out
+    echo '--> fetching dependencies and building app jar' >> /app/out
+    sbt assembly >> /app/out
+    rc=$?
+    abortIfNonZero $rc 'sbt-assembly build failed'
+else
+    echo '--> fetching dependencies and compiling app' >> /app/out
+    stdbuf -o0 sbt compile >> /app/out
+    rc=$?
+    abortIfNonZero $rc 'Project compilation failed'
+fi
 
 echo "RETURN_CODE: ${rc}" >> /app/out
 exit $rc
