@@ -102,23 +102,36 @@ def configureIpTablesForwarding(ip, port):
     # Add another rule so that the port will be reachable from <eth0-iface>:port from localhost.
     modifyIpTables('append', 'OUTPUT', ip, port)
 
+def cloneContainer(app, container, check=True):
+    log('cloning container: {0}'.format(container))
+    fn = subprocess.check_call if check else subprocess.call
+    return fn(
+        ['/usr/bin/lxc-clone', '-s', '-B', '` + lxcFs + `', '-o', app, '-n', container],
+        stdout=sys.stdout,
+        stderr=sys.stderr
+    )
+
+def startContainer(container, check=True):
+    log('starting container: {}'.format(container))
+    fn = subprocess.check_call if check else subprocess.call
+    return fn(
+        ['/usr/bin/lxc-start', '--daemon', '-n', container],
+        stdout=sys.stdout,
+        stderr=sys.stderr
+    )
+
 def main(argv):
     global container
     #print 'main argv={0}'.format(argv)
     container = argv[1]
     app, version, process, port = container.split('` + DYNO_DELIMITER + `') # Format is app_version_process_port
 
-    # For safety, even though it's unlikley, try to kill/shutdown any existing container with the same name.
+    # For safety, even though it's unlikely, try to kill/shutdown any existing container with the same name.
     subprocess.call(['/usr/bin/lxc-stop -k -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)
     subprocess.call(['/usr/bin/lxc-destroy -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)
 
-    # Start the specified container.
-    log('cloning container: {0}'.format(container))
-    subprocess.check_call(
-        ['/usr/bin/lxc-clone', '-s', '-B', '` + lxcFs + `', '-o', app, '-n', container],
-        stdout=sys.stdout,
-        stderr=sys.stderr
-    )
+    # Clone the specified container.
+    cloneContainer(app, container)
 
     # This line, if present, will prevent the container from booting.
     #log('scrubbing any "lxc.cap.drop = mac_{0}" lines from container config'.format(container))
@@ -151,12 +164,7 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
     st = os.stat(runScriptFileName)
     os.chmod(runScriptFileName, st.st_mode | stat.S_IEXEC)
 
-    log('starting container')
-    subprocess.check_call(
-        ['/usr/bin/lxc-start', '--daemon', '-n', container],
-        stdout=sys.stdout,
-        stderr=sys.stderr
-    )
+    startContainer(container)
 
     log('waiting for container to boot and report ip-address')
     # Allow container to bootup.
@@ -184,6 +192,7 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
                 ], stderr=sys.stderr, stdout=sys.stdout)
             except subprocess.CalledProcessError, e:
                 sys.stderr.write('- error: curl http check failed, {0}\n'.format(e))
+                subprocess.check_call(['/tmp/shutdown_container.py', container, 'destroy-only'])
                 sys.exit(1)
 
     else:
@@ -274,7 +283,7 @@ def main(argv):
 
     try:
         # Stop and destroy the container.
-        log('stopping container')
+        log('stopping container: {}'.format(container))
         subprocess.check_call(['/usr/bin/lxc-stop', '-k', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
     except Exception, e:
         if not destroyOnly:
