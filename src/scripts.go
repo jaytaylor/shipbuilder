@@ -320,7 +320,9 @@ func init() {
 	template.Must(UPSTART.Parse(`
 console none
 
-start on (local-filesystems and net-device-up IFACE!=lo)
+# Start on "networking up" state.
+# @see http://upstart.ubuntu.com/cookbook/#how-to-establish-a-jobs-start-on-and-stop-on-conditions
+start on static-network-up
 stop on [!12345]
 #exec su ` + DEFAULT_NODE_USERNAME + ` -c "/app/run"
 #exec /app/run
