@@ -154,7 +154,7 @@ while read line || [ -n "$line" ]; do
     process="${{line%%:*}}"
     command="${{line#*: }}"
     if [ "$process" == "{process}" ]; then
-        envdir ` + ENV_DIR + ` /bin/bash -c "export PATH=\"$(find /app/.shipbuilder -type d -wholename '*bin' -maxdepth 2):${{PATH}}\"; ${{command}} 2>&1 | /app/` + BINARY + ` logger -h{host} -a{app} -p{process}.{port}"
+        envdir ` + ENV_DIR + ` /bin/bash -c "export PATH=\"$(find /app/.shipbuilder -type d -wholename '*bin' -maxdepth 2):${{PATH}}\"; ( ${{command}} ) 2>&1 | /app/` + BINARY + ` logger -h{host} -a{app} -p{process}.{port}"
     fi
 done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, app=app)
     runScriptFileName = '` + LXC_DIR + `/{0}/rootfs/app/run'.format(container)
@@ -181,7 +181,7 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
         configureIpTablesForwarding(ip, port)
 
         if process == 'web':
-            log('waiting for web-server to finish starting up')
+            log('waiting for web-server to start up')
             try:
                 subprocess.check_call([
                     '/usr/bin/curl',
@@ -190,6 +190,7 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
                     '--write-out', '%{http_code} %{url_effective}\n',
                     '{0}:{1}/'.format(ip, port),
                 ], stderr=sys.stderr, stdout=sys.stdout)
+
             except subprocess.CalledProcessError, e:
                 sys.stderr.write('- error: curl http check failed, {0}\n'.format(e))
                 subprocess.check_call(['/tmp/shutdown_container.py', container, 'destroy-only'])
