@@ -194,6 +194,25 @@ func (this *Deployment) prepareDisabledServices(e *Executor) error {
 	return nil
 }
 
+// Used to enable private github repo access.
+func (this *Deployment) applySshPrivateKeyFile() error {
+	if this.Application.SshPrivateKey != nil {
+		os.Mkdir(this.Application.SshDir(), 0700)
+		err := ioutil.WriteFile(this.Application.SshPrivateKeyFilePath(), []byte(*this.Application.SshPrivateKey), 0500)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Removes To be invoked after dependency retrieval.
+func (this *Deployment) removeSshPrivateKeyFile() {
+	if this.Application.SshPrivateKey != nil {
+		os.Remove(this.Application.SshPrivateKeyFilePath())
+	}
+}
+
 func (this *Deployment) build() error {
 	dimLogger := NewFormatter(this.Logger, DIM)
 	titleLogger := NewFormatter(this.Logger, GREEN)
@@ -213,6 +232,15 @@ func (this *Deployment) build() error {
 	if err != nil {
 		return err
 	}
+
+	// Add the public ssh key.
+	err = this.applySshPrivateKeyFile()
+	if err != nil {
+		return err
+	}
+	// Defer removal of the ssh key.
+	defer this.removeSshPrivateKeyFile()
+
 	// Create the build script.
 	f, err = os.OpenFile(this.Application.RootFsDir()+APP_DIR+"/run", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	if err != nil {

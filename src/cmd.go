@@ -278,6 +278,17 @@ func init() {
 			required("directory"), required("oldrev"), required("newrev"), required("ref"),
 		),
 		////////////////////////////////////////////////////////////////////////
+		// Commands: privatekey:*
+		reader("privatekey", "privatekey:get", "PrivateKey_Get",
+			required("app"),
+		),
+		writer("privatekey:set", "privatekey:set", "PrivateKey_Set",
+			required("app"), required("privateKey"),
+		),
+		writer("privatekey:remove", "privatekey:remove", "PrivateKey_Remove",
+			required("app"),
+		),
+		////////////////////////////////////////////////////////////////////////
 		// Commands: ps:*
 		reader("ps", "ps:list", "Ps_List",
 			required("app"),

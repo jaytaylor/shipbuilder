@@ -19,14 +19,15 @@ import (
 
 type (
 	Application struct {
-		Name        string
-		Domains     []string
-		BuildPack   string
-		Environment map[string]string
-		Processes   map[string]int
-		LastDeploy  string
-		Maintenance bool
-		Drains      []string
+		Name          string
+		Domains       []string
+		BuildPack     string
+		Environment   map[string]string
+		Processes     map[string]int
+		LastDeploy    string
+		Maintenance   bool
+		Drains        []string
+		SshPrivateKey *string
 	}
 	Node struct {
 		Host string
@@ -110,6 +111,12 @@ func (this *Application) LocalAppDir() string {
 }
 func (this *Application) LocalSrcDir() string {
 	return APP_DIR + "/src"
+}
+func (this *Application) SshDir() string {
+	return this.SrcDir() + "/.ssh"
+}
+func (this *Application) SshPrivateKeyFilePath() string {
+	return this.SshDir() + "/id_rsa"
 }
 func (this *Application) BaseContainerName() string {
 	return "base-" + this.BuildPack
