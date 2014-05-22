@@ -2,7 +2,8 @@
 
 Sometimes people deploy their app and it is not available or working as expected.  Here is a list of items to verify:
 
-If the deploy failed:
+If a deploy fails:
+------------------
 
 1. Does the app have a Procfile?  Verify the filename is correctly capitalized, "Procfile".
 
@@ -10,7 +11,7 @@ If the deploy failed:
 
 ShipBuilder avoids taking an app offline by requiring that any new "web" dynos return a 200 status code for "GET /" index requests.  If you are seeing ShipBuilder try to start one or more web dynos over and over, it is probable that the dyno isn't booting or ending up reachable.
 
-Web dynos *MUST* returna 200 HTTP status code for index requests.  No 301's, no 400's, no 5xx.
+Web dynos **MUST** return a 200 HTTP status code for index requests.  No 301's, no 400's, no 5xx.
 
 Troubleshooting and resolving this kind of issue:
    Step 1: Tail the logs (e.g. `sb logs -aMyApp`)
@@ -18,6 +19,7 @@ Troubleshooting and resolving this kind of issue:
    Step 3: Watch (or review the logs). There may be clues in the logs as to the web dyno isn't starting up or getting to a reachable state.
 
 If the app doesn't seem to be reachable:
+----------------------------------------
 
 1. Has the domain name been added to the app?
     e.g.
