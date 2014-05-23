@@ -215,6 +215,27 @@ __post-receive__
 Internal command automatically invoked by the git repo on post-receive.
 
 
+__privatekey:get__
+
+    privatekey[:get?] -a[application-name]
+
+Get the private SSH key for an app.
+
+
+__privatekey:set__
+
+    privatekey:set [REALLY-LONG-PRIVATE-KEY-STRING-ALL-ON-ONE-LINE-WITH-NO-DASHES] -a[application-name]
+
+Set the private SSH key for an app (so dependencies and submodules from private repositories can be retrieved).
+
+
+__privatekey:remove__
+
+    privatekey:remove -a[application-name]
+
+Remove the currently set priate SSH key for an app.
+
+
 __ps:list__
 
     ps[:list?] -a[application-name]
