@@ -69,6 +69,25 @@ func (this *DeployLock) validateLatest(value int) bool {
 // Keep track of deployment run count to avoid cleanup operating on stale data.
 var deployLock = DeployLock{numStarted: 0, numFinished: 0}
 
+// Used to enable private github repo access.
+func (this *Deployment) applySshPrivateKeyFile() error {
+	if this.Application.SshPrivateKey != nil {
+		os.Mkdir(this.Application.SshDir(), 0700)
+		err := ioutil.WriteFile(this.Application.SshPrivateKeyFilePath(), []byte(*this.Application.SshPrivateKey), 0500)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Removes To be invoked after dependency retrieval.
+func (this *Deployment) removeSshPrivateKeyFile() {
+	if this.Application.SshPrivateKey != nil && PathExists(this.Application.SshPrivateKeyFilePath()) {
+		os.Remove(this.Application.SshPrivateKeyFilePath())
+	}
+}
+
 func (this *Deployment) createContainer() error {
 	dimLogger := NewFormatter(this.Logger, DIM)
 	titleLogger := NewFormatter(this.Logger, GREEN)
@@ -89,16 +108,23 @@ func (this *Deployment) createContainer() error {
 
 	e.BashCmd("rm -rf " + this.Application.AppDir() + "/*")
 	e.BashCmd("mkdir -p " + this.Application.SrcDir())
-	// Copy the binary into the container.
+	// Copy the ShipBuilder binary into the container.
 	this.err = e.BashCmd("cp " + EXE + " " + this.Application.AppDir() + "/" + BINARY)
 	if this.err != nil {
 		return this.err
 	}
-	// Export the source to the container.
-	this.err = e.BashCmd("git clone " + this.Application.GitDir() + " " + this.Application.SrcDir())
+	// Export the source to the container.  Use `--depth 1` to omit the history which wasn't going to be used anyways.
+	this.err = e.BashCmd("git clone --depth 1 " + this.Application.GitDir() + " " + this.Application.SrcDir())
 	if this.err != nil {
 		return this.err
 	}
+
+	// Add the public ssh key for submodule (and later dependency) access.
+	err = this.applySshPrivateKeyFile()
+	if err != nil {
+		return err
+	}
+
 	// Checkout the given revision.
 	this.err = e.BashCmd("cd " + this.Application.SrcDir() + " && git checkout -q -f " + this.Revision)
 	if this.err != nil {
@@ -194,25 +220,6 @@ func (this *Deployment) prepareDisabledServices(e *Executor) error {
 	return nil
 }
 
-// Used to enable private github repo access.
-func (this *Deployment) applySshPrivateKeyFile() error {
-	if this.Application.SshPrivateKey != nil {
-		os.Mkdir(this.Application.SshDir(), 0700)
-		err := ioutil.WriteFile(this.Application.SshPrivateKeyFilePath(), []byte(*this.Application.SshPrivateKey), 0500)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// Removes To be invoked after dependency retrieval.
-func (this *Deployment) removeSshPrivateKeyFile() {
-	if this.Application.SshPrivateKey != nil {
-		os.Remove(this.Application.SshPrivateKeyFilePath())
-	}
-}
-
 func (this *Deployment) build() error {
 	dimLogger := NewFormatter(this.Logger, DIM)
 	titleLogger := NewFormatter(this.Logger, GREEN)
@@ -221,6 +228,9 @@ func (this *Deployment) build() error {
 
 	fmt.Fprintf(titleLogger, "Building image\n")
 	e.StopContainer(this.Application.Name) // To be sure we are starting with a container in the stopped state.
+
+	// Defer removal of the ssh private key file.
+	defer this.removeSshPrivateKeyFile()
 
 	// Create upstart script.
 	f, err := os.OpenFile(this.Application.RootFsDir()+"/etc/init/app.conf", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0444)
@@ -232,15 +242,6 @@ func (this *Deployment) build() error {
 	if err != nil {
 		return err
 	}
-
-	// Add the public ssh key.
-	err = this.applySshPrivateKeyFile()
-	if err != nil {
-		return err
-	}
-	// Defer removal of the ssh key.
-	defer this.removeSshPrivateKeyFile()
-
 	// Create the build script.
 	f, err = os.OpenFile(this.Application.RootFsDir()+APP_DIR+"/run", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
 	if err != nil {
