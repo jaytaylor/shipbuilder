@@ -1,0 +1,50 @@
+#!/bin/bash
+
+##
+# Node.js dependencies hook.
+#
+
+function abortIfNonZero() {
+    # @param $1 command return code/exit status (e.g. $?, '0', '1').
+    # @param $2 error message if exit status was non-zero.
+    local rc=$1
+    local what=$2
+    test $rc -ne 0 && echo "error: ${what} exited with non-zero status ${rc}" >> /app/out && exit $rc || :
+}
+
+cd /app/src
+abortIfNonZero $? 'Changing directory to "/app/src"'
+
+dependenciesPath='/app/.shipbuilder'
+
+test ! -d "${dependenciesPath}" && mkdir "${dependenciesPath}"
+
+if [ -r 'package.json' ]; then
+    if [ -L 'node_modules' ]; then
+        unlink node_modules
+        abortIfNonZero $? 'Unlinking inner "node_modules" symlink'
+    elif [ -d 'node_modules' ]; then
+        rm -r node_modules
+        abortIfNonZero $? 'Removing inner "node_modules" directory'
+    fi
+
+    cp package.json "${dependenciesPath}"
+    abortIfNonZero $? "Copying packages.json to ${dependenciesPath}"
+
+    cd "${dependenciesPath}"
+    abortIfNonZero $? "Changing directory to ${dependenciesPath}"
+
+    echo '--> Installing npm dependencies' >> /app/out
+    stdbuf -o0 npm install 2>&1 >> /app/out
+    rc=$?
+
+    ln -s "${dependenciesPath}/node_modules" /app/src/node_modules
+    abortIfNonZero $? "Linking ${dependenciesPath} to /app/src/node_modules"
+
+else
+    echo 'warning: no "packages.json" file found' >> /app/out
+    rc=0
+fi
+
+echo "RETURN_CODE: ${rc}" >> /app/out
+exit $rc

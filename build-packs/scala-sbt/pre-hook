@@ -19,22 +19,19 @@ dependenciesPath='/app/.shipbuilder'
 
 test ! -d "${dependenciesPath}" && mkdir "${dependenciesPath}"
 
-# Ensure virtualenv is avaiable.
-test ! -d "${dependenciesPath}/venv" && virtualenv "${dependenciesPath}/venv"
-
-. "${dependenciesPath}/venv/bin/activate"
-
-if [ -r 'requirements.txt' ]; then
-    echo '--> Installing requirements.txt' >> /app/out
-    stdbuf -o0 pip install -r requirements.txt 2>&1 >> /app/out
-
-    echo '--> Precompiling python files' >> /app/out
-    stdbuf -o0 python -m compileall -q . 2>&1 >> /app/out
+# Support sbt-assembly deployments, @see https://github.com/sbt/sbt-assembly for more information.
+if test -e 'assembly.sbt'; then
+    echo '--> sbt-assembly detected' >> /app/out
+    echo '--> fetching dependencies and building app jar' >> /app/out
+    sbt assembly >> /app/out
+    rc=$?
+    abortIfNonZero $rc 'sbt-assembly build failed'
 else
-    echo 'warning: no "requirements.txt" file found' >> /app/out
-    rc=0
+    echo '--> fetching dependencies and compiling app' >> /app/out
+    stdbuf -o0 sbt compile >> /app/out
+    rc=$?
+    abortIfNonZero $rc 'Project compilation failed'
 fi
 
-rc=$?
 echo "RETURN_CODE: ${rc}" >> /app/out
 exit $rc

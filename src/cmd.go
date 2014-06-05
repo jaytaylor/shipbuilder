@@ -164,6 +164,9 @@ func init() {
 	}
 
 	commands = []Command{
+		////////////////////////////////////////////////////////////////////////
+		// Command: apps:*
+		global("apps", "apps:list", "Apps_List"),
 		global("create", "apps:create", "Apps_Create",
 			required("app"), optional("buildpack", ""),
 		),
@@ -173,12 +176,13 @@ func init() {
 		global("clone", "apps:clone", "Apps_Clone",
 			required("oldApp"), required("newApp"),
 		),
-		global("apps", "apps:list", "Apps_List"),
-		reader("config:get", "config:get", "Config_Get",
-			required("app"), required("name"),
-		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: config:*
 		reader("config", "config:list", "Config_List",
 			required("app"),
+		),
+		reader("config:get", "config:get", "Config_Get",
+			required("app"), required("name"),
 		),
 		writer("config:set", "config:add", "Config_Set",
 			required("app"), optional("deferred", ""), mapped("args"),
@@ -186,33 +190,45 @@ func init() {
 		writer("config:remove", "config:unset", "Config_Remove",
 			required("app"), optional("deferred", ""), list("names"),
 		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: run
 		reader("run", "console", "Console",
 			required("app"), list("args"),
 		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: deploy
 		writer("deploy", "deploy", "Deploy",
 			required("app"), required("revision"),
+		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: domains:*
+		reader("domains", "domains:list", "Domains_List",
+			required("app"),
 		),
 		writer("domains:add", "domains:add", "Domains_Add",
 			required("app"), list("domains"),
 		),
-		reader("domains", "domains:list", "Domains_List",
-			required("app"),
-		),
 		writer("domains:remove", "domains:remove", "Domains_Remove",
 			required("app"), list("domains"),
+		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: drains:*
+		reader("drains", "drains:list", "Drains_List",
+			required("app"),
 		),
 		writer("drains:add", "drains:add", "Drains_Add",
 			required("app"), list("addresses"),
 		),
-		reader("drains", "drains:list", "Drains_List",
-			required("app"),
-		),
 		writer("drains:remove", "drains:remove", "Drains_Remove",
 			required("app"), list("addresses"),
 		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: help
 		global("help", "help", "Help",
 			optional("command", ""),
 		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: lb:*
 		global("lb:add", "lb:add", "LoadBalancer_Add",
 			list("addresses"),
 		),
@@ -220,58 +236,91 @@ func init() {
 		global("lb:remove", "lb:remove", "LoadBalancer_Remove",
 			list("addresses"),
 		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: logger
 		global("logger", "logger", "Logger",
 			required("host"), required("app"), required("process"),
 		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: logs:*
 		reader("logs", "logs:get", "Logs_Get",
 			required("app"), optional("process", ""), optional("filter", ""),
 		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: maint:*
 		writer("maint:off", "maintenance:off", "Maintenance_Off",
 			required("app"),
 		),
 		writer("maint:on", "maintenance:on", "Maintenance_On",
 			required("app"),
 		),
+		writer("maintenance:url", "maintenance:url", "Maintenance_Url",
+			required("app"), optional("url", ""),
+		),
 		reader("maintenance:status", "maintenance:status", "Maintenance_Status",
 			required("app"),
 		),
-		reader("maintenance:url", "maintenance:url", "Maintenance_Url",
-			required("app"), optional("url", ""),
-		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: nodes:*
+		reader("nodes", "nodes:list", "Node_List"),
 		reader("nodes:add", "nodes:add", "Node_Add",
 			list("addresses"),
 		),
-		reader("nodes", "nodes:list", "Node_List"),
 		reader("nodes:remove", "nodes:remove", "Node_Remove",
 			list("addresses"),
+		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: pre/post-receive
+		global("pre-receive", "pre-receive", "PreReceive",
+			required("directory"), required("oldrev"), required("newrev"), required("ref"),
 		),
 		global("post-receive", "post-receive", "PostReceive",
 			required("directory"), required("oldrev"), required("newrev"), required("ref"),
 		),
-		global("pre-receive", "pre-receive", "PreReceive",
-			required("directory"), required("oldrev"), required("newrev"), required("ref"),
+		////////////////////////////////////////////////////////////////////////
+		// Commands: privatekey:*
+		reader("privatekey", "privatekey:get", "PrivateKey_Get",
+			required("app"),
 		),
+		writer("privatekey:set", "privatekey:set", "PrivateKey_Set",
+			required("app"), required("privateKey"),
+		),
+		writer("privatekey:remove", "privatekey:remove", "PrivateKey_Remove",
+			required("app"),
+		),
+		////////////////////////////////////////////////////////////////////////
+		// Commands: ps:*
 		reader("ps", "ps:list", "Ps_List",
 			required("app"),
 		),
-		reader("scale", "ps:scale", "Ps_Scale",
+		writer("scale", "ps:scale", "Ps_Scale",
 			required("app"), mapped("args"),
 		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: rollback
 		writer("rollback", "rollback", "Rollback",
 			required("app"), optional("version", ""),
+		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: releases:*
+		reader("releases", "releases:list", "Releases_List",
+			required("app"),
 		),
 		reader("releases:info", "releases:info", "Releases_Info",
 			required("app"),
 		),
-		reader("releases", "releases:list", "Releases_List",
-			required("app"),
-		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: reset
 		writer("reset", "reset", "Reset_App",
 			required("app"),
 		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: restart
 		writer("restart", "restart", "Restart_App",
 			required("app"),
 		),
+		////////////////////////////////////////////////////////////////////////
+		// Command: runtime:*
 		global("runtime:tests", "runtimetests", "LocalRuntimeTests"),
 	}
 }

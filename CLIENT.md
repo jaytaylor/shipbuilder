@@ -79,6 +79,8 @@ Alternative flag combinations:
 Create an appication named `name` with the build pack `buildpack`. Available buildpacks are:
 
 * python
+* nodejs
+* scala-sbt
 * playframework2
 
 
@@ -97,7 +99,7 @@ __apps:destroy__
 
     [apps:]destroy -a[application-name]
 
-Destroy the app with the name `name`.
+Destroy the app with the name `name`.  This permanently and irreversibly deletes the application configuration, the base container image, and all prior releases archived on S3.
 
 
 __config:list__
@@ -211,6 +213,27 @@ __post-receive__
     post-receive directory old-revision new-revision reference
 
 Internal command automatically invoked by the git repo on post-receive.
+
+
+__privatekey:get__
+
+    privatekey[:get?] -a[application-name]
+
+Get the private SSH key for an app.
+
+
+__privatekey:set__
+
+    privatekey:set [REALLY-LONG-PRIVATE-KEY-STRING-ALL-ON-ONE-LINE-WITH-NO-DASHES] -a[application-name]
+
+Set the private SSH key for an app (so dependencies and submodules from private repositories can be retrieved).
+
+
+__privatekey:remove__
+
+    privatekey:remove -a[application-name]
+
+Remove the currently set priate SSH key for an app.
 
 
 __ps:list__

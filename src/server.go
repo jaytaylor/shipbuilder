@@ -236,7 +236,7 @@ func (this *Server) start() error {
 	}
 
 	initDrains(this)
-	go this.monitorFreeMemory()
+	go this.monitorNodes()
 
 	go StartWebServer(this, 8080)
 

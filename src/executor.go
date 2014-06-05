@@ -132,13 +132,18 @@ func (this *Executor) AttachContainer(name string, args ...string) *exec.Cmd {
 	if err != nil {
 		fmt.Fprintf(this.logger, "warn: host fix command failed for container '%v': %v\n", name, err)
 	}
-
-	prependArgs := []string{"lxc-attach", "-n", name, "--", "sudo", "-u", "ubuntu", "-n", "-i", "--", "/usr/bin/envdir", ENV_DIR}
+	// Build command to be run, prefixing any .shipbuilder `bin` directories to the environment $PATH.
+	command := `export PATH="$(find /app/.shipbuilder -maxdepth 2 -type d -wholename '*bin'):${PATH}" && /usr/bin/envdir ` + ENV_DIR + " "
 	if len(args) == 0 {
-		args = append(prependArgs, "/bin/bash")
+		command += "/bin/bash"
 	} else {
-		args = append(prependArgs, args...)
+		command += strings.Join(args, " ")
 	}
-	fmt.Printf("AttachContainer name=%v, cmd=%v\n", name, args)
-	return exec.Command("sudo", args...)
+	prefixedArgs := []string{
+		"lxc-attach", "-n", name, "--",
+		"sudo", "-u", "ubuntu", "-n", "-i", "--",
+		"/bin/bash", "-c", command,
+	}
+	fmt.Printf("AttachContainer name=%v, completeCommand=sudo %v\n", name, args)
+	return exec.Command("sudo", prefixedArgs...)
 }

@@ -197,8 +197,8 @@ function installLxc() {
     test -z "${lxcFs}" && echo 'error: installLxc() missing required parameter: $lxcFs' 1>&2 && exit 1
     echo 'info: a supported version of lxc must be installed (as of 2013-07-02, `buntu comes with 0.7.x by default, we require is 0.9.0 or greater)'
     echo 'info: adding lxc daily ppa'
-    sudo apt-add-repository -y ppa:ubuntu-lxc/daily
-    abortIfNonZero $? "command 'sudo apt-add-repository -y ppa:ubuntu-lxc/daily'"
+    sudo apt-add-repository -y ppa:ubuntu-lxc/stable
+    abortIfNonZero $? "command 'sudo apt-add-repository -y ppa:ubuntu-lxc/stable'"
     sudo apt-get update
     abortIfNonZero $? "command 'sudo add-get update'"
     sudo apt-get install -y lxc lxc-templates
@@ -399,13 +399,14 @@ function prepareLoadBalancer() {
 
     version=$(lsb_release -a 2>/dev/null | grep "Release" | grep -o "[0-9\.]\+$")
 
-    if [ "${version}" = "12.04" ]; then
+    if [ "${version}" = "13.10" ] || [ "${version}" = "12.04" ]; then
         ppa=ppa:vbernat/haproxy-1.5
     elif [ "${version}" = "13.04" ]; then
         ppa=ppa:nilya/haproxy-1.5
     else
         echo "error: unrecognized version of ubuntu: ${version}" 1>&2 && exit 1
     fi
+
     echo "info: adding ppa repository for ${version}: ${ppa}"
     sudo apt-add-repository -y ${ppa}
     abortIfNonZero $? "adding apt repository ppa ${ppa}"
@@ -626,8 +627,8 @@ function lxcConfigBuildPacks() {
     test -z "${lxcFs}" && echo 'error: lxcConfigBuildPacks() missing required parameter: $lxcFs' 1>&2 && exit 1
     for buildPack in $(ls -1 /mnt/build/build-packs); do
         echo "info: initializing build-pack: ${buildPack}"
-        packages="$(cat /mnt/build/build-packs/$buildPack/container-packages 2>/dev/null)"
         customCommands="$(cat /mnt/build/build-packs/$buildPack/container-custom-commands 2>/dev/null)"
+        packages="$(cat /mnt/build/build-packs/$buildPack/container-packages 2>/dev/null)"
         lxcConfigBuildPack "${buildPack}" "${packages}" "${customCommands}" "${lxcFs}"
         echo 'info: build-pack initialized succeeded'
     done

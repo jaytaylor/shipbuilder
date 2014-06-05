@@ -147,16 +147,19 @@ func (this *Server) Apps_Destroy(conn net.Conn, applicationName string) error {
 		if err != nil {
 			return err
 		}
+		if gitPathExists {
+			fmt.Fprint(dimLogger, "Removing git path: %v\n", gitPath)
+			e.Run("sudo", "rm", "-r", gitPath)
+		}
 
 		lxcContainerExists, err := PathExists(LXC_DIR + "/" + applicationName)
 		if err != nil {
 			return err
 		}
-
-		if gitPathExists || lxcContainerExists {
-			e.Run("sudo", "rm", "-rf", gitPath)
+		if lxcContainerExists {
 			// Remove LXC base app image + version snapshots.
 			// NB: BTRFS has restrictions on how subvolumes may be removed (in this case <path>/rootfs).
+			fmt.Fprint(dimLogger, "Removing app LXC container(s)\n")
 			err := e.DestroyContainer(applicationName)
 			relatedVersionedContainerPaths, err := filepath.Glob(LXC_DIR + "/" + applicationName + DYNO_DELIMITER + "v*")
 			if err != nil {
@@ -172,6 +175,7 @@ func (this *Server) Apps_Destroy(conn net.Conn, applicationName string) error {
 			}
 		}
 
+		fmt.Fprint(dimLogger, "Deleting archived app releases from S3\n")
 		err = delReleases(applicationName, dimLogger)
 		if err != nil {
 			return err

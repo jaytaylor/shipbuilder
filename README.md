@@ -16,8 +16,10 @@ Primary components:
 
 Build Packs
 -----------
-Any app server can run on ShipBuilder, but it will need a build-pack! Current build-packs are:
+Any app server can run on ShipBuilder, but it will need a build-pack! The current build-packs are:
 * `python` - Any python app
+* `nodejs` - Node.js apps
+* `scala-sbt` - Scala SBT applications and projects
 * `playframework2` - Play-framework 2.1.x
 
 Requirements:
@@ -52,6 +54,16 @@ IRC: [#shipbuilder on FreeNode](irc://chat.freenode.node/shipbuilder)
 Twitter: [ShipBuilderIO](https://twitter.com/ShipBuilderIO)
 
 Or open a GitHub issue.
+
+Contributing
+------------
+1. "Fork"
+2. Make a feature branch.
+3. Do your commits
+4. Send "pull request". This can be
+	1. A github pull request
+	2. A issue with a pointer to your publicly readable git repo
+	3. An email to me with a pointer to your publicly readable git repo
 
 Thanks
 ------

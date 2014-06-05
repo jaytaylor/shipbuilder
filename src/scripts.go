@@ -102,23 +102,36 @@ def configureIpTablesForwarding(ip, port):
     # Add another rule so that the port will be reachable from <eth0-iface>:port from localhost.
     modifyIpTables('append', 'OUTPUT', ip, port)
 
+def cloneContainer(app, container, check=True):
+    log('cloning container: {0}'.format(container))
+    fn = subprocess.check_call if check else subprocess.call
+    return fn(
+        ['/usr/bin/lxc-clone', '-s', '-B', '` + lxcFs + `', '-o', app, '-n', container],
+        stdout=sys.stdout,
+        stderr=sys.stderr
+    )
+
+def startContainer(container, check=True):
+    log('starting container: {}'.format(container))
+    fn = subprocess.check_call if check else subprocess.call
+    return fn(
+        ['/usr/bin/lxc-start', '--daemon', '-n', container],
+        stdout=sys.stdout,
+        stderr=sys.stderr
+    )
+
 def main(argv):
     global container
     #print 'main argv={0}'.format(argv)
     container = argv[1]
     app, version, process, port = container.split('` + DYNO_DELIMITER + `') # Format is app_version_process_port
 
-    # For safety, even though it's unlikley, try to kill/shutdown any existing container with the same name.
+    # For safety, even though it's unlikely, try to kill/shutdown any existing container with the same name.
     subprocess.call(['/usr/bin/lxc-stop -k -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)
     subprocess.call(['/usr/bin/lxc-destroy -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)
 
-    # Start the specified container.
-    log('cloning container: {0}'.format(container))
-    subprocess.check_call(
-        ['/usr/bin/lxc-clone', '-s', '-B', '` + lxcFs + `', '-o', app, '-n', container],
-        stdout=sys.stdout,
-        stderr=sys.stderr
-    )
+    # Clone the specified container.
+    cloneContainer(app, container)
 
     # This line, if present, will prevent the container from booting.
     #log('scrubbing any "lxc.cap.drop = mac_{0}" lines from container config'.format(container))
@@ -141,7 +154,7 @@ while read line || [ -n "$line" ]; do
     process="${{line%%:*}}"
     command="${{line#*: }}"
     if [ "$process" == "{process}" ]; then
-        envdir ` + ENV_DIR + ` /bin/bash -c "${{command}} 2>&1 | /app/` + BINARY + ` logger -h{host} -a{app} -p{process}.{port}"
+        envdir ` + ENV_DIR + ` /bin/bash -c "export PATH=\"$(find /app/.shipbuilder -type d -wholename '*bin' -maxdepth 2):${{PATH}}\"; ( ${{command}} ) 2>&1 | /app/` + BINARY + ` logger -h{host} -a{app} -p{process}.{port}"
     fi
 done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, app=app)
     runScriptFileName = '` + LXC_DIR + `/{0}/rootfs/app/run'.format(container)
@@ -151,12 +164,7 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
     st = os.stat(runScriptFileName)
     os.chmod(runScriptFileName, st.st_mode | stat.S_IEXEC)
 
-    log('starting container')
-    subprocess.check_call(
-        ['/usr/bin/lxc-start', '--daemon', '-n', container],
-        stdout=sys.stdout,
-        stderr=sys.stderr
-    )
+    startContainer(container)
 
     log('waiting for container to boot and report ip-address')
     # Allow container to bootup.
@@ -173,7 +181,7 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
         configureIpTablesForwarding(ip, port)
 
         if process == 'web':
-            log('waiting for web-server to finish starting up')
+            log('waiting for web-server to start up')
             try:
                 subprocess.check_call([
                     '/usr/bin/curl',
@@ -182,8 +190,10 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
                     '--write-out', '%{http_code} %{url_effective}\n',
                     '{0}:{1}/'.format(ip, port),
                 ], stderr=sys.stderr, stdout=sys.stdout)
+
             except subprocess.CalledProcessError, e:
                 sys.stderr.write('- error: curl http check failed, {0}\n'.format(e))
+                subprocess.check_call(['/tmp/shutdown_container.py', container, 'destroy-only'])
                 sys.exit(1)
 
     else:
@@ -235,13 +245,13 @@ def modifyIpTables(action, chain, ip, port):
         exitCode = child.returncode
         if exitCode == 0:
             return
-        elif exitCode == 4 and attempts < 5:
+        elif exitCode == 4 and attempts < 15:
             log('iptables: Resource temporarily unavailable (exit status 4), retrying.. ({0} previous attempts)'.format(attempts))
             attempts += 1
             time.sleep(1)
             continue
         else:
-            raise subprocess.CalledProcessError('iptables exited with status code {0}'.format(exitCode))
+            raise subprocess.CalledProcessError('iptables exited with non-zero status code {0}'.format(exitCode))
 
 def ipsForRulesMatchingPort(chain, port):
     # NB: 'exit 0' added to avoid exit status code 1 when there were no results.
@@ -261,7 +271,7 @@ def retriableCommand(*command):
             return subprocess.check_call(command, stdout=sys.stdout, stderr=sys.stderr)
         except subprocess.CalledProcessError, e:
             if 'dataset is busy' in str(e):
-                time.sleep(0.25)
+                time.sleep(0.5)
                 continue
             else:
                 raise e
@@ -269,11 +279,16 @@ def retriableCommand(*command):
 def main(argv):
     global container
     container = argv[1]
+    destroyOnly = len(argv) > 2 and argv[2] == 'destroy-only'
     port = container.split('` + DYNO_DELIMITER + `').pop()
 
-    # Stop and destroy the container.
-    log('stopping container')
-    subprocess.check_call(['/usr/bin/lxc-stop', '-k', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
+    try:
+        # Stop and destroy the container.
+        log('stopping container: {}'.format(container))
+        subprocess.check_call(['/usr/bin/lxc-stop', '-k', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
+    except Exception, e:
+        if not destroyOnly:
+            raise e # Otherwise ignore.
 
     if lxcFs == 'zfs':
         try:
@@ -306,15 +321,18 @@ func init() {
 	template.Must(UPSTART.Parse(`
 console none
 
-start on (local-filesystems and net-device-up IFACE!=lo)
+# Start on "networking up" state.
+# @see http://upstart.ubuntu.com/cookbook/#how-to-establish-a-jobs-start-on-and-stop-on-conditions
+start on static-network-up
 stop on [!12345]
 #exec su ` + DEFAULT_NODE_USERNAME + ` -c "/app/run"
 #exec /app/run
 pre-start script
+    test ! -d /app/env && mkdir /app/env || true
     touch /app/ip /app/env/PORT || true
-    chown ubuntu:ubuntu /app/ip /app/PORT || true
+    chown -R ubuntu:ubuntu /app || true
 end script
-exec start-stop-daemon --start --user ubuntu --exec /app/run
+exec start-stop-daemon --start --user ubuntu --chuid ubuntu --exec /app/run
 `))
 
 	// NB: sshHost has `.*@` portion stripped if an `@` symbol is found.
@@ -358,7 +376,7 @@ backend {{.Name}}
     reqadd X-Forwarded-Proto:\ https if { ssl_fc }
     option forwardfor
     option abortonclose
-    option httpchk GET /
+    option httpchk GET / HTTP/1.1\r\nHost:\ {{.FirstDomain}}
   {{range $app.Servers}}
     server {{.Host}}-{{.Port}} {{.Host}}:{{.Port}} check port {{.Port}} observe layer7
   {{end}}{{if and $context.HaProxyStatsEnabled $context.HaProxyCredentials}}

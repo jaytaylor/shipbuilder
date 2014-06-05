@@ -25,7 +25,7 @@ type (
 )
 
 const (
-	STATUS_MONITOR_CHECK_COMMAND = `echo $(free -m | sed '1,2d' | head -n1 | grep --only '[0-9]\+$') $(sudo lxc-ls --fancy | grep '[^ ]\+ \+RUNNING \+' | cut -f1 -d' ' | tr '\n' ' ')`
+	STATUS_MONITOR_CHECK_COMMAND = `echo $(free -m | sed '1,2d' | head -n1 | grep --only '[0-9]\+$') $(sudo lxc-ls --fancy | sed 's/[ \t]\{1,\}/ /g' | grep '^[^_]\+_v[0-9]\+_[^_]\+_[^_]\+ [^ ]\+' | cut -d' ' -f1,2 | tr ' ' '_' | tr '\n' ' ')`
 )
 
 var (
@@ -111,7 +111,7 @@ func (this *Server) checkNodes(resultChan chan NodeStatus) error {
 	return nil
 }
 
-func (this *Server) monitorFreeMemory() {
+func (this *Server) monitorNodes() {
 	repeater := time.Tick(STATUS_MONITOR_INTERVAL_SECONDS * time.Second)
 	nodeStatusChan := make(chan NodeStatus)
 	hostStatusMap := map[string]NodeStatus{}

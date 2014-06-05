@@ -1,9 +1,12 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
+	"regexp"
 
 	"github.com/kr/pty"
 )
@@ -33,7 +36,7 @@ func (this *Server) Console(conn net.Conn, applicationName string, args []string
 			}
 		}
 
-		containerName := applicationName + DYNO_DELIMITER + "console"
+		containerName := applicationName + DYNO_DELIMITER + "console" + DYNO_DELIMITER + RandomAlphaNumericString(8)
 
 		if e.ContainerExists(containerName) {
 			err = e.DestroyContainer(containerName)
@@ -82,3 +85,15 @@ func (this *Server) Console(conn net.Conn, applicationName string, args []string
 		return nil
 	})
 }
+
+func RandomAlphaNumericString(numSourceBytes int) string {
+	randomBytes := make([]byte, numSourceBytes)
+	_, err := rand.Read(randomBytes)
+	if err != nil {
+		panic("Failed to get random bytes: " + err.Error())
+	}
+	re := regexp.MustCompile("[^a-zA-Z0-9.]")
+	randomString := base64.StdEncoding.EncodeToString(randomBytes)
+	return re.ReplaceAllString(randomString, "")
+}
+
