@@ -218,7 +218,7 @@ function installLxc() {
     sudo apt-get install -y lxc lxc-templates
     abortIfNonZero $? "command 'apt-get install -y ${required}'"
 
-    echo "info: installed version $(lxc-version) (should be >= 0.9.0)"
+    echo "info: installed version $(sudo apt-cache show lxc | grep Version | sed 's/^Version: //') (should be >= 0.9.0)"
 
     # Add supporting package(s) for selected filesystem type.
     local fsPackages="$(test "${lxcFs}" = 'btrfs' && echo 'btrfs-tools' || :) $(test "${lxcFs}" = 'zfs' && echo 'zfs-fuse' || :)"
