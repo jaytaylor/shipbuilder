@@ -88,14 +88,24 @@ function initSbServerKeys() {
         ssh-keygen -f ~/.ssh/id_rsa -t rsa -N ""
         abortIfNonZero $? "ssh-keygen command failed"
     fi
-    if test -z "$(grep "$(cat ~/.ssh/id_rsa.pub)" ~/.ssh/authorized_keys)"; then
+
+    if ! test -e ~/.ssh; then
+        mkdir ~/.ssh
+        chmod 700 ~/.ssh
+    fi
+    if ! test -e ~/.ssh/authorized_keys || test -z "$(grep "$(cat ~/.ssh/id_rsa.pub)" ~/.ssh/authorized_keys)"; then
         echo "remote: info: adding main user to main user authorized_keys"
         cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
         abortIfNonZero $? "appending public-key to authorized_keys command"
         chmod 600 ~/.ssh/authorized_keys
         abortIfNonZero $? "chmod 600 ~/.ssh/authorized_keys command"
     fi
-    if sudo test -z "$(sudo grep "$(cat ~/.ssh/id_rsa.pub)" /root/.ssh/authorized_keys)"; then
+
+    if ! sudo test -e /root/.ssh; then
+        sudo mkdir /root/.ssh
+        sudo chmod 700 ~/.ssh
+    fi
+    if ! sudo test -e /root/.ssh/authorized_keys || sudo test -z "$(sudo grep "$(cat ~/.ssh/id_rsa.pub)" /root/.ssh/authorized_keys)"; then
         echo "remote: info: adding main user to root user authorized_keys"
         cat ~/.ssh/id_rsa.pub | sudo tee -a /root/.ssh/authorized_keys >/dev/null
         abortIfNonZero $? "appending public-key to authorized_keys command"
@@ -105,8 +115,12 @@ function initSbServerKeys() {
 
     if ! sudo test -e /root/.ssh/id_rsa.pub; then
         echo "remote: info: generating a new private/public key-pair for root user"
-        sudo rm -f /root/.ssh/id_*
-        abortIfNonZero $? "removing old keys failed"
+        if test -n "$(sudo bash -c "/root/.ssh/id_*")"; then
+            backupDir="sb_backup_$(date +%s)"
+            sudo mkdir "/root/.ssh/${backupDir}"
+            sudo bash -c "mv /root/.ssh/id_* /root/.ssh/${backupDir}/"
+            abortIfNonZero $? "backing up old keys failed"
+        fi
         sudo ssh-keygen -f /root/.ssh/id_rsa -t rsa -N ""
         abortIfNonZero $? "ssh-keygen command failed"
     fi
@@ -195,7 +209,7 @@ function installLxc() {
     # @param $1 $lxcFs lxc filesystem to use (zfs, btrfs are both supported).
     local lxcFs=$1
     test -z "${lxcFs}" && echo 'error: installLxc() missing required parameter: $lxcFs' 1>&2 && exit 1
-    echo 'info: a supported version of lxc must be installed (as of 2013-07-02, `buntu comes with 0.7.x by default, we require is 0.9.0 or greater)'
+    echo 'info: a supported version of lxc must be installed (as of 2013-07-02, `buntu comes with v0.7.x by default, we require v0.9.0 or greater)'
     echo 'info: adding lxc daily ppa'
     sudo apt-add-repository -y ppa:ubuntu-lxc/stable
     abortIfNonZero $? "command 'sudo apt-add-repository -y ppa:ubuntu-lxc/stable'"
