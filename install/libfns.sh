@@ -238,14 +238,14 @@ function installLxc() {
 function prepareNode() {
     # @param $1 $device to format and use for new mount.
     # @param $2 $lxcFs lxc filesystem to use (zfs, btrfs are both supported).
-    # @param $3 $swapDevice to format and use as for swap (optional).
-    # @param $4 $zfsPool zfs pool name to create (only required when lxc filesystem is zfs).
+    # @param $3 $zfsPool zfs pool name to create (only required when lxc filesystem is zfs).
+    # @param $4 $swapDevice to format and use as for swap (optional).
     local device=$1
     local lxcFs=$2
-    local swapDevice=$3
-    local zfsPool=$4
-    test "${device}" = "${swapDevice}" && echo 'error: prepareNode() device & swapDevice must be different' 1>&2 && exit 1
+    local zfsPool=$3
+    local swapDevice=$4
     test -z "${device}" && echo 'error: prepareNode() missing required parameter: $device' 1>&2 && exit 1
+    test "${device}" = "${swapDevice}" && echo 'error: prepareNode() device & swapDevice must be different' 1>&2 && exit 1
     test ! -e "${device}" && echo "error: unrecognized device '${device}'" 1>&2 && exit 1
     test -z "${lxcFs}" && echo 'error: prepareNode() missing required parameter: $lxcFs' 1>&2 && exit 1
     test "${lxcFs}" = 'zfs' && test -z "${zfsPool}" && echo 'error: prepareNode() missing required zfs parameter: $zfsPool' 1>&2 && exit 1
@@ -652,20 +652,20 @@ function prepareServerPart1() {
     # @param $1 ShipBuilder server hostname or ip-address.
     # @param $2 device to format and use for new mount.
     # @param $3 lxc filesystem to use.
-    # @param $4 $swapDevice to format and use as for swap (optional).
-    # @param $5 $zfsPool zfs pool name to create (only required when lxc filesystem is zfs).
+    # @param $4 $zfsPool zfs pool name to create (only required when lxc filesystem is zfs).
+    # @param $5 $swapDevice to format and use as for swap (optional).
     sbHost=$1
     device=$2
     lxcFs=$3
-    local swapDevice=$4
-    local zfsPool=$5
+    local zfsPool=$4
+    local swapDevice=$5
     test -z "${sbHost}" && echo 'error: prepareServerPart1(): missing required parameter: shipbuilder host' 1>&2 && exit 1
     test -z "${device}" && echo 'error: prepareServerPart1(): missing required parameter: device' 1>&2 && exit 1
     test -z "${lxcFs}" && echo 'error: prepareServerPart1(): missing required parameter: lxcFs' 1>&2 && exit 1
     test "${device}" = "${swapDevice}" && echo 'error: prepareServerPart1() device & swapDevice must be different' 1>&2 && exit 1
     test "${lxcFs}" = 'zfs' && test -z "${zfsPool}" && echo 'error: prepareServerPart1() missing required zfs parameter: $zfsPool' 1>&2 && exit 1
 
-    prepareNode $device $lxcFs $swapDevice $zfsPool
+    prepareNode $device $lxcFs $zfsPool $swapDevice
     abortIfNonZero $? 'prepareNode() failed'
 
     installGo
