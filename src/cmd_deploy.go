@@ -83,7 +83,8 @@ func (this *Deployment) applySshPrivateKeyFile() error {
 
 // Removes To be invoked after dependency retrieval.
 func (this *Deployment) removeSshPrivateKeyFile() {
-	if this.Application.SshPrivateKey != nil && PathExists(this.Application.SshPrivateKeyFilePath()) {
+	exists, _ := PathExists(this.Application.SshPrivateKeyFilePath())
+	if this.Application.SshPrivateKey != nil && exists {
 		os.Remove(this.Application.SshPrivateKeyFilePath())
 	}
 }
