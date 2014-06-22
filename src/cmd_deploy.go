@@ -371,7 +371,7 @@ func (this *Deployment) extract(version string) error {
 	if e.ContainerExists(versionedAppContainer) {
 		fmt.Fprintf(this.Logger, "Syncing local copy of %v\n", version)
 		// Rsync to versioned container to base app container.
-		rsyncCommand := "rsync --recursive --links --hard-links --devices --specials --acls --owner --perms --times --delete --xattrs --numeric-ids "
+		rsyncCommand := "rsync --recursive --links --hard-links --devices --specials --acls --owner --group --perms --times --delete --xattrs --numeric-ids "
 		return e.BashCmd(rsyncCommand + LXC_DIR + "/" + versionedAppContainer + "/rootfs/ " + this.Application.RootFsDir())
 	}
 
@@ -433,6 +433,7 @@ func (this *Deployment) syncNode(node *Node) error {
 		"--devices",
 		"--specials",
 		"--owner",
+		"--group",
 		"--perms",
 		"--times",
 		"--acls",

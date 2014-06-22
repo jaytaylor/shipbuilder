@@ -330,7 +330,8 @@ stop on [!12345]
 pre-start script
     test ! -d /app/env && mkdir /app/env || true
     touch /app/ip /app/env/PORT || true
-    chown -R ubuntu:ubuntu /app || true
+    chown ubuntu:ubuntu /app/ip /app/env/PORT || true
+    test $(stat -c %U /app/src) = 'root' && chown -R ubuntu:ubuntu /app || true
 end script
 exec start-stop-daemon --start --user ubuntu --chuid ubuntu --exec /app/run
 `))
