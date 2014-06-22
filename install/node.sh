@@ -78,7 +78,7 @@ elif [ "${action}" = "install" ]; then
     rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" libfns.sh $nodeHost:/tmp/
     abortIfNonZero $? 'rsync libfns.sh failed'
 
-    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $nodeHost "source /tmp/libfns.sh && prepareNode ${device} ${lxcFs} ${swapDevice} ${zfsPool}"
+    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $nodeHost "source /tmp/libfns.sh && prepareNode ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
     abortIfNonZero $? 'remote prepareNode() invocation'
 
     if test -z "${denyRestart}"; then
@@ -92,5 +92,4 @@ elif [ "${action}" = "install" ]; then
 else
 	echo 'unrecognized action: ${action}' 1>&2 && exit 1
 fi
-
 
