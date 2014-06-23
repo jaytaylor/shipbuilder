@@ -336,7 +336,7 @@ function prepareNode() {
             abortIfNonZero $? "command 'sudo zpool set listsnapshots=on ${zfsPool}'"
 
             # Add zfsroot to lxc configuration.
-            test -z "$(sudo grep '^zfsroot=' /etc/lxc/lxc.conf 2>/dev/null)" && echo "zfsroot=${zfsPool}" | sudo tee -a /etc/lxc/lxc.conf || sudo sed -i "s/^zfsroot=.*/zfsroot=${zfsPool}/g" /etc/lxc/lxc.conf
+            test -z "$(sudo grep '^lxc.bdev.zfs.root=' /etc/lxc/lxc.conf 2>/dev/null)" && echo "lxc.bdev.zfs.root=${zfsPool}" | sudo tee -a /etc/lxc/lxc.conf || sudo sed -i "s/^lxc.bdev.zfs.root=.*/lxc.bdev.zfs.root=${zfsPool}/g" /etc/lxc/lxc.conf
             abortIfNonZero $? 'application of lxc zfsroot setting'
 
             # Remove any fstab entry for the ZFS device (ZFS will auto-mount one pool).
