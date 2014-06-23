@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -622,10 +623,38 @@ func (this *Deployment) startDynos(availableNodes []*Node, titleLogger io.Writer
 	return addDynos, nil
 }
 
+// Validate application's Procfile.
+func (this *Deployment) validateProcfile() error {
+	f, err := os.Open(this.Application.SrcDir() + "/Procfile")
+	if err != nil {
+		return fmt.Errorf(err.Error() + ", does this application have a \"Procfile\"?")
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	processRe := regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]:.*`)
+	lineNo := 1
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		// Line not empty or commented out
+		if len(line) > 0 && strings.Index(line, "#") != 0 && strings.Index(line, ";") != 0 {
+			if !processRe.MatchString(line) {
+				return fmt.Errorf("Procfile validation failed on line %v: \"%v\", must match regular expression \"%v\"", lineNo, line, processRe.String())
+			}
+		}
+		lineNo++
+	}
+	return nil
+}
+
 // Deploy and launch the container to nodes.
 func (this *Deployment) deploy() error {
 	if len(this.Application.Processes) == 0 {
 		return fmt.Errorf("No processes scaled up, adjust with `ps:scale procType=#` before deploying")
+	}
+
+	err := this.validateProcfile()
+	if err != nil {
+		return err
 	}
 
 	titleLogger := NewFormatter(this.Logger, GREEN)
@@ -635,7 +664,7 @@ func (this *Deployment) deploy() error {
 
 	this.autoDetectRevision()
 
-	err := writeDeployScripts()
+	err = writeDeployScripts()
 	if err != nil {
 		return err
 	}
