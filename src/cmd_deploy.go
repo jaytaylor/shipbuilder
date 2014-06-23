@@ -909,7 +909,11 @@ func (this *Server) Rescale(conn net.Conn, applicationName string, args map[stri
 				changes[processType] = newNumDynos - oldNumDynos
 			}
 
-			app.Processes[processType] = newNumDynos
+			if newNumDynos == 0 {
+				delete(app.Processes, processType)
+			} else {
+				app.Processes[processType] = newNumDynos
+			}
 		}
 		return nil
 	})
