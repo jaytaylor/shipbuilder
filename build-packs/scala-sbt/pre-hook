@@ -23,7 +23,7 @@ test ! -d "${dependenciesPath}" && mkdir "${dependenciesPath}"
 if test -e 'assembly.sbt'; then
     echo '--> sbt-assembly detected' >> /app/out
     echo '--> fetching dependencies and building app jar' >> /app/out
-    sbt assembly >> /app/out
+    stdbuf -o0 sbt assembly >> /app/out
     rc=$?
     abortIfNonZero $rc 'sbt-assembly build failed'
 else
