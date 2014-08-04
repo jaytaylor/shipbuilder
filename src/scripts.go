@@ -332,8 +332,13 @@ pre-start script
     touch /app/ip /app/env/PORT || true
     chown ubuntu:ubuntu /app/ip /app/env/PORT || true
     test $(stat -c %U /app/src) = 'root' && chown -R ubuntu:ubuntu /app || true
+    # Create run wrapper script which executes in "envdir" context.
+    echo '#!/usr/bin/env bash
+    envdir /app/env /app/run' > /app/run_in_context || true
+    chmod a+x /app/run_in_context || true
+    chown ubuntu:ubuntu /app/run_in_context || true
 end script
-exec start-stop-daemon --start --user ubuntu --chuid ubuntu --exec /app/run
+exec start-stop-daemon --start --user ubuntu --chuid ubuntu --exec /app/run_in_context
 `))
 
 	// NB: sshHost has `.*@` portion stripped if an `@` symbol is found.

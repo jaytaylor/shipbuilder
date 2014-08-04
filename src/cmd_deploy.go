@@ -235,6 +235,12 @@ func (this *Deployment) build() error {
 	// Defer removal of the ssh private key file.
 	defer this.removeSshPrivateKeyFile()
 
+	// Prepare /app/env now so that the app env vars are available to the pre-hook script.
+	err := this.prepareEnvironmentVariables(e)
+	if err != nil {
+		return err
+	}
+
 	// Create upstart script.
 	f, err := os.OpenFile(this.Application.RootFsDir()+"/etc/init/app.conf", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0444)
 	if err != nil {
@@ -262,6 +268,7 @@ func (this *Deployment) build() error {
 	}
 	defer f.Close()
 
+	// Run the pre-hook with a timeout.
 	c := make(chan error)
 	go func() {
 		buf := make([]byte, 8192)
@@ -287,7 +294,6 @@ func (this *Deployment) build() error {
 		return err
 	}
 	fmt.Fprintf(titleLogger, "Waiting for container pre-hook\n")
-
 	select {
 	case err = <-c:
 	case <-time.After(30 * time.Minute):
@@ -298,10 +304,6 @@ func (this *Deployment) build() error {
 		return err
 	}
 
-	err = this.prepareEnvironmentVariables(e)
-	if err != nil {
-		return err
-	}
 	err = this.prepareShellEnvironment(e)
 	if err != nil {
 		return err
