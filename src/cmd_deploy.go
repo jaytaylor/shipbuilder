@@ -96,16 +96,17 @@ func (this *Deployment) createContainer() error {
 
 	e := Executor{dimLogger}
 
-	fmt.Fprintf(titleLogger, "Creating container\n")
-
 	// If there's not already a container.
 	_, err := os.Stat(this.Application.RootFsDir())
 	if err != nil {
+		fmt.Fprintf(titleLogger, "Creating container\n")
 		// Clone the base application.
 		this.err = e.CloneContainer("base-"+this.Application.BuildPack, this.Application.Name)
 		if this.err != nil {
 			return this.err
 		}
+	} else {
+		fmt.Fprintf(titleLogger, "App image container already exists\n")
 	}
 
 	e.BashCmd("rm -rf " + this.Application.AppDir() + "/*")
