@@ -245,16 +245,37 @@ List the goal and actual running instances of an application.
 
 __ps:restart__
 
-    ps:restart [process-type-1] .. [process-type-n?] -a[application-name]
+    ps:restart [process-type-x].. -a[application-name]
 
-Restart one or more process types for the app.  Does NOT redeploy the app.
+Restart one or more process types for the app.  Does NOT trigger a redeploy.
+
+
+__ps:start__
+
+    ps:start [process-type-x].. -a[application-name]
+
+Launch the service for one or more process types of the app.  Does NOT trigger a redeploy.
+
+
+__ps:status__
+
+    ps:status [process-type-x?].. -a[application-name]
+
+Launch the service for one or more process types of the app.  Does NOT trigger a redeploy.
+
+
+__ps:stop__
+
+    ps:stop [process-type-x].. -a[application-name]
+
+Stop the service for one or more process types of the app.  Does NOT trigger a redeploy.
 
 
 __ps:scale__
 
     ps:scale [process-type]=#num#.. -a[application-name]
 
-Update the number of dyno instances for one or more process types. Redeploys the app.
+Update the number of dyno instances for one or more process types.  Redeploys the app.
 
 
 __redeploy__

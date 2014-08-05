@@ -29,9 +29,8 @@ func (this *Server) Ps_Scale(conn net.Conn, applicationName string, args map[str
 	return this.Rescale(conn, applicationName, args)
 }
 
-// Restart all dynos for a particular process type.
-// e.g. ps:restart web -amyApp
-func (this *Server) Ps_Restart(conn net.Conn, applicationName string, processTypes []string) error {
+// Wrapper used by ps:[start|stop|restart|status].
+func (this *Server) Ps_Manage(action string, conn net.Conn, applicationName string, processTypes []string) error {
 	if len(processTypes) == 0 {
 		return fmt.Errorf("list of process types must not be empty")
 	}
@@ -43,11 +42,35 @@ func (this *Server) Ps_Restart(conn net.Conn, applicationName string, processTyp
 			}
 		}
 		for _, processType := range processTypes {
-			err := this.RestartProcessType(conn, app, processType)
+			err := this.ManageProcessState(action, conn, app, processType)
 			if err != nil {
 				return err
 			}
 		}
 		return nil
 	})
+}
+
+// Restart all dynos for a particular process type.
+// e.g. ps:restart web -amyApp
+func (this *Server) Ps_Restart(conn net.Conn, applicationName string, processTypes []string) error {
+	return this.Ps_Manage("restart", conn, applicationName, processTypes)
+}
+
+// Stop all dynos for a particular process type.
+// e.g. ps:stop web -amyApp
+func (this *Server) Ps_Stop(conn net.Conn, applicationName string, processTypes []string) error {
+	return this.Ps_Manage("stop", conn, applicationName, processTypes)
+}
+
+// Start all dynos for a particular process type.
+// e.g. ps:start web -amyApp
+func (this *Server) Ps_Start(conn net.Conn, applicationName string, processTypes []string) error {
+	return this.Ps_Manage("start", conn, applicationName, processTypes)
+}
+
+// Get app service status for all dynos of a particular process type.
+// e.g. ps:status web -amyApp
+func (this *Server) Ps_Status(conn net.Conn, applicationName string, processTypes []string) error {
+	return this.Ps_Manage("status", conn, applicationName, processTypes)
 }

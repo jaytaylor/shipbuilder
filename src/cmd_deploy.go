@@ -980,8 +980,9 @@ func (this *Server) Rescale(conn net.Conn, applicationName string, args map[stri
 	})
 }
 
-// Restart the service for a particular dyno process type for an app.
-func (this *Server) RestartProcessType(conn net.Conn, app *Application, processType string) error {
+// Stop, start, restart, or get the status for the service for a particular dyno process type for an app.
+// @param action One of "stop", "start" "restart", or "status".
+func (this *Server) ManageProcessState(action string, conn net.Conn, app *Application, processType string) error {
 	// Require that the process type exist in the applications processes map.
 	if _, ok := app.Processes[processType]; !ok {
 		return fmt.Errorf("unrecognized process type: %v", processType)
@@ -990,11 +991,21 @@ func (this *Server) RestartProcessType(conn net.Conn, app *Application, processT
 	if err != nil {
 		return err
 	}
-	logger := NewLogger(NewTimeLogger(NewMessageLogger(conn)), "[ps:restart] ")
+	logger := NewLogger(NewTimeLogger(NewMessageLogger(conn)), fmt.Sprintf("[ps:%v] ", action))
 	executor := &Executor{logger}
 	for _, dyno := range dynos {
 		if dyno.Process == processType {
-			err = dyno.RestartService(executor)
+			if action == "stop" {
+				err = dyno.StopService(executor)
+			} else if action == "start" {
+				err = dyno.StartService(executor)
+			} else if action == "restart" {
+				err = dyno.RestartService(executor)
+			} else if action == "status" {
+				err = dyno.GetServiceStatus(executor)
+			} else {
+				err = fmt.Errorf("unrecognized action: %v", action)
+			}
 			if err != nil {
 				return err
 			}

@@ -313,6 +313,15 @@ func init() {
 		writer("ps:restart", "ps:restart", "Ps_Restart",
 			required("app"), list("processTypes"),
 		),
+		writer("ps:start", "ps:start", "Ps_Start",
+			required("app"), list("processTypes"),
+		),
+		reader("ps:status", "ps:status", "Ps_Status",
+			required("app"), list("processTypes"),
+		),
+		writer("ps:stop", "ps:stop", "Ps_Stop",
+			required("app"), list("processTypes"),
+		),
 		////////////////////////////////////////////////////////////////////////
 		// Command: rollback
 		writer("rollback", "rollback", "Rollback",
