@@ -356,10 +356,9 @@ defaults
     retries 4
     option redispatch
     maxconn 32000
-    contimeout 5000
-    clitimeout 30000
-    srvtimeout 30000
+    timeout connect 5000
     timeout client 30000
+    timeout server 30000
     #option http-server-close
 
 frontend frontend
