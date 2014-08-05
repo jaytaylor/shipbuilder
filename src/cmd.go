@@ -107,6 +107,8 @@ func (this Command) Parse(args []string) ([]interface{}, error) {
 }
 
 func init() {
+	////////////////////////////////////////////////////////////////////////
+	// Parameter Type: required
 	required := func(name string) Parameter {
 		return Parameter{
 			Name:    name,
@@ -114,20 +116,8 @@ func init() {
 			Type:    Required,
 		}
 	}
-	mapped := func(name string) Parameter {
-		return Parameter{
-			Name:    name,
-			Default: map[string]string{},
-			Type:    Mapped,
-		}
-	}
-	list := func(name string) Parameter {
-		return Parameter{
-			Name:    name,
-			Default: []string{},
-			Type:    List,
-		}
-	}
+	////////////////////////////////////////////////////////////////////////
+	// Parameter Type: optional
 	optional := func(name, def string) Parameter {
 		return Parameter{
 			Name:    name,
@@ -135,6 +125,26 @@ func init() {
 			Type:    Optional,
 		}
 	}
+	////////////////////////////////////////////////////////////////////////
+	// Parameter Type: map
+	mapped := func(name string) Parameter {
+		return Parameter{
+			Name:    name,
+			Default: map[string]string{},
+			Type:    Mapped,
+		}
+	}
+	////////////////////////////////////////////////////////////////////////
+	// Parameter Type: list
+	list := func(name string) Parameter {
+		return Parameter{
+			Name:    name,
+			Default: []string{},
+			Type:    List,
+		}
+	}
+	////////////////////////////////////////////////////////////////////////
+	// Command Type: global
 	global := func(shortName, longName, serverName string, parameters ...Parameter) Command {
 		return Command{
 			ShortName:  shortName,
@@ -143,6 +153,8 @@ func init() {
 			Parameters: parameters,
 		}
 	}
+	////////////////////////////////////////////////////////////////////////
+	// Command Type: reader
 	reader := func(shortName, longName, serverName string, parameters ...Parameter) Command {
 		return Command{
 			ShortName:  shortName,
@@ -152,6 +164,8 @@ func init() {
 			Parameters: parameters,
 		}
 	}
+	////////////////////////////////////////////////////////////////////////
+	// Command Type: writer
 	writer := func(shortName, longName, serverName string, parameters ...Parameter) Command {
 		return Command{
 			ShortName:  shortName,
@@ -188,7 +202,7 @@ func init() {
 			required("app"), optional("deferred", ""), mapped("args"),
 		),
 		writer("config:remove", "config:unset", "Config_Remove",
-			required("app"), optional("deferred", ""), list("names"),
+			required("app"), optional("deferred", ""), list("configNames"),
 		),
 		////////////////////////////////////////////////////////////////////////
 		// Command: run
@@ -296,6 +310,9 @@ func init() {
 		writer("scale", "ps:scale", "Ps_Scale",
 			required("app"), mapped("args"),
 		),
+		writer("ps:restart", "ps:restart", "Ps_Restart",
+			required("app"), list("processTypes"),
+		),
 		////////////////////////////////////////////////////////////////////////
 		// Command: rollback
 		writer("rollback", "rollback", "Rollback",
@@ -315,8 +332,8 @@ func init() {
 			required("app"),
 		),
 		////////////////////////////////////////////////////////////////////////
-		// Command: restart
-		writer("restart", "restart", "Restart_App",
+		// Command: redeploy
+		writer("redeploy", "redeploy", "Redeploy_App",
 			required("app"),
 		),
 		////////////////////////////////////////////////////////////////////////

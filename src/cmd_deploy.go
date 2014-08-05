@@ -979,3 +979,26 @@ func (this *Server) Rescale(conn net.Conn, applicationName string, args map[stri
 		return deployment.Deploy()
 	})
 }
+
+// Restart the service for a particular dyno process type for an app.
+func (this *Server) RestartProcessType(conn net.Conn, app *Application, processType string) error {
+	// Require that the process type exist in the applications processes map.
+	if _, ok := app.Processes[processType]; !ok {
+		return fmt.Errorf("unrecognized process type: %v", processType)
+	}
+	dynos, err := this.GetRunningDynos(app.Name, processType)
+	if err != nil {
+		return err
+	}
+	logger := NewLogger(NewTimeLogger(NewMessageLogger(conn)), "[ps:restart] ")
+	executor := &Executor{logger}
+	for _, dyno := range dynos {
+		if dyno.Process == processType {
+			err = dyno.RestartService(executor)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}

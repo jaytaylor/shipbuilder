@@ -43,8 +43,12 @@ var (
 	dynoPortTracker = DynoPortTracker{allocations: map[string][]int{}, lock: sync.Mutex{}}
 )
 
+func (this *Dyno) PrettyInfo() string {
+	return fmt.Sprintf("host=%v app=%v version=%v proc=%v port=%v state=%v", this.Host, this.Application, this.Version, this.Process, this.Port, this.State)
+}
+
 func (this *Dyno) Shutdown(e *Executor) error {
-	fmt.Fprintf(e.logger, "Shutting down dyno, host=%v app=%v version=%v proc=%v port=%v state=%v", this.Host, this.Application, this.Version, this.Process, this.Port, this.State)
+	fmt.Fprintf(e.logger, "Shutting down dyno: %v\n", this.PrettyInfo())
 	if this.State == DYNO_STATE_RUNNING {
 		// Shutdown then destroy.
 		return e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+this.Host, "sudo", "/tmp/shutdown_container.py", this.Container)
@@ -52,6 +56,14 @@ func (this *Dyno) Shutdown(e *Executor) error {
 		// Destroy only.
 		return e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+this.Host, "sudo", "/tmp/shutdown_container.py", this.Container, "destroy-only")
 	}
+}
+
+func (this *Dyno) RestartService(e *Executor) error {
+	fmt.Fprint(e.logger, "Restarting app service dyno %v", this.PrettyInfo())
+	if this.State != DYNO_STATE_RUNNING {
+		return fmt.Errorf("can't restart app service on dyno because it's not running, %v ", this.PrettyInfo())
+	}
+	return e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+this.Host, "sudo", "lxc-attach", "-n", this.Container, "--", "service", "app", "restart")
 }
 
 // Check if a port is already in use.
@@ -150,7 +162,7 @@ func NodeStatusToDynos(nodeStatus *NodeStatus) ([]Dyno, error) {
 	return dynos, nil
 }
 
-func (this *Server) GetRunningDynos(application, process string) ([]Dyno, error) {
+func (this *Server) GetRunningDynos(application, processType string) ([]Dyno, error) {
 	dynos := []Dyno{}
 
 	cfg, err := this.getConfig(true)
@@ -168,7 +180,7 @@ func (this *Server) GetRunningDynos(application, process string) ([]Dyno, error)
 			dyno, err := ContainerToDyno(node.Host, container)
 			if err != nil {
 				fmt.Printf("Container->Dyno parse failed: %v", err)
-			} else if dyno.State == DYNO_STATE_RUNNING && dyno.Application == application && dyno.Process == process {
+			} else if dyno.State == DYNO_STATE_RUNNING && dyno.Application == application && dyno.Process == processType {
 				dynos = append(dynos, dyno)
 			}
 		}

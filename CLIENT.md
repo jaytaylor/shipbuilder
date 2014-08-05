@@ -57,7 +57,7 @@ __nodes:list__
 
     nodes[:list?]
 
-List all the nodes.
+Display listing of all nodes and processes runnin on each of them.
 
 
 __nodes:remove__
@@ -159,7 +159,7 @@ __domains:remove__
 
     domains:remove [domain-name].. -a[application-name]
 
-Remove one or more domains from an application. Redeploys the app.
+Remove one or more domains from an application. Does NOT redeploy the app.
 
 
 __logs__
@@ -243,11 +243,25 @@ __ps:list__
 List the goal and actual running instances of an application.
 
 
+__ps:restart__
+
+    ps:restart [process-type-1] .. [process-type-n?] -a[application-name]
+
+Restart one or more process types for the app.  Does NOT redeploy the app.
+
+
 __ps:scale__
 
     ps:scale [process-type]=#num#.. -a[application-name]
 
-Update the number of instances for one or more process types. Redeploys the app.
+Update the number of dyno instances for one or more process types. Redeploys the app.
+
+
+__redeploy__
+
+    redeploy -a[application-name]
+
+Trigger a full redeploy for the app.
 
 
 __releases:info__
