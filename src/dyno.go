@@ -43,12 +43,12 @@ var (
 	dynoPortTracker = DynoPortTracker{allocations: map[string][]int{}, lock: sync.Mutex{}}
 )
 
-func (this *Dyno) PrettyInfo() string {
+func (this *Dyno) Info() string {
 	return fmt.Sprintf("host=%v app=%v version=%v proc=%v port=%v state=%v", this.Host, this.Application, this.Version, this.Process, this.Port, this.State)
 }
 
 func (this *Dyno) Shutdown(e *Executor) error {
-	fmt.Fprintf(e.logger, "Shutting down dyno: %v\n", this.PrettyInfo())
+	fmt.Fprintf(e.logger, "Shutting down dyno: %v\n", this.Info())
 	if this.State == DYNO_STATE_RUNNING {
 		// Shutdown then destroy.
 		return e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+this.Host, "sudo", "/tmp/shutdown_container.py", this.Container)
@@ -58,27 +58,33 @@ func (this *Dyno) Shutdown(e *Executor) error {
 	}
 }
 
-func (this *Dyno) RestartService(e *Executor) error {
-	fmt.Fprint(e.logger, "Restarting app service for dyno %v", this.PrettyInfo())
+func (this *Dyno) AttachAndExecute(e *Executor, args ...string) error {
+	// If the Dyno isn't running we won't be able to attach to it.
 	if this.State != DYNO_STATE_RUNNING {
-		return fmt.Errorf("can't restart app service on dyno because it's not running, %v ", this.PrettyInfo())
+		return fmt.Errorf("can't run `%v` when dyno is not running, details: %v", args, this.Info())
 	}
-	return e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+this.Host, "sudo", "lxc-attach", "-n", this.Container, "--", "service", "app", "restart")
+	args = AppendStrings([]string{DEFAULT_NODE_USERNAME + "@" + this.Host, "sudo", "lxc-attach", "-n", this.Container, "--"}, args...)
+	return e.Run("ssh", args...)
+}
+
+func (this *Dyno) RestartService(e *Executor) error {
+	fmt.Fprintf(e.logger, "Restarting app service for dyno %v\n", this.Info())
+	return this.AttachAndExecute(e, "service", "app", "restart")
 }
 
 func (this *Dyno) StartService(e *Executor) error {
-	fmt.Fprint(e.logger, "Starting app service for dyno %v", this.PrettyInfo())
-	return e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+this.Host, "sudo", "lxc-attach", "-n", this.Container, "--", "service", "app", "start")
+	fmt.Fprintf(e.logger, "Starting app service for dyno %v\n", this.Info())
+	return this.AttachAndExecute(e, "service", "app", "start")
 }
 
 func (this *Dyno) StopService(e *Executor) error {
-	fmt.Fprint(e.logger, "Stopping app service for dyno %v", this.PrettyInfo())
-	return e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+this.Host, "sudo", "lxc-attach", "-n", this.Container, "--", "service", "app", "stop")
+	fmt.Fprintf(e.logger, "Stopping app service for dyno %v\n", this.Info())
+	return this.AttachAndExecute(e, "service", "app", "stop")
 }
 
 func (this *Dyno) GetServiceStatus(e *Executor) error {
-	fmt.Fprint(e.logger, "Getting app service status for dyno %v", this.PrettyInfo())
-	return e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+this.Host, "sudo", "lxc-attach", "-n", this.Container, "--", "service", "app", "status")
+	fmt.Fprintf(e.logger, "Getting app service status for dyno %v\n", this.Info())
+	return this.AttachAndExecute(e, "service", "app", "status")
 }
 
 // Check if a port is already in use.
