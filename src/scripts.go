@@ -207,7 +207,8 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
                         time.sleep(1)
 
     else:
-        log('- error retrieving ip')
+        sys.stderr.write('- error: failed to retrieve container ip')
+        subprocess.check_call(['/tmp/shutdown_container.py', container, 'destroy-only'])
         sys.exit(1)
 
 main(sys.argv)`
