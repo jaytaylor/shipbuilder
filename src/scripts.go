@@ -173,6 +173,9 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
         time.sleep(1)
         try:
             ip = getIp(container)
+            if ip:
+                # ip obtained!
+                break
         except:
             continue
 
