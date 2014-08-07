@@ -185,19 +185,26 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
 
         if process == 'web':
             log('waiting for web-server to start up')
-            try:
-                subprocess.check_call([
-                    '/usr/bin/curl',
-                    '--silent',
-                    '--output', '/dev/null',
-                    '--write-out', '%{http_code} %{url_effective}\n',
-                    '{0}:{1}/'.format(ip, port),
-                ], stderr=sys.stderr, stdout=sys.stdout)
+            startedTs = time.time()
+            maxSeconds = 60
+            while True:
+                try:
+                    subprocess.check_call([
+                        '/usr/bin/curl',
+                        '--silent',
+                        '--output', '/dev/null',
+                        '--write-out', '%{http_code} %{url_effective}\n',
+                        '{0}:{1}/'.format(ip, port),
+                    ], stderr=sys.stderr, stdout=sys.stdout)
+                    break
 
-            except subprocess.CalledProcessError, e:
-                sys.stderr.write('- error: curl http check failed, {0}\n'.format(e))
-                subprocess.check_call(['/tmp/shutdown_container.py', container, 'destroy-only'])
-                sys.exit(1)
+                except subprocess.CalledProcessError, e:
+                    if time.time() - startedTs > maxSeconds: # or attempts > maxAttempts:
+                        sys.stderr.write('- error: curl http check failed, {0}\n'.format(e))
+                        subprocess.check_call(['/tmp/shutdown_container.py', container, 'destroy-only'])
+                        sys.exit(1)
+                    else:
+                        time.sleep(1)
 
     else:
         log('- error retrieving ip')
