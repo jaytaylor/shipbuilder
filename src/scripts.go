@@ -375,7 +375,7 @@ defaults
 frontend frontend
     bind 0.0.0.0:80
     # Require SSL
-    redirect scheme https if !{ ssl_fc }
+    redirect scheme https code 301 if !{ ssl_fc }
     bind 0.0.0.0:443 ssl crt /etc/haproxy/certs.d
     option httplog
     option http-pretend-keepalive
