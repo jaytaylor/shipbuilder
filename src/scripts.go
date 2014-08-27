@@ -120,11 +120,42 @@ def startContainer(container, check=True):
         stderr=sys.stderr
     )
 
+def showHelpAndExit(argv):
+    message = '''usage: {} [container-name]
+       of the form: [app]_[version]_[process]_[port]
+
+       For example, here is how you would boot a container with the following attributes:
+
+           {
+               "app-name": "myApp",
+               "version-tag": "v1337",
+               "process-type": "web",
+               "port-forward": "10001"
+           }
+
+       $ {} myApp_v1337_web_10001
+'''.format(argv[0])
+    print message
+    sys.exit(0)
+
+def validateMainArgs(argv):
+    if len(argv) != 2:
+        sys.stderr.write('{} error: missing required argument: container-name\n'.format(sys.argv))
+        sys.exit(1)
+
+def parseMainArgs(argv):
+    validateMainArgs(argv)
+    container = argv[1]
+    app, version, process, port = container.split('` + DYNO_DELIMITER + `') # Format is app_version_process_port.
+    return (container, app, version, process, port)
+
 def main(argv):
     global container
     #print 'main argv={0}'.format(argv)
-    container = argv[1]
-    app, version, process, port = container.split('` + DYNO_DELIMITER + `') # Format is app_version_process_port
+    if len(argv) > 1 and argv[1] in ('-h', '--help', 'help'):
+        showHelpAndExit(argv)
+
+    container, app, version, process, port = parseMainArgs(argv)
 
     # For safety, even though it's unlikely, try to kill/shutdown any existing container with the same name.
     subprocess.call(['/usr/bin/lxc-stop -k -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)
@@ -133,7 +164,7 @@ def main(argv):
     # Clone the specified container.
     cloneContainer(app, container)
 
-    # This line, if present, will prevent the container from booting.
+    # This line, if present, would prevent the container from booting.
     #log('scrubbing any "lxc.cap.drop = mac_{0}" lines from container config'.format(container))
     subprocess.check_call(
         ['sed', '-i', '/lxc.cap.drop = mac_{0}/d'.format(container), '` + LXC_DIR + `/{0}/config'.format(container)],
@@ -167,9 +198,10 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
     startContainer(container)
 
     log('waiting for container to boot and report ip-address')
+    numChecks = 45
     # Allow container to bootup.
     ip = None
-    for _ in xrange(45):
+    for _ in xrange(numChecks):
         time.sleep(1)
         try:
             ip = getIp(container)
@@ -286,6 +318,46 @@ def retriableCommand(*command):
                 continue
             else:
                 raise e
+
+def showHelpAndExit(argv):
+    message = '''usage: {} [container-name] ["destroy-only"?]
+       where "container-name" is of the form: [app]_[version]_[process]_[port]
+
+       "destroy-only" will only go about destroying the container (not shutting it down).
+
+       For example, here is how you would terminate a container with the following attributes:
+
+           {
+               "app-name": "myApp",
+               "version-tag": "v1337",
+               "process-type": "web",
+               "port-forward": "10001"
+           }
+
+       $ {} myApp_v1337_web_10001
+'''.format(argv[0])
+    print message
+    sys.exit(0)
+
+def validateMainArgs(argv):
+    if len(argv) != 2 or (len(argv) > 2 and argv[2] == 'destroy-only'):
+        sys.stderr.write('{} error: invalid arguments, see [-h|--help] for usage details.\n'.format(sys.argv))
+        sys.exit(1)
+
+def parseMainArgs(argv):
+    validateMainArgs(argv)
+    container = argv[1]
+    app, version, process, port = container.split('` + DYNO_DELIMITER + `') # Format is app_version_process_port.
+    return (container, app, version, process, port)
+
+def main(argv):
+    global container
+    #print 'main argv={0}'.format(argv)
+    if len(argv) > 1 and argv[1] in ('-h', '--help', 'help'):
+        showHelpAndExit(argv)
+
+    container, app, version, process, port = parseMainArgs(argv)
+
 
 def main(argv):
     global container
