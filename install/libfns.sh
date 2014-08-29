@@ -406,9 +406,9 @@ function prepareNode() {
 
     echo 'info: installing automatic zpool importer to system bootscript /etc/rc.local'
     test -e /etc/rc.local || (sudo touch /etc/rc.local && sudo chmod a+x /etc/rc.local)
-    test $(grep '^sudo zpool import tank -f$' /etc/rc.local | wc -l) -eq 0 && sudo sed -i 's/^exit 0$/sudo zpool import tank -f/' /etc/rc.local && \
-        test $(grep '^sudo zpool import tank -f$' /etc/rc.local | wc -l) -eq 0 && echo 'sudo zpool import tank -f' | sudo tee -a /etc/rc.local
-    grep '^sudo zpool import tank -f$' /etc/rc.local
+    test $(grep '^sudo zpool import '"${zfsPool}"' -f$' /etc/rc.local | wc -l) -eq 0 && sudo sed -i 's/^exit 0$/sudo zpool import '"${zfsPool}"' -f/' /etc/rc.local && \
+        test $(grep '^sudo zpool import '"${zfsPool}"' -f$' /etc/rc.local | wc -l) -eq 0 && echo 'sudo zpool import '"${zfsPool}"' -f' | sudo tee -a /etc/rc.local
+    grep "^sudo zpool import ${zfsPool} -f"'$' /etc/rc.local
     abortIfNonZero $? 'adding zpool auto-mount to /etc/rc.local' 1>&2
 
     echo 'info: prepareNode() succeeded'
@@ -565,7 +565,7 @@ function lxcInitBase() {
     sudo lxc-destroy -n base 2>/dev/null
 
     echo 'info: creating base lxc container'
-    sudo lxc-create -n base -B $lxcFs $(test "${lxcFs}" = 'zfs' && echo '--zfsroot=tank' || :) -t ubuntu
+    sudo lxc-create -n base -B $lxcFs $(test "${lxcFs}" = 'zfs' && echo "--zfsroot=${zfsPool}" || :) -t ubuntu
     abortIfNonZero $? "lxc-create base"
 
     echo 'info: configuring base lxc container..'
