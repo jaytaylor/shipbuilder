@@ -104,8 +104,8 @@ func getLdFlags() string {
 		os.Exit(1)
 	}
 	ldflags := ""
-    err = filepath.Walk("env", func(path string, info os.FileInfo, err error) error {
-        if !info.IsDir() {
+	err = filepath.Walk("env/", func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
 			key := strings.Split(path, "/")[1]
 			flagName, ok := LDFLAGS_MAP[key]
 			if ok {
@@ -122,10 +122,10 @@ func getLdFlags() string {
 				value := strings.TrimSpace(strings.Split(string(data), "\n")[0])
 				ldflags += "-X " + flagName + " " + value
 			}
-            return nil
-        }
+			return nil
+		}
 		return nil
-    })
+	})
 	if len(ldflags) > 0 {
 		ldflags += "'"
 	}
