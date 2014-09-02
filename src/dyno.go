@@ -118,7 +118,7 @@ func (this *DynoPortTracker) Allocate(host string, port int) error {
 	}
 	// Schedule the port to be automatically freed once the status monitor will have picked up the in-use port.
 	go func(host string, port int) {
-		time.Sleep(300 * time.Second)
+		time.Sleep(1200 * time.Second)
 		this.Release(host, port)
 	}(host, port)
 	fmt.Printf("DynoPortTracker.Allocate :: added host=%v port=%v\n", host, port)
@@ -127,7 +127,7 @@ func (this *DynoPortTracker) Allocate(host string, port int) error {
 
 // Release a previously allocated host/port pair if it is still in the allocations table.
 func (this *DynoPortTracker) Release(host string, port int) {
-	fmt.Printf("DynoPortTracker.Release :: removing host=%v port=%v\n", host, port)
+	fmt.Printf("DynoPortTracker.Release :: releasing port %v from host %v\n", port, host)
 	this.lock.Lock()
 	defer this.lock.Unlock()
 	if ports, ok := this.allocations[host]; ok {
@@ -200,7 +200,7 @@ func (this *Server) GetRunningDynos(application, processType string) ([]Dyno, er
 		for _, container := range status.Containers {
 			dyno, err := ContainerToDyno(node.Host, container)
 			if err != nil {
-				fmt.Printf("Container->Dyno parse failed: %v", err)
+				fmt.Printf("error: Container->Dyno parse failed: %v\n", err)
 			} else if dyno.State == DYNO_STATE_RUNNING && dyno.Application == application && dyno.Process == processType {
 				dynos = append(dynos, dyno)
 			}
