@@ -4,7 +4,9 @@ cd "$(dirname "$0")"
 
 source libfns.sh
 
-while getopts "d:f:hnS:s:" OPTION; do
+skipIfExists=0
+
+while getopts "d:f:hS:s:ne" OPTION; do
     case $OPTION in
         h)
             echo "usage: $0 -S [shipbuilder-host] -d [server-dedicated-device] -f [lxc-filesystem] ACTION" 1>&2
@@ -16,7 +18,8 @@ while getopts "d:f:hnS:s:" OPTION; do
             echo '  -d [server-dedicated-device] Device to format with btrfs or zfs filesystem and use to store lxc containers (e.g. /dev/xvdc)' 1>&2
             echo '  -f [lxc-filesystem]          LXC filesystem to use; "zfs" or "btrfs" (flag can be ommitted if auto-detected from env/LXC_FS)' 1>&2
             echo '  -s [swap-device]             Device to use for swap (optional)' 1>&2
-            echo '  -n                    No reboot - deny system restart, even if one is required to complete installation' 1>&2
+            echo '  -n                           No reboot - deny system restart, even if one is required to complete installation' 1>&2
+            echo '  -e                           Skip container preparation steps when the container already exists' 1>&2
             exit 1
             ;;
         d)
@@ -33,6 +36,9 @@ while getopts "d:f:hnS:s:" OPTION; do
             ;;
         s)
             swapDevice=$OPTARG
+            ;;
+        e)
+            skipIfExists=1
             ;;
     esac
 done
@@ -85,7 +91,7 @@ elif [ "${action}" = "install" ]; then
     abortIfNonZero $? 'ShipBuilder deployment via deploy.sh failed'
     mv ../env/SB_SSH_HOST{.bak,}
 
-    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost "source /tmp/libfns.sh && prepareServerPart2 ${lxcFs}"
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost "source /tmp/libfns.sh && prepareServerPart2 ${lxcFs} ${zfsPool} ${skipIfExists}"
     abortIfNonZero $? 'remote prepareServerPart2() invocation'
 
     if test -z "${denyRestart}"; then

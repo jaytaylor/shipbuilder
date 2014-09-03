@@ -1,1 +1,33 @@
-sudo apt-get updatesudo apt-get install -y openjdk-7-jre-headless# Install Scala.filename=scala-2.10.3.tgzcurl --silent --output $filename http://www.scala-lang.org/files/archive/$filenametest $? -ne 0 && echo 'fatal: Scala download failed' 1>&2 && exit 1tar xzf $filenamesudo rm -f $filenamesudo mv $(echo "${filename}" | sed 's/\.tgz$//') /usr/local/share/scalasudo ln -s /usr/local/share/scala/bin/scala /usr/bin/scala sudo ln -s /usr/local/share/scala/bin/scalac /usr/bin/scalac sudo ln -s /usr/local/share/scala/bin/fsc /usr/bin/fsc sudo ln -s /usr/local/share/scala/bin/sbaz /usr/bin/sbaz sudo ln -s /usr/local/share/scala/bin/sbaz-setup /usr/bin/sbaz-setup sudo ln -s /usr/local/share/scala/bin/scaladoc /usr/bin/scaladoc sudo ln -s /usr/local/share/scala/bin/scalap /usr/bin/scalap# Install SBT deb.filename=sbt-0.13.2.debsudo curl --silent --output $filename http://dl.bintray.com/sbt/debian/$filenametest $? -ne 0 && echo 'fatal: SBT download failed' 1>&2 && exit 1sudo dpkg -i $filenamesudo rm -f $filename# Configure persistent environment variables.echo "export SBT_OPTS='-Dsbt.ivy.home=/app/.shipbuilder/.ivy2 -Divy.home=/app/.shipbuilder/.ivy2'" > /etc/profile.d/shipbuilder.shchmod 755 /etc/profile.d/shipbuilder.shtest $? -ne 0 && echo 'fatal: writing global environment variables to /etc/profile.d/shipbuilder.sh failed' 1>&2 && exit 1
+
+# Install Scala.
+scalaFilename=scala-2.11.2.tgz
+curl --silent --location --output "${scalaFilename}" "http://www.scala-lang.org/files/archive/${scalaFilename}"
+test $? -ne 0 && echo 'fatal: Scala download failed' 1>&2 && exit 1
+tar xzf "${scalaFilename}"
+sudo rm -f "${scalaFilename}"
+sudo mv "$(echo "${scalaFilename}" | sed 's/\.tgz$//')" /usr/local/share/scala
+sudo ln -s /usr/local/share/scala/bin/scala /usr/bin/scala
+sudo ln -s /usr/local/share/scala/bin/scalac /usr/bin/scalac
+sudo ln -s /usr/local/share/scala/bin/fsc /usr/bin/fsc
+sudo ln -s /usr/local/share/scala/bin/sbaz /usr/bin/sbaz
+sudo ln -s /usr/local/share/scala/bin/sbaz-setup /usr/bin/sbaz-setup
+sudo ln -s /usr/local/share/scala/bin/scaladoc /usr/bin/scaladoc
+sudo ln -s /usr/local/share/scala/bin/scalap /usr/bin/scalap
+
+# Install SBT deb.
+sbtFilename=sbt-0.13.5.deb
+sudo curl --silent --location --output "${sbtFilename}" "http://dl.bintray.com/sbt/debian/${sbtFilename}"
+test $? -ne 0 && echo 'fatal: downloading sbt deb failed' 1>&2 && exit 1
+sudo dpkg -i "${sbtFilename}"
+test $? -ne 0 && echo 'fatal: installing sbt failed' 1>&2 && exit 1
+sudo rm -f "${sbtFilename}"
+
+# Configure persistent environment variables.
+echo "export SBT_OPTS='-Dsbt.ivy.home=/app/.shipbuilder/.ivy2 -Divy.home=/app/.shipbuilder/.ivy2'" | sudo tee /etc/profile.d/shipbuilder.sh
+test $? -ne 0 && echo 'fatal: writing global environment variables to /etc/profile.d/shipbuilder.sh failed' 1>&2 && exit 1
+
+sudo chmod 755 /etc/profile.d/shipbuilder.sh
+test $? -ne 0 && echo 'fatal: chmodding /etc/profile.d/shipbuilder.sh failed' 1>&2 && exit 1
+
+exit 0
+
