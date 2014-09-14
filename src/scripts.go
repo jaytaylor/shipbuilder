@@ -402,26 +402,19 @@ func init() {
 	}
 
 	template.Must(UPSTART.Parse(`
-console none
-
 # Start on "networking up" state.
 # @see http://upstart.ubuntu.com/cookbook/#how-to-establish-a-jobs-start-on-and-stop-on-conditions
-start on static-network-up
-stop on [!12345]
+start on runlevel [2345]
+stop on runlevel [016] or unmounting-filesystem
 #exec su ` + DEFAULT_NODE_USERNAME + ` -c "/app/run"
 #exec /app/run
 pre-start script
-    test ! -d /app/env && mkdir /app/env || true
+    test -d /app/env || mkdir /app/env || true
     touch /app/ip /app/env/PORT || true
     chown ubuntu:ubuntu /app/ip /app/env/PORT || true
     test $(stat -c %U /app/src) = 'root' && chown -R ubuntu:ubuntu /app || true
-    # Create run wrapper script which executes in "envdir" context.
-    echo '#!/usr/bin/env bash
-    envdir /app/env /app/run' > /app/run_in_context || true
-    chmod a+x /app/run_in_context || true
-    chown ubuntu:ubuntu /app/run_in_context || true
 end script
-exec start-stop-daemon --start --user ubuntu --chuid ubuntu --exec /app/run_in_context
+exec start-stop-daemon --start --chuid ubuntu --exec /bin/sh -- -c "exec envdir /app/env /app/run"
 `))
 
 	// NB: sshHost has `.*@` portion stripped if an `@` symbol is found.
