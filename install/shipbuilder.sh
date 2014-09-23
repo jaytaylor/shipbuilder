@@ -68,7 +68,7 @@ getIpCommand="ifconfig | tr '\t' ' '| sed 's/ \{1,\}/ /g' | grep '^e[a-z]\+0[: ]
 
 if [ "${action}" = "list-devices" ]; then
     echo '----'
-    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost 'sudo find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost 'sudo find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
     abortIfNonZero $? "retrieving storage devices from host ${sbHost}"
     exit 0
 
@@ -79,10 +79,10 @@ elif [ "${action}" = "install" ]; then
     installAccessForSshHost $sbHost
     abortIfNonZero $? 'installAccessForSshHost() failed'
 
-    rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" libfns.sh $sbHost:/tmp/
+    rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" libfns.sh $sbHost:/tmp/
     abortIfNonZero $? 'rsync libfns.sh failed'
 
-    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost "source /tmp/libfns.sh && prepareServerPart1 ${sbHost} ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost "source /tmp/libfns.sh && prepareServerPart1 ${sbHost} ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
     abortIfNonZero $? 'remote prepareServerPart1() invocation'
 
     mv ../env/SB_SSH_HOST{,.bak}
@@ -96,7 +96,7 @@ elif [ "${action}" = "install" ]; then
 
     if test -z "${denyRestart}"; then
         echo 'info: checking if system restart is necessary'
-        ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && sudo reboot || echo 'no system restart is necessary'"
+        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && sudo reboot || echo 'no system restart is necessary'"
         abortIfNonZero $? 'remote system restart check failed'
     else
         echo 'warn: a restart may be required on the shipbuilder server to complete installation, but the action was disabled by a flag' 1>&2

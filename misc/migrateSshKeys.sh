@@ -29,7 +29,7 @@ function verifySshAndSudoForHosts() {
     echo "info: verifying ssh and sudo access for $(echo "${sshHosts}" | tr ' ' '\n' | grep -v '^ *$' | wc -l | sed 's/^[ \t]*//g') hosts"
     for sshHost in $(echo "${sshHosts}"); do
         echo -n "info:     testing host ${sshHost} .. "
-        result=$(ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' -o 'ConnectTimeout 15' -q $sshHost 'sudo -n echo "succeeded" 2>/dev/null')
+        result=$(ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' -o 'ConnectTimeout=15' -q $sshHost 'sudo -n echo "succeeded" 2>/dev/null')
         rc=$?
         test $rc -ne 0 && echo 'failed' && abortWithError "error: ssh connection test failed for host: ${sshHost} (exited with status code: ${rc})"
         test -z "${result}" && echo 'failed' && abortWithError "error: sudo access test failed for host: ${sshHost}"
@@ -40,7 +40,7 @@ function verifySshAndSudoForHosts() {
 verifySshAndSudoForHosts "${sourceSshHost} ${destinationSshHost}"
 
 # Copy root keys inside ssh users .ssh folder.
-ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' -o 'ConnectTimeout 15' -q $sourceSshHost \
+ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' -o 'ConnectTimeout=15' -q $sourceSshHost \
 'sudo rm -rf ~/.ssh/root ~/.ssh/etc
 sudo cp -a /root/.ssh ~/.ssh/root
 sudo chown -R ubuntu:ubuntu ~/.ssh/root
@@ -50,12 +50,12 @@ sudo chown -R ubuntu:ubuntu ~/.ssh'
 # I wish SSH had an FXP option like FTP, but it doesn't.
 # So shuttle the files from A to B via this local system.
 rm -rf /tmp/migrateSshKeys
-rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' -o 'ConnectTimeout 15' -q" "${sourceSshHost}:~/.ssh" /tmp/migrateSshKeys
-rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' -o 'ConnectTimeout 15' -q" /tmp/migrateSshKeys "${destinationSshHost}:~/"
+rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' -o 'ConnectTimeout=15' -q" "${sourceSshHost}:~/.ssh" /tmp/migrateSshKeys
+rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' -o 'ConnectTimeout=15' -q" /tmp/migrateSshKeys "${destinationSshHost}:~/"
 rm -rf /tmp/migrateSshKeys
 
-ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' -o 'ConnectTimeout 15' -q $sourceSshHost 'rm -rf ~/.ssh/root ~/.ssh/etc'
-ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' -o 'ConnectTimeout 15' -q $destinationSshHost \
+ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' -o 'ConnectTimeout=15' -q $sourceSshHost 'rm -rf ~/.ssh/root ~/.ssh/etc'
+ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' -o 'ConnectTimeout=15' -q $destinationSshHost \
 'ts=$(date +%Y%m%d_%H%M%S)
 mv ~/.ssh{,.bak-$ts}
 mv ~/{migrateSshKeys/,}.ssh

@@ -61,7 +61,7 @@ function verifySshAndSudoForHosts() {
     echo "info: verifying ssh and sudo access for $(echo "${sshHosts}" | tr ' ' '\n' | grep -v '^ *$' | wc -l | sed 's/^[ \t]*//g') hosts"
     for sshHost in $(echo "${sshHosts}"); do
         echo -n "info:     testing host ${sshHost} .. "
-        result=$(ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' -o 'ConnectTimeout 15' -q "${sshHost}" 'sudo -n echo "succeeded" 2>/dev/null')
+        result=$(ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' -o 'ConnectTimeout=15' -q "${sshHost}" 'sudo -n echo "succeeded" 2>/dev/null')
         rc=$?
         test $rc -ne 0 && echo 'failed' && abortWithError "error: ssh connection test failed for host: ${sshHost} (exited with status code: ${rc})"
         test -z "${result}" && echo 'failed' && abortWithError "error: sudo access test failed for host: ${sshHost}"
@@ -74,7 +74,7 @@ function initSbServerKeys() {
     test -z "${sbHost}" && echo 'error: initSbServerKeys(): required parameter $sbHost cannot be empty' 1>&2 && exit 1
     echo "info: checking SB server=${sbHost} SSH keys, will generate if missing"
 
-    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost '/bin/bash -c '"'"'
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost '/bin/bash -c '"'"'
     echo "remote: info: setting up pub/private SSH keys so that root and main users can SSH in to either account"
     function abortIfNonZero() {
         local rc=$1
@@ -149,7 +149,7 @@ function getSbServerPublicKeys() {
 
     echo "info: retrieving public-keys from shipbuilder server: ${sbHost}"
 
-    local pubKeys=$(ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sbHost 'cat ~/.ssh/id_rsa.pub && echo "." && sudo cat /root/.ssh/id_rsa.pub')
+    local pubKeys=$(ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost 'cat ~/.ssh/id_rsa.pub && echo "." && sudo cat /root/.ssh/id_rsa.pub')
     abortIfNonZero $? 'SSH public-key retrieval failed'
 
     unprivilegedPubKey=$(echo "${pubKeys}" | grep --before 100 '^\.$' | grep -v '^\.$')
@@ -179,7 +179,7 @@ function installAccessForSshHost() {
     test -z "${sshHost}" && echo 'error: installAccessForSshHost(): missing required parameter: SSH hostname' 1>&2 && exit 1
 
     echo "info: setting up remote access from build-server to host: ${sshHost}"
-    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $sshHost '/bin/bash -c '"'"'
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sshHost '/bin/bash -c '"'"'
     function abortIfNonZero() {
         local rc=$1
         local what=$2
