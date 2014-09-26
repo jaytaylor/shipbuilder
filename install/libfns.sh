@@ -225,12 +225,12 @@ function installLxc() {
 
     local required="${fsPackages} git mercurial bzr build-essential bzip2 daemontools ntp ntpdate"
     echo "info: installing required build-server packages: ${required}"
-    sudo apt-get install -y "${required}"
+    sudo apt-get install -y ${required}
     abortIfNonZero $? "command 'apt-get install -y ${required}'"
 
     local recommended='aptitude htop iotop unzip screen bzip2 bmon'
     echo "info: installing recommended packages: ${recommended}"
-    sudo apt-get install -y "${recommended}"
+    sudo apt-get install -y ${recommended}
     abortIfNonZero $? "command 'apt-get install -y ${recommended}'"
     echo 'info: installLxc() succeeded'
 }
@@ -436,12 +436,12 @@ function prepareLoadBalancer() {
     echo "info: installing required packages: ${required}"
     sudo apt-get update
     abortIfNonZero $? "updating apt"
-    sudo apt-get install -y "${required}"
+    sudo apt-get install -y ${required}
     abortIfNonZero $? "apt-get install ${required}"
 
     optional="vim-haproxy"
     echo "info: installing optional packages: ${optional}"
-    sudo apt-get install -y $optional
+    sudo apt-get install -y ${optional}
     abortIfNonZero $? "apt-get install ${optional}"
 
     if [ -r "${certFile}" ]; then
@@ -615,7 +615,7 @@ function lxcConfigBase() {
     packages='daemontools git-core curl unzip'
     echo "info: installing packages to base container: ${packages}"
     ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo apt-get install -y ${packages}"
-    abortIfNonZero $? "container apt-get install ${packages}"
+    abortIfNonZero $? "container apt-get install -y ${packages}"
 
     echo 'info: stopping base container'
     sudo lxc-stop -k -n base || true
@@ -701,7 +701,7 @@ function lxcConfigBuildPack() {
             for package in ${packages}; do
                 #ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo apt-get install -y ${package}"
                 sudo lxc-attach -n "${container}" -- /bin/bash -c "sudo apt-get install -y ${package}"
-                abortIfNonZero $? "[${container}] container apt-get install ${package}"
+                abortIfNonZero $? "[${container}] container apt-get install -y ${package}"
             done
         fi
         abortIfNonZero $? "[${container}] container apt-get install ${packages}"
