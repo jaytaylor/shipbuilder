@@ -39,6 +39,13 @@ __lb:remove__
 Remove one or more load balancers from the system. Updates the load balancer config.
 
 
+__apps:health__
+
+    [apps:?]health
+
+Display detailed output on the health of each process-type for each app.
+
+
 __nodes:add__
 
     nodes:add [address]..
