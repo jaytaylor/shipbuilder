@@ -45,6 +45,8 @@ __apps:health__
 
 Display detailed output on the health of each process-type for each app.
 
+IMPORTANT: If this command is run while a deployment is in progress, then it will hang until after the deployment is finished.
+
 
 __nodes:add__
 
