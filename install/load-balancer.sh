@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-cd "$(dirname "$0")"
+# Don't `cd` because it can break the path-to-ssl-cert parameter.
+#cd "$(dirname "$0")"
 
 source libfns.sh
 
