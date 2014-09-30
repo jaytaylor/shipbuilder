@@ -309,8 +309,10 @@ function prepareNode() {
 
                 sudo zpool destroy "${zfsPool}" 2>/dev/null
 
-                sudo zpool create -o ashift=12 "${zfsPool}" "${device}"
-                abortIfNonZero $? "command 'sudo zpool create -o ashift=12 ${zfsPool} ${device}'"
+                #sudo zpool create -o ashift=12 "${zfsPool}" "${device}"
+                #abortIfNonZero $? "command 'sudo zpool create -o ashift=12 ${zfsPool} ${device}'"
+                sudo zpool create "${zfsPool}" "${device}"
+                abortIfNonZero $? "command 'sudo zpool create ${zfsPool} ${device}'"
             fi
 
             # Create lxc and git volumes.
