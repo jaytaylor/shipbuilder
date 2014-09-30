@@ -228,9 +228,9 @@ func (this *Server) Apps_Health(conn net.Conn) error {
 				}
 				if len(dynos) != numDynos {
 					if len(dynos) > numDynos {
-						message = fmt.Sprintf(" detail=%v_too_few_dynos", len(dynos)-numDynos)
+						message = fmt.Sprintf(" detail=%v_too_many_dynos", len(dynos)-numDynos)
 					} else if len(dynos) < numDynos {
-						message = fmt.Sprintf(" detail=%v_too_many_dynos", numDynos-len(dynos))
+						message = fmt.Sprintf(" detail=%v_too_few_dynos", numDynos-len(dynos))
 					}
 					status = "failed"
 					message = fmt.Sprintf(" actual=%v%v", len(dynos), message)
