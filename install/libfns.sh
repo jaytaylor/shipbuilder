@@ -476,13 +476,14 @@ function prepareLoadBalancer() {
 
 function installGo() {
     if [ -z "$(which go)" ]; then
-        echo 'info: installing go v1.1 on the build-server'
-        curl --location --silent https://launchpad.net/ubuntu/+archive/primary/+files/golang-src_1.1-1_amd64.deb > /tmp/golang-src_1.1-1_amd64.deb
-        abortIfNonZero $? 'golang-src package download'
-        curl --location --silent https://launchpad.net/ubuntu/+archive/primary/+files/golang-go_1.1-1_amd64.deb > /tmp/golang-go_1.1-1_amd64.deb
-        abortIfNonZero $? 'golang-go package download'
-        sudo dpkg -i /tmp/golang-src_1.1-1_amd64.deb /tmp/golang-go_1.1-1_amd64.deb
-        abortIfNonZero $? 'golang packages installation'
+        local goVersion='1.3.2'
+        echo "info: installing go v${goVersion}"
+        local downloadUrl="https://storage.googleapis.com/golang/go${goVersion}.linux-amd64.tar.gz"
+        echo "info: downloading go binary distribution from url=${downloadUrl}"
+        curl --silent --fail "${downloadUrl}" > "go${goVersion}.tar.gz"
+        abortIfNonZero $? "downloading go-lang binary distribution"
+        sudo tar -C /usr/local -xzf "go${goVersion}.tar.gz"
+        abortIfNonZero $? "decompressing and installing go binary distribution to /usr/local"
         mkdir ~/go 2>/dev/null
         abortIfNonZero $ 'creating directory ~/go'
         echo 'info: adding $GOPATH to ~/.bashrc'
