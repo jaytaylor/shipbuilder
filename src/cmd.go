@@ -306,7 +306,7 @@ func init() {
 		),
 
 		////////////////////////////////////////////////////////////////////////
-		// Commands: privatekey:*
+		// privatekey:*
 		reader("privatekey", "privatekey:get", "PrivateKey_Get",
 			required("app"),
 		),
@@ -318,7 +318,7 @@ func init() {
 		),
 
 		////////////////////////////////////////////////////////////////////////
-		// Commands: ps:*
+		// ps:*
 		reader("ps", "ps:list", "Ps_List",
 			required("app"),
 		),
@@ -368,5 +368,9 @@ func init() {
 		////////////////////////////////////////////////////////////////////////
 		// runtime:*
 		global("runtime:tests", "runtimetests", "LocalRuntimeTests"),
+
+		////////////////////////////////////////////////////////////////////////
+		// zfs:*
+		global("zfs:cleanup", "zfs", "Zfs_Cleanup"),
 	}
 }

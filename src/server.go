@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/jaytaylor/logserver/server"
+	"github.com/robfig/cron"
 )
 
 type (
@@ -227,6 +228,18 @@ func (this *Server) verifyRequiredBuildPacks() error {
 	})
 }
 
+func (this *Server) initCrons() {
+	c := cron.New()
+	c.AddFunc("7 30 * * * *", func() {
+		logger := NewLogger(os.Stdout, "[zfsMaintenance] ")
+		err := this.performZfsMaintenance(logger)
+		if err != nil {
+			fmt.Printf("cron: ZFS maintenance ended with error=%v", err)
+		}
+	})
+	c.Start()
+}
+
 func (this *Server) start() error {
 	var err error
 
@@ -237,6 +250,7 @@ func (this *Server) start() error {
 
 	initDrains(this)
 	go this.monitorNodes()
+	go this.initCrons()
 
 	log.Println("starting server on :9999")
 	ln, err := net.Listen("tcp", ":9999")

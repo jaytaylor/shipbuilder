@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"io/ioutil"
 	"os"
 	"regexp"
 	"strings"
@@ -160,24 +162,43 @@ func (this *Server) dynoRoutingActive(dyno *Dyno) (bool, error) {
 	return inUse, nil
 }
 
-// # Cleanup old versions on the shipbuilder build box.
-// sudo lxc-ls --fancy | grep --only-matching '^[^ ]\+_v[0-9]\+ *STOPPED' | sed 's/^\([^ ]\+\)\(_v\)\([0-9]\+\) .*/\1 \3 \1\2\3/' | sort -t' ' -k 1,2 -g | awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' | grep '^[^ ]\+ [0-9]\+,' | sed 's/,[0-9]\+$//' | awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s_v%s\n", $1, arr[i] }' | xargs -n1 -IX bash -c 'attempts=0; rc=1; while [ $rc -ne 0 ] && [ $attempts -lt 10 ] ; do echo "rc=${rc}, attempts=${attempts} X"; sudo lxc-destroy -n X; rc=$?; attempts=$(($attempts + 1)); done'
+// # Cleanup any orphaned release snapshot archives.
+// sudo find /tmp -xdev -mmin +120 -size +100M -wholename '*.tar.gz' -exec rm {} \;
 
-// # Cleanup old zfs container volumes not in use.
-// containers=$(sudo lxc-ls --fancy | sed "1,2d" | cut -f1 -d" ") ; for x in $(sudo zfs list | sed "1d" | cut -d" " -f1); do if [ "${x}" = "tank" ] || [ "${x}" = "tank/git" ] || [ "${x}" = "tank/lxc" ]; then echo "skipping bare tank, git, or lxc: ${x}"; continue; fi; if [ -n "$(echo $x | grep '@')" ]; then search=$(echo $x | sed "s/^.*@//"); else search=$(echo $x | sed "s/^[^\/]\{1,\}\///"); fi; if [ -z "$(echo -e "${containers}" | grep "${search}")" ]; then echo "destroying non-container zfs volume: $x" ; sudo zfs destroy $x; fi; done
+func (this *Server) performZfsMaintenance(logger io.Writer) error {
+	if lxcFs != "zfs" {
+		return fmt.Errorf(`This command requires the LXC filesystem type to be "zfs", but instead found "%v"`, lxcFs)
+	}
 
-// containers=$(sudo lxc-ls --fancy | sed "1,2d" | cut -f1 -d" ") ; for x in $(sudo zfs list | sed "1d" | cut -d" " -f1); do if [ "${x}" = "tank" ] || [ "${x}" = "tank/git" ] || [ "${x}" = "tank/lxc" ]; then echo "skipping bare tank, git, or lxc: ${x}"; continue; fi; if [ -n "$(echo $x | grep '@')" ]; then search=$(echo $x | sed "s/^.*@//"); else search=$(echo $x | sed "s/^[^\/]\{1,\}\///"); fi; if [ -z "$(echo -e "${containers}" | grep "${search}")" ]; then echo "destroying non-container zfs volume: $x" ; sudo zfs destroy $x; fi; done
+	deployLock.start()
+	defer deployLock.finish()
 
-// # Destroy stopped versioned containers (no base images).
-// sudo lxc-ls --stopped | grep '_v[0-9]\+' | cut -f1 -d' ' | xargs -n1 sudo lxc-destroy -n
+	maintenanceScriptPath := "/tmp/zfs_maintenance.sh"
 
-// # Cleanup empty container dirs.
-// for dir in $(find /var/lib/lxc/ -maxdepth 1 -type d); do if test "${dir}" = '.' || test -z "$(echo "${dir}" | sed 's/\/var\/lib\/lxc\///')"; then continue; fi; count=$(find "${dir}/rootfs/" | head -n 3 | wc -l); if test $count -eq 1; then echo $dir $count; sudo rm -rf $dir; fi; done
+	err := ioutil.WriteFile(maintenanceScriptPath, []byte(ZFS_MAINTENANCE), 0777)
+	if err != nil {
+		fmt.Fprintf(logger, "Error writing maintenance script to %v: %v, operation aborted\n", maintenanceScriptPath, err)
+		return err
+	}
 
-// # Remove some list of containers.
-// $ containers='a
-// b
-// c
-// ..
-// z'
-// $ for c in $containers; do sudo lxc-stop -n $c; sudo lxc-destroy -n $c; sudo lxc-destroy -n $c; sudo lxc-destroy -n $c; done
+	e := Executor{logger}
+
+	err = this.WithConfig(func(cfg *Config) error {
+		for _, node := range cfg.Nodes {
+			fmt.Fprintf(logger, "Starting ZFS maintenance for node=%v\n", node.Host)
+			err = e.Run("rsync", "-azve", "ssh "+DEFAULT_SSH_PARAMETERS, maintenanceScriptPath, "root@"+node.Host+":"+maintenanceScriptPath)
+			if err != nil {
+				fmt.Fprintf(logger, "Error rsync'ing %v to %v: %v, node will be skipped", maintenanceScriptPath, node.Host, err)
+				continue
+			}
+			sshArgs := append(defaultSshParametersList, "root@"+node.Host, maintenanceScriptPath)
+			err = e.Run("ssh", sshArgs...)
+			if err != nil {
+				fmt.Fprintf(logger, "Error running %v on %v: %v", maintenanceScriptPath, node.Host, err)
+				continue
+			}
+		}
+		return nil
+	})
+	return err
+}

@@ -337,6 +337,13 @@ Runs and reports the status of ShipBuilder server system and environment checks 
     - S3 read/write capability to the configured bucket.
 
 
+__zfs:cleanup__
+
+    zfs[:cleanup?]
+
+Manually run ZFS maintenance cleanup (NB: normally this runs automatically via a cron).
+
+
 Project Compilation
 -------------------
 
