@@ -170,7 +170,7 @@ func (this *Server) sysRemoveOrphanedReleaseSnapshots(logger io.Writer) error {
 	e := Executor{logger}
 
 	// sudo find /tmp -xdev -mmin +120 -size +100M -wholename '*.tar.gz' -exec rm {} \;
-	err := e.Run("sudo", "find", "/tmp", "-xdev", "-mmin", "+120", "-size", "+25M", "-wholename", "*_v*.tar.gz", "-exec", "rm", "{}", `\;`)
+	err := e.BashCmd(`sudo find /tmp -xdev -mmin +120 -size +25M -wholename '*_v*.tar.gz' -exec  rm -f {} \;`)
 
 	return err
 }
@@ -211,5 +211,9 @@ func (this *Server) sysPerformZfsMaintenance(logger io.Writer) error {
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	err = e.Run(maintenanceScriptPath)
 	return err
 }
