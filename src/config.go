@@ -61,6 +61,10 @@ const (
 	DEFAULT_SSH_PARAMETERS             = "-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30" // NB: Notice 30s connect timeout.
 )
 
+var (
+	defaultSshParametersList = strings.Split(DEFAULT_SSH_PARAMETERS, " ")
+)
+
 // LDFLAGS can be specified by compiling with `-ldflags '-X main.defaultSshHost=.. ...'`.
 var (
 	build                     string
@@ -89,9 +93,13 @@ var (
 )
 
 var (
-	defaultSshParametersList = strings.Split(DEFAULT_SSH_PARAMETERS, " ")
-	configLock               sync.Mutex
-	syncLoadBalancerLock     sync.Mutex
+	configLock           sync.Mutex
+	syncLoadBalancerLock sync.Mutex
+)
+
+var (
+	ntpServers     = "0.pool.ntp.org 1.pool.ntp.org time.apple.com time.windows.com"
+	ntpSyncCommand = "sudo service ntp stop && sudo /usr/sbin/ntpdate " + ntpServers + " && sudo service ntp start"
 )
 
 func (this *Application) LxcDir() string {

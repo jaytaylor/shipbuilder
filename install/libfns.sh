@@ -436,7 +436,7 @@ function prepareLoadBalancer() {
     sudo apt-add-repository -y "${ppa}"
     abortIfNonZero $? "adding apt repository ppa ${ppa}"
 
-    required="haproxy"
+    required="haproxy ntp"
     echo "info: installing required packages: ${required}"
     sudo apt-get update
     abortIfNonZero $? "updating apt"

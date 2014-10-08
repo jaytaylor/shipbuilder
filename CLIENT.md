@@ -337,17 +337,24 @@ Runs and reports the status of ShipBuilder server system and environment checks 
     - S3 read/write capability to the configured bucket.
 
 
-__sys:cleanupzfs__
+__sys:zfscleanup__
 
     sys:zfs[cleanup?]
 
-System command: Manually run the ZFS maintenance cleanup task (NB: this runs automatically via a cron @ 7:30PM UTC).
+System command: Manually run the ZFS maintenance cleanup task (NB: this runs automatically via a ShipBuilder cron @ 7:30PM UTC).
 
-__sys:cleanupsnapshots__
+__sys:snapshotscleanup__
 
     sys:snapshots[cleanup?]
 
-System command: Manually run the snapshot cleanup task (NB: this runs automatically via a cron every 2 hours).
+System command: Manually run the snapshot cleanup task (NB: this runs automatically via a ShipBuilder cron every 2 hours).
+
+
+__sys:ntpsync__
+
+    sys:ntp[sync?]
+
+System command: Manually run NTP update/sync across all members of the ShipBuilder cluster (i.e. SB server, load-balancers, and nodes) (NB: this runs automatically via a ShipBuilder cron at the top of every hour).
 
 
 

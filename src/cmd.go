@@ -371,7 +371,8 @@ func init() {
 
 		////////////////////////////////////////////////////////////////////////
 		// sys:*
-		global("sys:cleanupzfs", "sys:zfs", "System_CleanupZfs"),
-		global("sys:cleanupsnapshots", "sys:snapshots", "System_CleanupSnapshots"),
+		global("sys:zfscleanup", "sys:zfs", "System_ZfsCleanup"),
+		global("sys:snapshotscleanup", "sys:snapshots", "System_SnapshotsCleanup"),
+		global("sys:ntpsync", "sys:ntp", "System_NtpSync"),
 	}
 }

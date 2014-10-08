@@ -2,8 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
-	"io/ioutil"
 	"os"
 	"regexp"
 	"strings"
@@ -160,60 +158,4 @@ func (this *Server) dynoRoutingActive(dyno *Dyno) (bool, error) {
 	expr := regexp.MustCompile(` backend ` + dyno.Application + ` ([^b]|b[^a]|ba[^c]|bac[^k]|back[^e]|backe[^n]|backen[^d])* ` + dyno.Host + `-` + dyno.Port)
 	inUse := expr.MatchString(strings.Replace(lbConfig, "\n", " ", -1))
 	return inUse, nil
-}
-
-// Remove any orphaned release snapshot archives which are more than 2 hours old.
-func (this *Server) sysRemoveOrphanedReleaseSnapshots(logger io.Writer) error {
-	deployLock.start()
-	defer deployLock.finish()
-
-	e := Executor{logger}
-
-	// sudo find /tmp -xdev -mmin +120 -size +100M -wholename '*.tar.gz' -exec rm {} \;
-	err := e.BashCmd(`sudo find /tmp -xdev -mmin +120 -size +25M -wholename '*_v*.tar.gz' -exec  rm -f {} \;`)
-
-	return err
-}
-
-// Cleanup any ZFS containers identified as stragglers.
-func (this *Server) sysPerformZfsMaintenance(logger io.Writer) error {
-	if lxcFs != "zfs" {
-		return fmt.Errorf(`This command requires the LXC filesystem type to be "zfs", but instead found "%v"`, lxcFs)
-	}
-
-	deployLock.start()
-	defer deployLock.finish()
-
-	maintenanceScriptPath := "/tmp/zfs_maintenance.sh"
-
-	err := ioutil.WriteFile(maintenanceScriptPath, []byte(ZFS_MAINTENANCE), 0777)
-	if err != nil {
-		fmt.Fprintf(logger, "Error writing maintenance script to %v: %v, operation aborted\n", maintenanceScriptPath, err)
-		return err
-	}
-
-	e := Executor{logger}
-
-	err = this.WithConfig(func(cfg *Config) error {
-		for _, node := range cfg.Nodes {
-			fmt.Fprintf(logger, "Starting ZFS maintenance for node=%v\n", node.Host)
-			err = e.Run("rsync", "-azve", "ssh "+DEFAULT_SSH_PARAMETERS, maintenanceScriptPath, "root@"+node.Host+":"+maintenanceScriptPath)
-			if err != nil {
-				fmt.Fprintf(logger, "Error rsync'ing %v to %v: %v, node will be skipped", maintenanceScriptPath, node.Host, err)
-				continue
-			}
-			sshArgs := append(defaultSshParametersList, "root@"+node.Host, maintenanceScriptPath)
-			err = e.Run("ssh", sshArgs...)
-			if err != nil {
-				fmt.Fprintf(logger, "Error running %v on %v: %v", maintenanceScriptPath, node.Host, err)
-				continue
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	err = e.Run(maintenanceScriptPath)
-	return err
 }
