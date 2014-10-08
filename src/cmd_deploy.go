@@ -430,6 +430,7 @@ func (this *Deployment) syncNode(node *Node) error {
 		return err
 	}
 	// Rsync the application container over.
+	//--recursive --links --hard-links --devices --specials --owner --group --perms --times --acls --delete --xattrs --numeric-ids
 	err = e.Run("sudo", "rsync",
 		"--recursive",
 		"--links",
@@ -765,7 +766,11 @@ func (this *Deployment) postDeployHooks(err error) {
 		if err != nil {
 			fmt.Printf("warn: postDeployHooks scaling caught: %v", err)
 		}
-		message = "Scaled " + this.Application.Name + " to" + procInfo + " in " + duration + revision
+		if len(procInfo) > 0 {
+			message = "Scaled " + this.Application.Name + " to" + procInfo + " in " + duration + revision
+		} else {
+			message = "Scaled down all " + this.Application.Name + " processes down to 0"
+		}
 	} else {
 		message = "Deployed " + this.Application.Name + " " + this.Version + " in " + duration + revision
 	}
