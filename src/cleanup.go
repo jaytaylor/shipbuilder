@@ -162,10 +162,21 @@ func (this *Server) dynoRoutingActive(dyno *Dyno) (bool, error) {
 	return inUse, nil
 }
 
-// # Cleanup any orphaned release snapshot archives.
-// sudo find /tmp -xdev -mmin +120 -size +100M -wholename '*.tar.gz' -exec rm {} \;
+// Remove any orphaned release snapshot archives which are more than 2 hours old.
+func (this *Server) sysRemoveOrphanedReleaseSnapshots(logger io.Writer) error {
+	deployLock.start()
+	defer deployLock.finish()
 
-func (this *Server) performZfsMaintenance(logger io.Writer) error {
+	e := Executor{logger}
+
+	// sudo find /tmp -xdev -mmin +120 -size +100M -wholename '*.tar.gz' -exec rm {} \;
+	err := e.Run("sudo", "find", "/tmp", "-xdev", "-mmin", "+120", "-size", "+25M", "-wholename", "*_v*.tar.gz", "-exec", "rm", "{}", `\;`)
+
+	return err
+}
+
+// Cleanup any ZFS containers identified as stragglers.
+func (this *Server) sysPerformZfsMaintenance(logger io.Writer) error {
 	if lxcFs != "zfs" {
 		return fmt.Errorf(`This command requires the LXC filesystem type to be "zfs", but instead found "%v"`, lxcFs)
 	}

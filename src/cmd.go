@@ -370,7 +370,8 @@ func init() {
 		global("runtime:tests", "runtimetests", "LocalRuntimeTests"),
 
 		////////////////////////////////////////////////////////////////////////
-		// zfs:*
-		global("zfs:cleanup", "zfs", "Zfs_Cleanup"),
+		// sys:*
+		global("sys:cleanupzfs", "sys:zfs", "System_CleanupZfs"),
+		global("sys:cleanupsnapshots", "system:snapshots", "System_CleanupSnapshots"),
 	}
 }

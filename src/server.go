@@ -230,11 +230,22 @@ func (this *Server) verifyRequiredBuildPacks() error {
 
 func (this *Server) initCrons() {
 	c := cron.New()
-	c.AddFunc("7 30 * * * *", func() {
-		logger := NewLogger(os.Stdout, "[zfsMaintenance] ")
-		err := this.performZfsMaintenance(logger)
+	// ZFS maintenance.
+	if lxcFs == "zfs" {
+		c.AddFunc("7 30 * * * *", func() {
+			logger := NewLogger(os.Stdout, "[zfsMaintenance] ")
+			err := this.sysPerformZfsMaintenance(logger)
+			if err != nil {
+				fmt.Printf("cron: ZFS maintenance ended with error=%v", err)
+			}
+		})
+	}
+	// Orphaned snapshots removal.
+	c.AddFunc("45 * * * * *", func() {
+		logger := NewLogger(os.Stdout, "[orphanedSnapshots] ")
+		err := this.sysRemoveOrphanedReleaseSnapshots(logger)
 		if err != nil {
-			fmt.Printf("cron: ZFS maintenance ended with error=%v", err)
+			fmt.Printf("cron: Orghaned snapshot removal ended with error=%v", err)
 		}
 	})
 	c.Start()
