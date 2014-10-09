@@ -6,7 +6,7 @@ source libfns.sh
 
 skipIfExists=0
 
-while getopts "d:f:hS:s:ne" OPTION; do
+while getopts "b:d:f:hS:s:ne" OPTION; do
     case $OPTION in
         h)
             echo "usage: $0 -S [shipbuilder-host] -d [server-dedicated-device] -f [lxc-filesystem] ACTION" 1>&2
@@ -20,6 +20,8 @@ while getopts "d:f:hS:s:ne" OPTION; do
             echo '  -s [swap-device]             Device to use for swap (optional)' 1>&2
             echo '  -n                           No reboot - deny system restart, even if one is required to complete installation' 1>&2
             echo '  -e                           Skip container preparation steps when the container already exists' 1>&2
+            echo '' 1>&2
+            echo '  -b [build-pack]              Install a single build-pack (and do not install or change anything else, LXC must already be installed)' 1>&2
             exit 1
             ;;
         d)
@@ -39,6 +41,9 @@ while getopts "d:f:hS:s:ne" OPTION; do
             ;;
         e)
             skipIfExists=1
+            ;;
+        b)
+            buildPackToInstall=$OPTARG
             ;;
     esac
 done
@@ -66,6 +71,21 @@ verifySshAndSudoForHosts "${sbHost}"
 getIpCommand="ifconfig | tr '\t' ' '| sed 's/ \{1,\}/ /g' | grep '^e[a-z]\+0[: ]' --after 8 | grep --only 'inet \(addr:\)\?[: ]*[^: ]\+' | tr ':' ' ' | sed 's/\(.*\) addr[: ]\{0,\}\(.*\)/\1 \2/' | sed 's/ \{1,\}/ /g' | cut -f2 -d' '"
 
 
+function deployShipBuilder() {
+    mv ../env/SB_SSH_HOST{,.bak}
+    echo "${sbHost}" > ../env/SB_SSH_HOST
+    ../deploy.sh
+    abortIfNonZero $? 'ShipBuilder deployment via deploy.sh failed'
+    mv ../env/SB_SSH_HOST{.bak,}
+}
+
+
+function rsyncLibfns() {
+    rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" libfns.sh $sbHost:/tmp/
+    abortIfNonZero $? 'rsync libfns.sh failed'
+}
+
+
 if [ "${action}" = "list-devices" ]; then
     echo '----'
     ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost 'sudo find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
@@ -73,33 +93,41 @@ if [ "${action}" = "list-devices" ]; then
     exit 0
 
 elif [ "${action}" = "install" ]; then
-    test -z "${device}" && echo 'error: missing required parameter: -d [device]' 1>&2 && exit 1
-    test -z "${lxcFs}" && echo 'error: missing required parameter: -f [lxc-filesystem]' 1>&2 && exit 1
+    if [ -n "${buildPackToInstall}" ]; then
+        # Install a single build-pack.
+        if ! [ -d "../build-packs/${buildPackToInstall}" ]; then
+            knownBuildPacks="$(find ../build-packs -depth 1 -type d | cut -d'/' -f3 | tr '\n' ' ' | sed 's/ /, /g' | sed 's/, $//')"
+            echo "error: unable to locate any build-pack named '${buildPackToInstall}', choices are: ${knownBuildPacks}" 1>&2
+            exit 1
+        fi
+        deployShipBuilder
+        rsyncLibfns
+        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost "source /tmp/libfns.sh && installSingleBuildPack ${buildPackToInstall} ${skipIfExists} ${lxcFs} ${zfsPool}"
 
-    installAccessForSshHost $sbHost
-    abortIfNonZero $? 'installAccessForSshHost() failed'
-
-    rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" libfns.sh $sbHost:/tmp/
-    abortIfNonZero $? 'rsync libfns.sh failed'
-
-    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost "source /tmp/libfns.sh && prepareServerPart1 ${sbHost} ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
-    abortIfNonZero $? 'remote prepareServerPart1() invocation'
-
-    mv ../env/SB_SSH_HOST{,.bak}
-    echo "${sbHost}" > ../env/SB_SSH_HOST
-    ../deploy.sh
-    abortIfNonZero $? 'ShipBuilder deployment via deploy.sh failed'
-    mv ../env/SB_SSH_HOST{.bak,}
-
-    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost "source /tmp/libfns.sh && prepareServerPart2 ${lxcFs} ${zfsPool} ${skipIfExists}"
-    abortIfNonZero $? 'remote prepareServerPart2() invocation'
-
-    if test -z "${denyRestart}"; then
-        echo 'info: checking if system restart is necessary'
-        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && sudo reboot || echo 'no system restart is necessary'"
-        abortIfNonZero $? 'remote system restart check failed'
     else
-        echo 'warn: a restart may be required on the shipbuilder server to complete installation, but the action was disabled by a flag' 1>&2
+        # Perform a full ShipBuilder install.
+        test -z "${device}" && echo 'error: missing required parameter: -d [device]' 1>&2 && exit 1
+        test -z "${lxcFs}" && echo 'error: missing required parameter: -f [lxc-filesystem]' 1>&2 && exit 1
+
+        installAccessForSshHost $sbHost
+        abortIfNonZero $? 'installAccessForSshHost() failed'
+
+        rsyncLibfns
+        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost "source /tmp/libfns.sh && prepareServerPart1 ${sbHost} ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
+        abortIfNonZero $? 'remote prepareServerPart1() invocation'
+
+        deployShipBuilder
+
+        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost "source /tmp/libfns.sh && prepareServerPart2 ${skipIfExists} ${lxcFs} ${zfsPool}"
+        abortIfNonZero $? 'remote prepareServerPart2() invocation'
+
+        if test -z "${denyRestart}"; then
+            echo 'info: checking if system restart is necessary'
+            ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && sudo reboot || echo 'no system restart is necessary'"
+            abortIfNonZero $? 'remote system restart check failed'
+        else
+            echo 'warn: a restart may be required on the shipbuilder server to complete installation, but the action was disabled by a flag' 1>&2
+        fi
     fi
 
 else

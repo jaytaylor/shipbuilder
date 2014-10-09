@@ -250,23 +250,28 @@ function prepareNode() {
     test -z "${lxcFs}" && echo 'error: prepareNode() missing required parameter: $lxcFs' 1>&2 && exit 1
     test "${lxcFs}" = 'zfs' && test -z "${zfsPool}" && echo 'error: prepareNode() missing required zfs parameter: $zfsPool' 1>&2 && exit 1
 
-    installLxc "${lxcFs}"
-
-    echo "info: attempting to unmount /mnt and ${device} to be safe"
+    echo "info: attempting to unmount /mnt and ${device} to be cautious/safe"
     sudo umount /mnt 1>&2 2>/dev/null
     sudo umount "${device}" 1>&2 2>/dev/null
 
-    if ! [ -d /mnt/build ]; then
+    if test -n "${swapDevice}" ; then
+        echo "info: attempting to unmount swap device=${swapDevice} to be cautious/safe"
+        sudo umount "${swapDevice}" 1>&2 2>/dev/null
+    fi
+
+    if ! [ -d '/mnt/build' ]; then
         echo 'info: creating /mnt/build mount point'
         sudo mkdir -p /mnt/build
         abortIfNonZero $? "creating /mnt/build"
     fi
 
+    installLxc "${lxcFs}"
+
     # Try to temporarily mount the device to get an accurate FS-type reading.
-    sudo mount $device /mnt 1>&2 2>/dev/null
+    sudo mount "${device}" /mnt 1>&2 2>/dev/null
     fs=$(sudo df -T $device | tail -n1 | sed 's/[ \t]\+/ /g' | cut -d' ' -f2)
     test -z "${fs}" && echo "error: failed to determine FS type for ${device}" 1>&2 && exit 1
-    sudo umount $device 1>&2 2>/dev/null
+    sudo umount "${device}" 1>&2 2>/dev/null
 
     echo "info: existing fs type on ${device} is ${fs}"
     if [ "${fs}" = "${lxcFs}" ]; then
@@ -386,7 +391,7 @@ function prepareNode() {
     if ! test -z "${swapDevice}" && test -e "${swapDevice}"; then
         echo "info: activating swap device or partition: ${swapDevice}"
         # Ensure the swap device target us unmounted.
-        sudo umount "${swapDevice}"
+        sudo umount "${swapDevice}" 1>/dev/null 2>/dev/null || :
         # Purge any pre-existing fstab entries before adding the swap device.
         sudo sed -i "/^$(echo "${swapDevice}" | sed 's/\//\\&/g')[ \t].*/d" /etc/fstab
         abortIfNonZero $? "purging pre-existing ${swapDevice} entries from /etc/fstab"
@@ -484,8 +489,10 @@ function installGo() {
         abortIfNonZero $? "downloading go-lang binary distribution"
         sudo tar -C /usr/local -xzf "go${goVersion}.tar.gz"
         abortIfNonZero $? "decompressing and installing go binary distribution to /usr/local"
+        sudo ln -s /usr/local/go/bin/go /usr/local/bin/go
+        abortIfNonZero $? "linking go binary to /usr/local/go"
         mkdir ~/go 2>/dev/null
-        abortIfNonZero $ 'creating directory ~/go'
+        abortIfNonZero $? 'creating directory ~/go'
         echo 'info: adding $GOPATH to ~/.bashrc'
         echo 'export GOPATH=$HOME/go' >> ~/.bashrc
         abortIfNonZero $? 'adding $GOPATH to ~/.bashrc var exports'
@@ -531,9 +538,12 @@ function rsyslogLoggingListeners() {
 }
 
 function getContainerIp() {
-    local container="$1"
+    local container=$1
     local allowedAttempts=60
     local i=0
+
+    test -z "${container}" && echo 'error: getContainerIp() missing required parameter: $container' 1>&2 && exit 1
+
     echo "info: getting container ip-address for name '${container}'"
     while [ $i -lt $allowedAttempts ]; do
         maybeIp="$(sudo lxc-ls --fancy | grep "^${container}[ \t]\+" | head -n1 | sed 's/[ \t]\+/ /g' | cut -d' ' -f3 | sed 's/[^0-9\.]*//g')"
@@ -555,77 +565,87 @@ function getContainerIp() {
     if [ -n "${ip}" ]; then
         echo "info: found ip=${ip} for ${container} container"
     else
-        echo "error: obtaining ip-address for container '${container}' failed after ${allowedAttempts} attempts" 1>&2
+        echo "error: obtaining ip-address for container=${container} failed after ${allowedAttempts} attempts" 1>&2
         exit 1
     fi
 }
 
-function lxcInitBase() {
-    # @param $1 lxc filesystem to use.
-    local lxcFs=$1
-    local zfsPool=$2
-    local skipIfExists=$3
+function lxcInitContainer() {
+    # @param $1 container name.
+    # @param $2 skipIfExists Whether or not to skip over this container if it already exists.
+    # @param $3 lxc filesystem to use.
+    # @param $4 zfs pool name.
+    local container=$1
+    local skipIfExists=$2
+    local lxcFs=$3
+    local zfsPool=$4
 
-    test -z "${lxcFs}" && echo 'error: lxcInitBase() missing required parameter: $lxcFs' 1>&2 && exit 1
+    test -z "${container}" && echo 'error: lxcInitContainer() missing required parameter: $container' 1>&2 && exit 1
+    test -z "${lxcFs}" && echo 'error: lxcInitContainer() missing required parameter: $lxcFs' 1>&2 && exit 1
 
-    sudo lxc-info -n base 1>/dev/null 2>/dev/null # Test whether or not the container already exists.
+    sudo lxc-info -n "${container}" 1>/dev/null 2>/dev/null # Test whether or not the container already exists.
     rc=$?
     if test ${skipIfExists} -eq 1 && test ${rc} -eq 0; then
-        echo 'info: lxcInitBase() skipping container "base" because it already exists and the skip flag was passed'
+        echo "info: lxcInitContainer() skipping container=${container} because it already exists and the skip flag was passed"
     else
-        echo 'info: clearing any pre-existing "base" container'
-        sudo lxc-stop -k -n base 2>/dev/null
-        sudo lxc-destroy -n base 2>/dev/null
+        echo "info: clearing any pre-existing container=${container}"
+        sudo lxc-stop -k -n "${container}" 2>/dev/null
+        sudo lxc-destroy -n "${container}" 2>/dev/null
 
-        echo 'info: creating base lxc container'
-        sudo lxc-create -n base -t ubuntu -B "${lxcFs}" $(test "${lxcFs}" = 'zfs' && echo "--zfsroot=${zfsPool}" || :)
-        abortIfNonZero $? "lxc-create base"
+        echo "info: creating lxc container=${container}"
+        sudo lxc-create -n "${container}" -t ubuntu -B "${lxcFs}" $(test "${lxcFs}" = 'zfs' && echo "--zfsroot=${zfsPool}" || :)
+        abortIfNonZero $? "lxc-create container=${container}"
 
-        echo 'info: configuring base lxc container..'
-        sudo lxc-start --daemon -n base
-        abortIfNonZero $? "lxc-start base"
+        echo "info: configuring lxc container=${container}"
+        sudo lxc-start -d -n "${container}"
+        abortIfNonZero $? "lxc-start -d -n ${container}"
 
-        getContainerIp base
+        getContainerIp "${container}"
 
-        lxcConfigBase
-        abortIfNonZero $? 'lxcConfigBase() failed'
+        lxcConfigContainer "${container}"
+        abortIfNonZero $? "lxcInitContainer() lxcConfigContainer() failed for container=${container}"
     fi
 }
 
-function lxcConfigBase() {
-    echo "info: adding shipbuilder server's public-key to authorized_keys file in base container"
-    test ! -e "/mnt/build/lxc/base/rootfs/home/ubuntu/.ssh" && sudo mkdir /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh || :
-    abortIfNonZero $? "base container .ssh directory"
+function lxcConfigContainer() {
+    # @param $1 container name.
+    local container=$1
 
-    sudo cp ~/.ssh/id_rsa.pub /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh/authorized_keys
-    abortIfNonZero $? "base container ssh authorized_keys"
+    test -z "${container}" && echo 'error: lxcConfigContainer() missing required parameter: $container' 1>&2 && exit 1
 
-    sudo chown -R ubuntu:ubuntu /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh
-    abortIfNonZero $? "chown -R ubuntu:ubuntu base container .ssh"
+    echo "info: adding shipbuilder server's public-key to authorized_keys file in container=${container}"
+    test ! -e "/mnt/build/lxc/${container}/rootfs/home/ubuntu/.ssh" && sudo mkdir "/mnt/build/lxc/${container}/rootfs/home/ubuntu/.ssh" || :
+    abortIfNonZero $? "creation of container=${container} .ssh directory"
 
-    sudo chmod 700 /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh
-    abortIfNonZero $? "chmod 700 base container .ssh"
+    sudo cp ~/.ssh/id_rsa.pub "/mnt/build/lxc/${container}/rootfs/home/ubuntu/.ssh/authorized_keys"
+    abortIfNonZero $? "creation of container=${container} ssh authorized_keys"
 
-    sudo chmod 600 /mnt/build/lxc/base/rootfs/home/ubuntu/.ssh/authorized_keys
-    abortIfNonZero $? "chmod 600 base container .ssh/authorized_keys"
+    sudo chown -R ubuntu:ubuntu "/mnt/build/lxc/${container}/rootfs/home/ubuntu/.ssh"
+    abortIfNonZero $? "chown -R ubuntu:ubuntu for container=${container} .ssh"
+
+    sudo chmod 700 "/mnt/build/lxc/${container}/rootfs/home/ubuntu/.ssh"
+    abortIfNonZero $? "chmod 700 container=${container} .ssh"
+
+    sudo chmod 600 "/mnt/build/lxc/${container}/rootfs/home/ubuntu/.ssh/authorized_keys"
+    abortIfNonZero $? "chmod 600 container=${container} .ssh/authorized_keys"
 
     echo 'info: adding the container "ubuntu" user to the sudoers list'
-    echo 'ubuntu ALL=(ALL) NOPASSWD: ALL' | sudo tee -a /mnt/build/lxc/base/rootfs/etc/sudoers >/dev/null
-    abortIfNonZero $? "adding 'ubuntu' to container sudoers"
+    echo 'ubuntu ALL=(ALL) NOPASSWD: ALL' | sudo tee -a "/mnt/build/lxc/${container}/rootfs/etc/sudoers" >/dev/null
+    abortIfNonZero $? "adding 'ubuntu' to container=${container} sudoers"
 
-    echo 'info: updating apt repositories in container'
+    echo "info: updating apt repositories in container=${container}"
     ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo apt-get update"
-    abortIfNonZero $? "container apt-get update"
+    abortIfNonZero $? "container=${container} apt-get update"
 
     packages='daemontools git-core curl unzip'
-    echo "info: installing packages to base container: ${packages}"
+    echo "info: installing packages to container=${container}: ${packages}"
     ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo apt-get install -y ${packages}"
-    abortIfNonZero $? "container apt-get install -y ${packages}"
+    abortIfNonZero $? "container=${container} apt-get install -y ${packages}"
 
-    echo 'info: stopping base container'
-    sudo lxc-stop -k -n base || true
+    echo "info: stopping container=${container}"
+    sudo lxc-stop -k -n "${container}" || :
     #abortIfNonZero $? "lxc-stop base"
-    echo 'info: base container configuration succeeded'
+    echo "info: configuration succeeded for container=${container}"
 }
 
 function lxcDestroyContainer() {
@@ -634,6 +654,7 @@ function lxcDestroyContainer() {
     local lxcFs=$3
 
     test -z "${container}" && echo 'error: lxcDestroyContainer() missing required parameter: $container' 1>&2 && exit 1
+    test -z "${lxcFs}" && echo 'error: lxcDestroyContainer() missing required parameter: $lxcFs' 1>&2 && exit 1
 
     local result=0
 
@@ -664,19 +685,27 @@ function lxcDestroyContainer() {
 }
 
 function lxcConfigBuildPack() {
-    # @param $1 base-container suffix (e.g. 'python').
-    # @param $2 list of packages to install.
-    # @param $3 customCommands command to evaluate over SSH.
-    # @param $4 lxc filesystem to use.
-    local container="base-$1"
-    local packages=$2
-    local customCommandsFile=$3
-    local lxcFs=$4
-    local skipIfExists=$5
+    # @param $1 build-pack name which will become the base-container suffix (e.g. 'python').
+    # @param $2 skipIfExists Whether or not to skip over this container if it already exists.
+    # @param $3 lxc filesystem to use.
+    # @param $4 zfs pool (optional, only needed when applicable).
+    local buildPack=$1
+    local skipIfExists=$2
+    local lxcFs=$3
+    local zfsPool=$4
+    local container="base-${buildPack}"
     set -x
-    echo "SKIPIF=$skipIfExists"
 
-    test -z "${lxcFs}" && echo 'error: lxcInitBase() missing required parameter: $lxcFs' 1>&2 && exit 1
+    test -z "${buildPack}" && echo 'error: lxcConfigBuildPack() missing required parameter: $buildPack' 1>&2 && exit 1
+    test -z "${skipIfExists}" && echo 'error: lxcConfigBuildPack() missing required parameter: $skipIfExists' 1>&2 && exit 1
+    test -z "${lxcFs}" && echo 'error: lxcConfigBuildPack() missing required parameter: $lxcFs' 1>&2 && exit 1
+
+    local packagesFile="/mnt/build/build-packs/${buildPack}/container-packages"
+    test ! -r "${packagesFile}" && echo "error: lxcConfigBuildPack() missing packages file for build-pack '${buildPack}': '${packagesFile}' not found" 1>&2 && exit 1
+    local packages="$(cat "${packagesFile}" 2>/dev/null | tr -d '\n')"
+
+    local customCommandsFile="/mnt/build/build-packs/${buildPack}/container-custom-commands"
+    test ! -r "${customCommandsFile}" && echo "error: lxcConfigBuildPack() missing custom commands file for build-pack '${buildPack}': '${customCommandsFile}' not found" 1>&2 && exit 1
 
     # Test if the container was left in a running state, and if so, destroy it (since failed runs can leave things partially done).
     alreadyRunning=$(test $(sudo lxc-ls -1 --running | grep "^${container}\$" | wc -l) -gt 0 && echo 1 || echo 0) # Test whether or not the container already exists and is running.
@@ -693,6 +722,7 @@ function lxcConfigBuildPack() {
         test -z "${lxcFs}" && echo 'error: lxcConfigBuildPack() missing required parameter: $lxcFs' 1>&2 && exit 1
         echo "info: creating build-pack ${container} container"
         sudo lxc-clone -s -B "${lxcFs}" -o base -n "${container}"
+        #lxcInitContainer "${container}" "${skipIfExists}" "${lxcFs}" "${zfsPool}"
         sudo lxc-start -d -n "${container}"
         getContainerIp "${container}"
 
@@ -732,18 +762,17 @@ function lxcConfigBuildPack() {
 }
 
 function lxcConfigBuildPacks() {
-    # @param $1 lxc filesystem to use.
-    local lxcFs=$1
-    local skipIfExists=$2
+    # @param $2 lxc filesystem to use.
+    local skipIfExists=$1
+    local lxcFs=$2
+    local zfsPool=$3
 
     test -z "${lxcFs}" && echo 'error: lxcConfigBuildPacks() missing required parameter: $lxcFs' 1>&2 && exit 1
 
     for buildPack in $(ls -1 /mnt/build/build-packs); do
         echo "info: initializing build-pack: ${buildPack}"
-        customCommandsFile="/mnt/build/build-packs/${buildPack}/container-custom-commands"
         # NB: "tr -d" is very important here to prevent invalid package name being installed (last package will have a trailing newline).
-        packages="$(cat "/mnt/build/build-packs/${buildPack}/container-packages" 2>/dev/null | tr -d '\n')"
-        lxcConfigBuildPack "${buildPack}" "${packages}" "${customCommandsFile}" "${lxcFs}" "${skipIfExists}"
+        lxcConfigBuildPack "${buildPack}" "${skipIfExists}" "${lxcFs}" "${zfsPool}"
         echo 'info: build-pack initialized succeeded'
     done
 }
@@ -784,18 +813,36 @@ function prepareServerPart1() {
 }
 
 function prepareServerPart2() {
-    # @param $1 lxc filesystem to use.
-    local lxcFs=$1
-    local zfsPool=$2
-    local skipIfExists=$3
+    # @param $2 lxc filesystem to use.
+    local skipIfExists=$1
+    local lxcFs=$2
+    local zfsPool=$3
+
+    test -z "${skipIfExists}" && echo 'error: prepareServerPart2() missing required parameter: $skipIfExists' 1>&2 && exit 1
     test -z "${lxcFs}" && echo 'error: prepareServerPart2() missing required parameter: $lxcFs' 1>&2 && exit 1
 
-    lxcInitBase "${lxcFs}" "${zfsPool}" "${skipIfExists}"
-    abortIfNonZero $? "lxcInitBase(lxcFs=${lxcFs}, zfsPool=${zfsPool}, skipIfExists=${skipIfExists}) failed"
+    local container='base'
+    lxcInitContainer "${container}" "${skipIfExists}" "${lxcFs}" "${zfsPool}"
+    abortIfNonZero $? "lxcInitContainer(container=${container}, lxcFs=${lxcFs}, zfsPool=${zfsPool}, skipIfExists=${skipIfExists}) failed"
 
-    lxcConfigBuildPacks "${lxcFs}" "${skipIfExists}"
+    lxcConfigBuildPacks "${skipIfExists}" "${lxcFs}" "${zfsPool}"
     abortIfNonZero $? "lxcConfigBuildPacks(lxcFs=${lxcFs}, skipIfExists=${skipIfExists}) failed"
 
     echo 'info: prepareServerPart2() succeeded'
 }
 
+function installSingleBuildPack() {
+    # @param $3 lxc filesystem to use.
+    local buildPack=$1
+    local skipIfExists=$2
+    local lxcFs=$3
+    local zfsPool=$4
+
+    test -z "${buildPack}" && echo 'error: installSingleBuildPack() missing required parameter: $buildPack' 1>&2 && exit 1
+    test -z "${skipIfExists}" && echo 'error: installSingleBuildPack() missing required parameter: $skipIfExists' 1>&2 && exit 1
+    test -z "${lxcFs}" && echo 'error: installSingleBuildPack() missing required parameter: $lxcFs' 1>&2 && exit 1
+
+    lxcConfigBuildPack "${buildPack}" "${skipIfExists}" "${lxcFs}" "${zfsPool}"
+
+    echo 'info: installSingleBuidlPack() succeeded'
+}
