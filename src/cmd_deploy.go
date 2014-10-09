@@ -220,6 +220,10 @@ func (this *Deployment) prepareDisabledServices(e *Executor) error {
 			return err
 		}
 	}
+	err = e.BashCmd(`sed -i 's/^NTPSERVERS=".*"$/NTPSERVERS=""/' /etc/default/ntpdate`)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -430,7 +434,7 @@ func (this *Deployment) syncNode(node *Node) error {
 		return err
 	}
 	// Rsync the application container over.
-	//--recursive --links --hard-links --devices --specials --owner --group --perms --times --acls --delete --xattrs --numeric-ids
+	//rsync --recursive --links --hard-links --devices --specials --owner --group --perms --times --acls --delete --xattrs --numeric-ids
 	err = e.Run("sudo", "rsync",
 		"--recursive",
 		"--links",

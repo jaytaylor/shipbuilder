@@ -738,6 +738,8 @@ function lxcConfigBuildPack() {
                 sudo lxc-attach -n "${container}" -- /bin/bash -c "sudo apt-get install -y ${package}"
                 abortIfNonZero $? "[${container}] container apt-get install -y ${package}"
             done
+            sudo lxc-attach -n "${container}" -- sed -i 's/^NTPSERVERS=".*"$/NTPSERVERS=""/' /etc/default/ntpdate
+            abortIfNonZero $? "[${container}] container sed -i 's/^NTPSERVERS=\".*\"$/NTPSERVERS=\"\"/' /etc/default/ntpdate"
         fi
         abortIfNonZero $? "[${container}] container apt-get install ${packages}"
 
