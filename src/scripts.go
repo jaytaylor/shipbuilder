@@ -471,6 +471,7 @@ pre-start script
     test $(stat -c %U /app/src) = 'root' && chown -R ubuntu:ubuntu /app || true
     # Create run wrapper script which executes in "envdir" context.
     echo '#!/usr/bin/env bash
+    . /etc/profile
     envdir /app/env /app/run' > /app/run_in_context || true
     chmod a+x /app/run_in_context || true
     chown ubuntu:ubuntu /app/run_in_context || true

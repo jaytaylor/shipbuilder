@@ -1,0 +1,15 @@
+
+# Configure persistent environment variables.
+JAVA_HOME=$(readlink -f /usr/bin/javac | sed 's:/bin/javac::')
+echo "export JAVA_HOME='${JAVA_HOME}'" | sudo tee /etc/profile.d/shipbuilder.sh
+test $? -ne 0 && echo 'fatal: writing global environment variables to /etc/profile.d/shipbuilder.sh failed' 1>&2 && exit 1
+
+sudo chmod 755 /etc/profile.d/shipbuilder.sh
+test $? -ne 0 && echo 'fatal: chmodding /etc/profile.d/shipbuilder.sh failed' 1>&2 && exit 1
+
+# Change local .m2 repository location.
+test -z "$(grep '<localRepository>/app/\.shipbuilder/\.m2/repository</localRepository>' /usr/share/maven/conf/settings.xml)" && \
+    sudo perl -p -i -e 's-</settings>-<localRepository>/app/.shipbuilder/.m2/repository</localRepository>\n</settings>-' /usr/share/maven/conf/settings.xml || :
+test $? -ne 0 && echo 'fatal: changing mvn local repository location to /app/.shipbuilder/.m2/repository failed' 1>&2 && exit 1
+
+exit 0
