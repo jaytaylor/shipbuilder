@@ -729,7 +729,7 @@ function lxcConfigBuildPack() {
         # Install packages.
         echo "info: installing packages to ${container} container: ${packages}"
         #ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo apt-get install -y ${packages}"
-        sudo lxc-attach -n "${container}" -- /bin/bash -c "sudo apt-get install -y ${packages}"
+        sudo lxc-attach -n "${container}" -- /bin/bash -c "sudo apt-get update && sudo apt-get install -y ${packages}"
         rc=$?
         if test ${rc} -ne 0; then
             echo 'warning: first attempt at installing packages failed, falling back to trying one by one..'
