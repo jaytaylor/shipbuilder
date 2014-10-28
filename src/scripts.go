@@ -516,7 +516,7 @@ frontend frontend
     bind 0.0.0.0:80
     # Require SSL
     redirect scheme https code 301 if !{ ssl_fc }
-    bind 0.0.0.0:443 ssl crt /etc/haproxy/certs.d
+    bind 0.0.0.0:443 ssl crt /etc/haproxy/certs.d no-sslv3
     maxconn 32000
     option httplog
     option http-pretend-keepalive
