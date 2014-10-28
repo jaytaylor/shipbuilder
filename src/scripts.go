@@ -482,7 +482,7 @@ exec start-stop-daemon --start --user ubuntu --chuid ubuntu --exec /app/run_in_c
 	// NB: sshHost has `.*@` portion stripped if an `@` symbol is found.
 	template.Must(HAPROXY_CONFIG.Parse(`
 global
-    maxconn 4096
+    maxconn 32000
     # NB: Base HAProxy logging configuration is as per: http://kvz.io/blog/2010/08/11/haproxy-logging/
     #log 127.0.0.1 local1 info
     log {{.LogServerIpAndPort}} local1 info
@@ -507,7 +507,6 @@ defaults
     option tcplog
     retries 4
     option redispatch
-    maxconn 32000
     timeout connect 5000
     timeout client 30000
     timeout server 30000
@@ -518,6 +517,7 @@ frontend frontend
     # Require SSL
     redirect scheme https code 301 if !{ ssl_fc }
     bind 0.0.0.0:443 ssl crt /etc/haproxy/certs.d
+    maxconn 32000
     option httplog
     option http-pretend-keepalive
     option forwardfor

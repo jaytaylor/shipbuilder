@@ -437,6 +437,18 @@ function prepareLoadBalancer() {
         echo "error: unrecognized version of ubuntu: ${version}" 1>&2 && exit 1
     fi
 
+    echo '# HAProxy note: The number of queuable sockets is determined by the min of (net.core.somaxconn, net.ipv4.tcp_max_syn_backlog, and the listen blocks maxconn).
+# Source: http://stackoverflow.com/questions/8750518/difference-between-global-maxconn-and-server-maxconn-haproxy
+net.core.somaxconn = 32000
+net.ipv4.tcp_max_syn_backlog = 32000
+net.core.netdev_max_backlog = 32000
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216' | sudo tee /etc/sysctl.d/60-shipbuilder.conf
+    abortIfNonZero $? 'writing out /etc/sysctl.d/60-shipbuilder.conf'
+
+    sudo service procps restart
+    abortIfNonZero $? 'service procps restart'
+
     echo "info: adding ppa repository for ${version}: ${ppa}"
     sudo apt-add-repository -y "${ppa}"
     abortIfNonZero $? "adding apt repository ppa ${ppa}"
