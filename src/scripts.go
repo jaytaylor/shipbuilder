@@ -49,7 +49,7 @@ done`
 
 # Cleanup old versions on the shipbuilder build box (only old versions, not the newest/latest version).
 sudo -n lxc-ls --fancy | \
-    grep --only-matching '^[^ ]\+_v[0-9]\+\(_.\+_[0-9]\+\)\? *STOPPED' | \
+    grep --only-matching '^[^ ]\+_v[0-9]\+ *STOPPED' | \
     sed 's/^\([^ ]\+\)\(_v\)\([0-9]\+\)\(.*\) .*/\1 \3 \1\2\3/' | \
     sort -t' ' -k 1,2 -g | \
     awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' | \
