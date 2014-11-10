@@ -48,54 +48,95 @@ done`
 	ZFS_MAINTENANCE = `#!/usr/bin/env bash
 
 # Cleanup old versions on the shipbuilder build box (only old versions, not the newest/latest version).
-sudo -n lxc-ls --fancy | \
-    grep --only-matching '^[^ ]\+_v[0-9]\+ *STOPPED' | \
-    sed 's/^\([^ ]\+\)\(_v\)\([0-9]\+\)\(.*\) .*/\1 \3 \1\2\3/' | \
-    sort -t' ' -k 1,2 -g | \
-    awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' | \
-    grep '^[^ ]\+ [0-9]\+,' | \
-    sed 's/,[0-9]\+$//' | \
-    awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s_v%s\n", $1, arr[i] }' | \
-    uniq | \
-    xargs -n1 -IX bash -c 'attempts=0; rc=1; while [ $rc -ne 0 ] && [ $attempts -lt 10 ] ; do echo "rc=${rc}, attempts=${attempts} X"; sudo -n lxc-destroy -n X; rc=$?; attempts=$(($attempts + 1)); done'
+lxcLs="$(sudo -n lxc-ls --fancy)"
+preserveVersionsRe=$(
+    echo "${lxcLs}" | \
+        grep --only-matching '^[^ ]\+_v[0-9]\+ *STOPPED' | \
+        sed 's/^\([^ ]\+\)\(_v\)\([0-9]\+\)\(.*\) .*/\1 \3 \1\2\3/' | \
+        sort -t' ' -k 1,2 -g | \
+        awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' | \
+        sed 's/\([0-9]\+,\)*\([0-9]\+\)$/\2/' | \
+        awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s_v%s\n", $1, arr[i] }' | \
+        uniq | \
+        tr '\n' ' ' | \
+        sed 's/ /\\|/g' | sed 's/\\|$//'
+)
+destroyVersions=$(
+    echo "${lxcLs}" | \
+        grep --only-matching '^[^ ]\+_v[0-9]\+ *STOPPED' | \
+        sed 's/^\([^ ]\+\)\(_v\)\([0-9]\+\)\(.*\) .*/\1 \3 \1\2\3/' | \
+        sort -t' ' -k 1,2 -g | \
+        awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' | \
+        grep '^[^ ]\+ [0-9]\+,' | \
+        sed 's/,[0-9]\+$//' | \
+        awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s_v%s\n", $1, arr[i] }' | \
+        uniq
+)
 
-# Destroy all non-container zfs listings.
-zfsContainerPattern='^tank\/\([a-zA-Z0-9-]\+@\)\?[a-zA-Z0-9-]\+_\(v[0-9]\+\(_.\+_[0-9]\+\)\?\|console_[a-zA-Z0-9]\+\)$'
-# Cleanup old zfs container volumes not in use (primarily intended to run on nodes and sb server).
-#runningContainers=$(sudo -n lxc-ls --fancy | sed '1,2d' | sed 's/ \+/ /g' | grep -v 'STOPP\(ING\|ED\)S' | cut -d' ' -f1)
-containers=" $(sudo -n lxc-ls --fancy | sed '1,2d' | sed 's/ \+/ /g' | cut -d' ' -f1 | tr '\n' ' ') "
-# Notice spaces around the edges so we can match [:SPACE:][precise-container-name][:SPACE:]
-#echo $runningContainers
-echo '---------'
-candidateZfsVolumes="$(sudo -n zfs list | sed '1d' | cut -d' ' -f1 | grep "${zfsContainerPattern}" | sed 's/^\([^\/]\+\/\+\)\?\([^@]\+@\)\?//' | sort | uniq)"
-for searchContainerName in $candidateZfsVolumes; do
-    if [ -z "${searchContainerName}" ] || [ "${searchContainerName}" = 'tank' ] || [ "${searchContainerName}" = 'tank/git' ] || [ "${searchContainerName}" = 'tank/lxc' ] || [ "${searchContainerName}" = 'git' ] || [ "${searchContainerName}" = 'lxc' ]; then
-        echo "skipping bare tank, git, or lxc: ${searchContainerName}"
-        continue
-    fi
-    if [ -n "$(echo " ${containers} " | grep " ${searchContainerName} ")" ]; then
-        echo "skipping container=${searchContainerName} because it is an lxc container"
-    elif ! test -d "/var/lib/lxc/${searchContainerName}" ; then
-        altName="tank/$(echo "${searchContainerName}" | grep -o '^[^_]\+')@${searchContainerName}"
-        echo "destroying non-container zfs volume: searchContainerName=${searchContainerName} altName=${altName}"
-        #continue
-        sudo -n zfs destroy "tank/${searchContainerName}" 1>/dev/null 2>/dev/null || \
-            sudo -n zfs destroy "tank/${searchContainerName}" 1>/dev/null 2>/dev/null || \
-            sudo -n zfs destroy "tank/${searchContainerName}"
-        altName="tank/$(echo "${searchContainerName}" | grep -o '^[^_]\+')@${searchContainerName}"
-        sudo -n zfs destroy "${altName}" 1>/dev/null 2>/dev/null || \
-            sudo -n zfs destroy "${altName}" 1>/dev/null 2>/dev/null || \
-            sudo -n zfs destroy "${altName}"
-        test $(find "/var/lib/lxc/${searchContainerName}/rootfs/" -maxdepth 1 2>/dev/null | wc -l) -lt 2 && \
-            sudo -n rm -rf "/var/lib/lxc/${searchContainerName}"
-    fi
-done
+# Define function to destroy a container.
+function destroyContainer() {
+    name="$1"
+    echo "Destroying stopped container name=${name}"
 
-# Cleanup any additional straggler containers (these must be in a stopped state).
-sudo -n lxc-ls --fancy | \
-    grep '^[a-zA-Z0-9-]\+_\(v[0-9]\+\(_.\+_[0-9]\+\)\?\|console_[a-zA-Z0-9]\+\).*STOPPED' | \
-    cut -f1 -d' ' | \
-    xargs -n1 -IX bash -c 'echo Destroying stopped X; ( sudo -n zfs destroy tank/X 1>/dev/null 2>/dev/null || sudo -n zfs destroy tank/X 1>/dev/null 2>/dev/null || sudo -n zfs destroy tank/X ; sudo -n zfs destroy tank/$(echo X | grep -o '^[^_]\+')@X 1>/dev/null 2>/dev/null || sudo -n zfs destroy tank/$(echo X | grep -o '^[^_]\+')@X 1>/dev/null 2>/dev/null || sudo -n zfs destroy tank/$(echo X | grep -o '^[^_]\+')@X ) ; test $(find /var/lib/lxc/X/rootfs/ -maxdepth 1 | wc -l) -eq 1 && sudo -n rm -rf /var/lib/lxc/X || echo FAILED TO DESTROY container=X'
+    sudo -n zfs destroy tank/${name} 1>/dev/null 2>/dev/null || \
+        sudo -n zfs destroy tank/${name} 1>/dev/null 2>/dev/null || \
+        sudo -n zfs destroy tank/${name}
+
+    sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+')@${name} 1>/dev/null 2>/dev/null || \
+        sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+')@${name} 1>/dev/null 2>/dev/null || \
+        sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+')@${name}
+
+    sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+_v[0-9]\+')@${name} 1>/dev/null 2>/dev/null || \
+        sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+_v[0-9]\+')@${name} 1>/dev/null 2>/dev/null || \
+        sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+_v[0-9]\+')@${name}
+
+    test $(find /var/lib/lxc/${name}/rootfs/ -maxdepth 1 | wc -l) -eq 1 && sudo -n rm -rf "/var/lib/lxc/${name}" #|| echo "FAILED TO DESTROY container=${name}"
+}
+# Export the fn so it can be used in a xargs .. bash -c '<here>'
+export -f destroyContainer
+
+# Function to destroy all non-container zfs volumes.
+function destroyNonContainerVolumes() {
+    zfsContainerPattern='^tank\/\([a-zA-Z0-9-]\+@\)\?[a-zA-Z0-9-]\+_\(v[0-9]\+\(_.\+_[0-9]\+\)\?\|console_[a-zA-Z0-9]\+\)$'
+
+    # Notice the spaces around the edges so we can match [:SPACE:][precise-container-name][:SPACE:]
+    containers=" $(echo "${lxcLs}" | sed '1,2d' | sed 's/ \+/ /g' | cut -d' ' -f1 | tr '\n' ' ') "
+    candidateZfsVolumes="$(sudo -n zfs list | sed '1d' | cut -d' ' -f1 | grep "${zfsContainerPattern}" | sed 's/^\([^\/]\+\/\+\)\?\([^@]\+@\)\?//' | sort | uniq)"
+    for searchContainerName in $candidateZfsVolumes; do
+        if [ -z "${searchContainerName}" ] || [ -n "$(echo "${searchContainerName}" | grep '^\(tank\/\)\?\(git\|lxc\)$')" ]; then
+            echo "skipping bare tank, git, or lxc: ${searchContainerName}"
+            continue
+        fi
+        if [ -n "$(echo " ${containers} " | grep " ${searchContainerName} ")" ]; then
+            echo "skipping container=${searchContainerName} because it is an lxc container"
+        elif ! test -d "/var/lib/lxc/${searchContainerName}" ; then
+            destroyContainer "${searchContainerName}"
+        fi
+    done
+}
+
+# Cleanup any straggler containers first so that versioned app containers can be successfully removed next (note: candidates must be in a stopped state).
+function destroyStragglerContainers() {
+    echo "${lxcLs}" | \
+        grep '^[a-zA-Z0-9-]\+_\(v[0-9]\+\(_.\+_[0-9]\+\)\?\|console_[a-zA-Z0-9]\+\).*STOPPED' | \
+        cut -d' ' -f1 | \
+        grep -v "^\(${preserveVersionsRe}\)$" | \
+        xargs -n1 -IX bash -c 'destroyContainer X'
+}
+
+# Destroy old app versions.
+function destroyOldAppVersions() {
+    echo "${destroyVersions}" | \
+        xargs -n1 -IX bash -c 'destroyContainer X'
+}
+
+destroyNonContainerVolumes
+
+destroyStragglerContainers
+
+destroyOldAppVersions
+
+destroyNonContainerVolumes
 
 # Cleanup any empty container directories.
 for dir in $(find /var/lib/lxc/ -maxdepth 1 -type d | grep '[a-zA-Z0-9-]\+_\(v[0-9]\+\(_.\+_[0-9]\+\)\?\|console_[a-zA-Z0-9]\+\)'); do
