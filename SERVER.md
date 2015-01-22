@@ -6,8 +6,17 @@ Requirements
 * ShipBuilder Server is compatible with Ubuntu version 12.04 and 13.04; Both have been tested and verified working (as of June 2013)
 * Passwordless SSH and sudo access from your machine to all servers involved
 * daemontools installed on your local machine
-* go-lang v1.2 or v1.1 installed on your local machine
-* AWS S3 auth keys - Used to store backups of application configurations and releases on S3 for easy rollback and restoration.
+
+Mac OS-X:
+
+    brew install daemontools
+    
+Linux:
+
+    sudo apt-get install daemontools
+
+* go-lang v1.3, 1.2, or 1.1 installed on your local machine
+* AWS S3 bucket auth keys - Used to store backups of application configurations and releases on S3 for easy rollback and restoration.
 
 Server Modules
 --------------

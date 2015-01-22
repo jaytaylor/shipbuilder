@@ -15,23 +15,14 @@ function abortIfNonZero() {
 cd /app/src
 abortIfNonZero $? 'Changing directory to "/app/src"'
 
-dependenciesPath='/app/.shipbuilder'
+dependenciesPath='/app/.shipbuilder/.m2/repository'
 
-test ! -d "${dependenciesPath}" && mkdir "${dependenciesPath}"
+test ! -d "${dependenciesPath}" && mkdir -p "${dependenciesPath}"
 
 # Support sbt-assembly deployments, @see https://github.com/sbt/sbt-assembly for more information.
-if test -e 'assembly.sbt'; then
-    echo '--> sbt-assembly detected' >> /app/out
-    echo '--> fetching dependencies and building app jar' >> /app/out
-    stdbuf -o0 sbt assembly >> /app/out
-    rc=$?
-    abortIfNonZero $rc 'sbt-assembly build failed'
-else
-    echo '--> fetching dependencies and compiling app' >> /app/out
-    stdbuf -o0 sbt compile >> /app/out
-    rc=$?
-    abortIfNonZero $rc 'Project compilation failed'
-fi
+stdbuf -o0 mvn clean install -DskipTests 2>&1 >> /app/out
+rc=$?
+abortIfNonZero $rc '`mvn clean install` failed'
 
 echo "RETURN_CODE: ${rc}" >> /app/out
 exit $rc

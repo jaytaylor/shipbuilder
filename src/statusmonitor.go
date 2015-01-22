@@ -58,7 +58,7 @@ func RemoteCommand(sshHost string, sshArgs ...string) (string, error) {
 	frontArgs := append([]string{"1m", "ssh", DEFAULT_NODE_USERNAME + "@" + sshHost}, defaultSshParametersList...)
 	combinedArgs := append(frontArgs, sshArgs...)
 
-	//fmt.Printf("debug: cmd is -> ssh %v <-\n", sshCombinedArgs)
+	//fmt.Printf("debug: cmd is -> ssh %v <-\n", combinedArgs)
 	bs, err := exec.Command("timeout", combinedArgs...).CombinedOutput()
 
 	if err != nil {

@@ -107,6 +107,8 @@ func (this Command) Parse(args []string) ([]interface{}, error) {
 }
 
 func init() {
+	////////////////////////////////////////////////////////////////////////
+	// Parameter Type: required
 	required := func(name string) Parameter {
 		return Parameter{
 			Name:    name,
@@ -114,20 +116,8 @@ func init() {
 			Type:    Required,
 		}
 	}
-	mapped := func(name string) Parameter {
-		return Parameter{
-			Name:    name,
-			Default: map[string]string{},
-			Type:    Mapped,
-		}
-	}
-	list := func(name string) Parameter {
-		return Parameter{
-			Name:    name,
-			Default: []string{},
-			Type:    List,
-		}
-	}
+	////////////////////////////////////////////////////////////////////////
+	// Parameter Type: optional
 	optional := func(name, def string) Parameter {
 		return Parameter{
 			Name:    name,
@@ -135,6 +125,26 @@ func init() {
 			Type:    Optional,
 		}
 	}
+	////////////////////////////////////////////////////////////////////////
+	// Parameter Type: map
+	mapped := func(name string) Parameter {
+		return Parameter{
+			Name:    name,
+			Default: map[string]string{},
+			Type:    Mapped,
+		}
+	}
+	////////////////////////////////////////////////////////////////////////
+	// Parameter Type: list
+	list := func(name string) Parameter {
+		return Parameter{
+			Name:    name,
+			Default: []string{},
+			Type:    List,
+		}
+	}
+	////////////////////////////////////////////////////////////////////////
+	// Command Type: global
 	global := func(shortName, longName, serverName string, parameters ...Parameter) Command {
 		return Command{
 			ShortName:  shortName,
@@ -143,6 +153,8 @@ func init() {
 			Parameters: parameters,
 		}
 	}
+	////////////////////////////////////////////////////////////////////////
+	// Command Type: reader
 	reader := func(shortName, longName, serverName string, parameters ...Parameter) Command {
 		return Command{
 			ShortName:  shortName,
@@ -152,6 +164,8 @@ func init() {
 			Parameters: parameters,
 		}
 	}
+	////////////////////////////////////////////////////////////////////////
+	// Command Type: writer
 	writer := func(shortName, longName, serverName string, parameters ...Parameter) Command {
 		return Command{
 			ShortName:  shortName,
@@ -165,7 +179,7 @@ func init() {
 
 	commands = []Command{
 		////////////////////////////////////////////////////////////////////////
-		// Command: apps:*
+		// apps:*
 		global("apps", "apps:list", "Apps_List"),
 		global("create", "apps:create", "Apps_Create",
 			required("app"), optional("buildpack", ""),
@@ -176,8 +190,10 @@ func init() {
 		global("clone", "apps:clone", "Apps_Clone",
 			required("oldApp"), required("newApp"),
 		),
+		global("health", "apps:health", "Apps_Health"),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: config:*
+		// config:*
 		reader("config", "config:list", "Config_List",
 			required("app"),
 		),
@@ -188,20 +204,23 @@ func init() {
 			required("app"), optional("deferred", ""), mapped("args"),
 		),
 		writer("config:remove", "config:unset", "Config_Remove",
-			required("app"), optional("deferred", ""), list("names"),
+			required("app"), optional("deferred", ""), list("configNames"),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: run
+		// run
 		reader("run", "console", "Console",
 			required("app"), list("args"),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: deploy
+		// deploy
 		writer("deploy", "deploy", "Deploy",
 			required("app"), required("revision"),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: domains:*
+		// domains:*
 		reader("domains", "domains:list", "Domains_List",
 			required("app"),
 		),
@@ -211,8 +230,9 @@ func init() {
 		writer("domains:remove", "domains:remove", "Domains_Remove",
 			required("app"), list("domains"),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: drains:*
+		// drains:*
 		reader("drains", "drains:list", "Drains_List",
 			required("app"),
 		),
@@ -222,13 +242,15 @@ func init() {
 		writer("drains:remove", "drains:remove", "Drains_Remove",
 			required("app"), list("addresses"),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: help
+		// help
 		global("help", "help", "Help",
 			optional("command", ""),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: lb:*
+		// lb:*
 		global("lb:add", "lb:add", "LoadBalancer_Add",
 			list("addresses"),
 		),
@@ -236,18 +258,21 @@ func init() {
 		global("lb:remove", "lb:remove", "LoadBalancer_Remove",
 			list("addresses"),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: logger
+		// logger
 		global("logger", "logger", "Logger",
 			required("host"), required("app"), required("process"),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: logs:*
+		// logs:*
 		reader("logs", "logs:get", "Logs_Get",
 			required("app"), optional("process", ""), optional("filter", ""),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: maint:*
+		// maint:*
 		writer("maint:off", "maintenance:off", "Maintenance_Off",
 			required("app"),
 		),
@@ -260,8 +285,9 @@ func init() {
 		reader("maintenance:status", "maintenance:status", "Maintenance_Status",
 			required("app"),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: nodes:*
+		// nodes:*
 		reader("nodes", "nodes:list", "Node_List"),
 		reader("nodes:add", "nodes:add", "Node_Add",
 			list("addresses"),
@@ -269,16 +295,18 @@ func init() {
 		reader("nodes:remove", "nodes:remove", "Node_Remove",
 			list("addresses"),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: pre/post-receive
+		// pre/post-receive
 		global("pre-receive", "pre-receive", "PreReceive",
 			required("directory"), required("oldrev"), required("newrev"), required("ref"),
 		),
 		global("post-receive", "post-receive", "PostReceive",
 			required("directory"), required("oldrev"), required("newrev"), required("ref"),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Commands: privatekey:*
+		// privatekey:*
 		reader("privatekey", "privatekey:get", "PrivateKey_Get",
 			required("app"),
 		),
@@ -288,39 +316,63 @@ func init() {
 		writer("privatekey:remove", "privatekey:remove", "PrivateKey_Remove",
 			required("app"),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Commands: ps:*
+		// ps:*
 		reader("ps", "ps:list", "Ps_List",
 			required("app"),
 		),
 		writer("scale", "ps:scale", "Ps_Scale",
 			required("app"), mapped("args"),
 		),
+		writer("ps:restart", "ps:restart", "Ps_Restart",
+			required("app"), list("processTypes"),
+		),
+		writer("ps:start", "ps:start", "Ps_Start",
+			required("app"), list("processTypes"),
+		),
+		reader("ps:status", "ps:status", "Ps_Status",
+			required("app"), list("processTypes"),
+		),
+		writer("ps:stop", "ps:stop", "Ps_Stop",
+			required("app"), list("processTypes"),
+		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: rollback
+		// rollback
 		writer("rollback", "rollback", "Rollback",
 			required("app"), optional("version", ""),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: releases:*
+		// releases:*
 		reader("releases", "releases:list", "Releases_List",
 			required("app"),
 		),
 		reader("releases:info", "releases:info", "Releases_Info",
 			required("app"),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: reset
+		// reset
 		writer("reset", "reset", "Reset_App",
 			required("app"),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: restart
-		writer("restart", "restart", "Restart_App",
+		// redeploy
+		writer("redeploy", "redeploy", "Redeploy_App",
 			required("app"),
 		),
+
 		////////////////////////////////////////////////////////////////////////
-		// Command: runtime:*
+		// runtime:*
 		global("runtime:tests", "runtimetests", "LocalRuntimeTests"),
+
+		////////////////////////////////////////////////////////////////////////
+		// sys:*
+		global("sys:zfscleanup", "sys:zfs", "System_ZfsCleanup"),
+		global("sys:snapshotscleanup", "sys:snapshots", "System_SnapshotsCleanup"),
+		global("sys:ntpsync", "sys:ntp", "System_NtpSync"),
 	}
 }

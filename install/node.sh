@@ -11,6 +11,8 @@ while getopts "d:f:H:hnS:s:" OPTION; do
             echo '' 1>&2
             echo 'This is the node installer.' 1>&2
             echo '' 1>&2
+            echo 'IMPORTANT: Do not run on the node where `shipbuilder` is running.' 1>&2
+            echo '' 1>&2
             echo '  ACTION                Action to perform. Available actions are: list-devices, install'
             echo '  -S [shipbuilder-host] ShipBuilder server user@hostname (flag can be omitted if auto-detected from env/SB_SSH_HOST)' 1>&2
             echo '  -H [node-host]        Node user@hostname' 1>&2
@@ -65,7 +67,7 @@ verifySshAndSudoForHosts "${sbHost} ${nodeHost}"
 
 if [ "${action}" = "list-devices" ]; then
     echo '----'
-	ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $nodeHost 'sudo find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
+	ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $nodeHost 'sudo find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
     abortIfNonZero $? "retrieving storage devices from host ${sbHost}"
 	exit 0
 
@@ -75,15 +77,15 @@ elif [ "${action}" = "install" ]; then
 
     installAccessForSshHost $nodeHost
     
-    rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" libfns.sh $nodeHost:/tmp/
+    rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" libfns.sh $nodeHost:/tmp/
     abortIfNonZero $? 'rsync libfns.sh failed'
 
-    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $nodeHost "source /tmp/libfns.sh && prepareNode ${device} ${lxcFs} ${swapDevice} ${zfsPool}"
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $nodeHost "source /tmp/libfns.sh && prepareNode ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
     abortIfNonZero $? 'remote prepareNode() invocation'
 
     if test -z "${denyRestart}"; then
         echo 'info: checking if system restart is necessary'
-        ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $nodeHost "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && sudo reboot || echo 'no system restart is necessary'"
+        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $nodeHost "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && sudo reboot || echo 'no system restart is necessary'"
         abortIfNonZero $? 'remote system restart check failed'
     else
         echo 'warn: a restart may be required on the node to complete installation, but the action was disabled by a flag' 1>&2
@@ -92,5 +94,4 @@ elif [ "${action}" = "install" ]; then
 else
 	echo 'unrecognized action: ${action}' 1>&2 && exit 1
 fi
-
 

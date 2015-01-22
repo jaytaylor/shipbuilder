@@ -21,6 +21,136 @@ done`
 
 	LOGIN_SHELL = `#!/usr/bin/env bash
 /usr/bin/envdir ` + ENV_DIR + ` /bin/bash`
+
+	// # Cleanup old versions on the shipbuilder build box (only old versions, not the newest/latest version).
+	// sudo lxc-ls --fancy | grep --only-matching '^[^ ]\+_v[0-9]\+ *STOPPED' | sed 's/^\([^ ]\+\)\(_v\)\([0-9]\+\) .*/\1 \3 \1\2\3/' | sort -t' ' -k 1,2 -g | awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' | grep '^[^ ]\+ [0-9]\+,' | sed 's/,[0-9]\+$//' | awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s_v%s\n", $1, arr[i] }' | xargs -n1 -IX bash -c 'attempts=0; rc=1; while [ $rc -ne 0 ] && [ $attempts -lt 10 ] ; do echo "rc=${rc}, attempts=${attempts} X"; sudo lxc-destroy -n X; rc=$?; attempts=$(($attempts + 1)); done'
+
+	// # Cleanup old zfs container volumes not in use (primarily intended to run on nodes and sb server).
+	// containers=$(sudo lxc-ls --fancy | sed "1,2d" | cut -f1 -d" ") ; for x in $(sudo zfs list | sed "1d" | cut -d" " -f1); do if [ "${x}" = "tank" ] || [ "${x}" = "tank/git" ] || [ "${x}" = "tank/lxc" ]; then echo "skipping bare tank, git, or lxc: ${x}"; continue; fi; if [ -n "$(echo $x | grep '@')" ]; then search=$(echo $x | sed "s/^.*@//"); else search=$(echo $x | sed "s/^[^\/]\+\///"); fi; if [ -z "$(echo -e "${containers}" | grep "${search}")" ]; then echo "destroying non-container zfs volume: $x" ; sudo zfs destroy $x; fi; done
+
+	// # Cleanup empty container dirs.
+	// for dir in $(find /var/lib/lxc/ -maxdepth 1 -type d | grep '.*_v[0-9]\+_.*_[0-9]\+'); do if test "${dir}" = '.' || test -z "$(echo "${dir}" | sed 's/\/var\/lib\/lxc\///')"; then continue; fi; count=$(find "${dir}/rootfs/" | head -n 3 | wc -l); if test $count -eq 1; then echo $dir $count; echo sudo rm -rf $dir; fi; done
+
+	// ZFS MAINTENANCE NG:
+	//
+	// Prune highest version container from list:
+	// echo "(list of containers delimited by newlines)" | \
+	//     sed 's/\(.*_v\)\([0-9]\+\)\(.*\)/\2 \1 \3/' | sort -r -n | sed '1d' | sed 's/\(.*\) \(.*\) \(.*\)/\2\1\3/'
+	//
+	// Reliably destroy container and associated zfs volumes:
+	// echo "(list of containers delimited by newlines)" | \
+	//     xargs -n1 -IX bash -c '( sudo -n lxc-destroy -n X || sudo -n lxc-destroy -n X || sudo -n lxc-destroy -n X ) && ( sudo -n zfs destroy tank/X; sudo -n zfs destroy tank/$(echo X | sed "s/\([^_]\+\).*/\1/")@X || :)'
+	//
+	// echo optic_v576_worker_10010 | head -n1 | xargs -n1 -IX bash -c 'echo X ; ( sudo -n zfs destroy tank/X; sudo -n zfs destroy tank/$(echo X | sed "s/\([^_]\+\).*/\1/")@X || : ) && test $(sudo -n find /var/lib/lxc/X/rootfs -maxdepth 1 | wc -l) -lt 2 && sudo -n rm -rf /var/lib/lxc/X && echo "destroyed X" || echo "failed to eradicate X"'
+	//
+	// sudo -n lxc-ls --fancy | grep '_v[0-9]\+.*STOPPED' | cut -f1 -d' ' | xargs -n1 -IX bash -c 'echo X ; ( sudo -n zfs destroy tank/X; sudo -n zfs destroy tank/$(echo X | sed "s/\([^_]\+\).*/\1/")@X || : ) && test $(sudo -n find /var/lib/lxc/X/rootfs -maxdepth 1 | wc -l) -lt 2 && sudo -n rm -rf /var/lib/lxc/X && echo "destroyed X" || echo "failed to eradicate X"'
+
+	ZFS_MAINTENANCE = `#!/usr/bin/env bash
+
+# Cleanup old versions on the shipbuilder build box (only old versions, not the newest/latest version).
+lxcLs="$(sudo -n lxc-ls --fancy)"
+preserveVersionsRe=$(
+    echo "${lxcLs}" | \
+        grep --only-matching '^[^ ]\+_v[0-9]\+ *STOPPED' | \
+        sed 's/^\([^ ]\+\)\(_v\)\([0-9]\+\)\(.*\) .*/\1 \3 \1\2\3/' | \
+        sort -t' ' -k 1,2 -g | \
+        awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' | \
+        sed 's/\([0-9]\+,\)*\([0-9]\+\)$/\2/' | \
+        awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s_v%s\n", $1, arr[i] }' | \
+        uniq | \
+        tr '\n' ' ' | \
+        sed 's/ /\\|/g' | sed 's/\\|$//'
+)
+destroyVersions=$(
+    echo "${lxcLs}" | \
+        grep --only-matching '^[^ ]\+_v[0-9]\+ *STOPPED' | \
+        sed 's/^\([^ ]\+\)\(_v\)\([0-9]\+\)\(.*\) .*/\1 \3 \1\2\3/' | \
+        sort -t' ' -k 1,2 -g | \
+        awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' | \
+        grep '^[^ ]\+ [0-9]\+,' | \
+        sed 's/,[0-9]\+$//' | \
+        awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s_v%s\n", $1, arr[i] }' | \
+        uniq
+)
+
+# Define function to destroy a container.
+function destroyContainer() {
+    name="$1"
+    echo "Destroying stopped container name=${name}"
+
+    sudo -n zfs destroy tank/${name} 1>/dev/null 2>/dev/null || \
+        sudo -n zfs destroy tank/${name} 1>/dev/null 2>/dev/null || \
+        sudo -n zfs destroy tank/${name}
+
+    sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+')@${name} 1>/dev/null 2>/dev/null || \
+        sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+')@${name} 1>/dev/null 2>/dev/null || \
+        sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+')@${name}
+
+    sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+_v[0-9]\+')@${name} 1>/dev/null 2>/dev/null || \
+        sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+_v[0-9]\+')@${name} 1>/dev/null 2>/dev/null || \
+        sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+_v[0-9]\+')@${name}
+
+    test $(find /var/lib/lxc/${name}/rootfs/ -maxdepth 1 | wc -l) -eq 1 && sudo -n rm -rf "/var/lib/lxc/${name}" #|| echo "FAILED TO DESTROY container=${name}"
+}
+# Export the fn so it can be used in a xargs .. bash -c '<here>'
+export -f destroyContainer
+
+# Function to destroy all non-container zfs volumes.
+function destroyNonContainerVolumes() {
+    zfsContainerPattern='^tank\/\([a-zA-Z0-9-]\+@\)\?[a-zA-Z0-9-]\+_\(v[0-9]\+\(_.\+_[0-9]\+\)\?\|console_[a-zA-Z0-9]\+\)$'
+
+    # Notice the spaces around the edges so we can match [:SPACE:][precise-container-name][:SPACE:]
+    containers=" $(echo "${lxcLs}" | sed '1,2d' | sed 's/ \+/ /g' | cut -d' ' -f1 | tr '\n' ' ') "
+    candidateZfsVolumes="$(sudo -n zfs list | sed '1d' | cut -d' ' -f1 | grep "${zfsContainerPattern}" | sed 's/^\([^\/]\+\/\+\)\?\([^@]\+@\)\?//' | sort | uniq)"
+    for searchContainerName in $candidateZfsVolumes; do
+        if [ -z "${searchContainerName}" ] || [ -n "$(echo "${searchContainerName}" | grep '^\(tank\/\)\?\(git\|lxc\)$')" ]; then
+            echo "skipping bare tank, git, or lxc: ${searchContainerName}"
+            continue
+        fi
+        if [ -n "$(echo " ${containers} " | grep " ${searchContainerName} ")" ]; then
+            echo "skipping container=${searchContainerName} because it is an lxc container"
+        elif ! test -d "/var/lib/lxc/${searchContainerName}" ; then
+            destroyContainer "${searchContainerName}"
+        fi
+    done
+}
+
+# Cleanup any straggler containers first so that versioned app containers can be successfully removed next (note: candidates must be in a stopped state).
+function destroyStragglerContainers() {
+    echo "${lxcLs}" | \
+        grep '^[a-zA-Z0-9-]\+_\(v[0-9]\+\(_.\+_[0-9]\+\)\?\|console_[a-zA-Z0-9]\+\).*STOPPED' | \
+        cut -d' ' -f1 | \
+        grep -v "^\(${preserveVersionsRe}\)$" | \
+        xargs -n1 -IX bash -c 'destroyContainer X'
+}
+
+# Destroy old app versions.
+function destroyOldAppVersions() {
+    echo "${destroyVersions}" | \
+        xargs -n1 -IX bash -c 'destroyContainer X'
+}
+
+destroyNonContainerVolumes
+
+destroyStragglerContainers
+
+destroyOldAppVersions
+
+destroyNonContainerVolumes
+
+# Cleanup any empty container directories.
+for dir in $(find /var/lib/lxc/ -maxdepth 1 -type d | grep '[a-zA-Z0-9-]\+_\(v[0-9]\+\(_.\+_[0-9]\+\)\?\|console_[a-zA-Z0-9]\+\)'); do
+    if test "${dir}" = '.' || test -z "$(echo "${dir}" | sed 's/\/var\/lib\/lxc\///')"; then
+        continue
+    fi
+    count=$(find "${dir}/rootfs/" | head -n 3 | wc -l)
+    if test $count -eq 1; then
+        echo $dir $count
+        sudo rm -rf $dir
+    fi
+done
+
+exit $?`
 )
 
 var POSTDEPLOY = `#!/usr/bin/python -u
@@ -120,11 +250,42 @@ def startContainer(container, check=True):
         stderr=sys.stderr
     )
 
+def showHelpAndExit(argv):
+    message = '''usage: {} [container-name]
+       of the form: [app]_[version]_[process]_[port]
+
+       For example, here is how you would boot a container with the following attributes:
+
+           {
+               "app-name": "myApp",
+               "version-tag": "v1337",
+               "process-type": "web",
+               "port-forward": "10001"
+           }
+
+       $ {} myApp_v1337_web_10001
+'''.format(argv[0])
+    print message
+    sys.exit(0)
+
+def validateMainArgs(argv):
+    if len(argv) != 2:
+        sys.stderr.write('{} error: missing required argument: container-name\n'.format(sys.argv))
+        sys.exit(1)
+
+def parseMainArgs(argv):
+    validateMainArgs(argv)
+    container = argv[1]
+    app, version, process, port = container.split('` + DYNO_DELIMITER + `') # Format is app_version_process_port.
+    return (container, app, version, process, port)
+
 def main(argv):
     global container
     #print 'main argv={0}'.format(argv)
-    container = argv[1]
-    app, version, process, port = container.split('` + DYNO_DELIMITER + `') # Format is app_version_process_port
+    if len(argv) > 1 and argv[1] in ('-h', '--help', 'help'):
+        showHelpAndExit(argv)
+
+    container, app, version, process, port = parseMainArgs(argv)
 
     # For safety, even though it's unlikely, try to kill/shutdown any existing container with the same name.
     subprocess.call(['/usr/bin/lxc-stop -k -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)
@@ -133,7 +294,7 @@ def main(argv):
     # Clone the specified container.
     cloneContainer(app, container)
 
-    # This line, if present, will prevent the container from booting.
+    # This line, if present, would prevent the container from booting.
     #log('scrubbing any "lxc.cap.drop = mac_{0}" lines from container config'.format(container))
     subprocess.check_call(
         ['sed', '-i', '/lxc.cap.drop = mac_{0}/d'.format(container), '` + LXC_DIR + `/{0}/config'.format(container)],
@@ -167,12 +328,16 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
     startContainer(container)
 
     log('waiting for container to boot and report ip-address')
+    numChecks = 45
     # Allow container to bootup.
     ip = None
-    for _ in xrange(45):
+    for _ in xrange(numChecks):
         time.sleep(1)
         try:
             ip = getIp(container)
+            if ip:
+                # ip obtained!
+                break
         except:
             continue
 
@@ -182,22 +347,30 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
 
         if process == 'web':
             log('waiting for web-server to start up')
-            try:
-                subprocess.check_call([
-                    '/usr/bin/curl',
-                    '--silent',
-                    '--output', '/dev/null',
-                    '--write-out', '%{http_code} %{url_effective}\n',
-                    '{0}:{1}/'.format(ip, port),
-                ], stderr=sys.stderr, stdout=sys.stdout)
+            startedTs = time.time()
+            maxSeconds = 60
+            while True:
+                try:
+                    subprocess.check_call([
+                        '/usr/bin/curl',
+                        '--silent',
+                        '--output', '/dev/null',
+                        '--write-out', '%{http_code} %{url_effective}\n',
+                        '{0}:{1}/'.format(ip, port),
+                    ], stderr=sys.stderr, stdout=sys.stdout)
+                    break
 
-            except subprocess.CalledProcessError, e:
-                sys.stderr.write('- error: curl http check failed, {0}\n'.format(e))
-                subprocess.check_call(['/tmp/shutdown_container.py', container, 'destroy-only'])
-                sys.exit(1)
+                except subprocess.CalledProcessError, e:
+                    if time.time() - startedTs > maxSeconds: # or attempts > maxAttempts:
+                        sys.stderr.write('- error: curl http check failed, {0}\n'.format(e))
+                        subprocess.check_call(['/tmp/shutdown_container.py', container, 'destroy-only'])
+                        sys.exit(1)
+                    else:
+                        time.sleep(1)
 
     else:
-        log('- error retrieving ip')
+        sys.stderr.write('- error: failed to retrieve container ip')
+        subprocess.check_call(['/tmp/shutdown_container.py', container, 'destroy-only'])
         sys.exit(1)
 
 main(sys.argv)`
@@ -276,6 +449,46 @@ def retriableCommand(*command):
             else:
                 raise e
 
+def showHelpAndExit(argv):
+    message = '''usage: {} [container-name] ["destroy-only"?]
+       where "container-name" is of the form: [app]_[version]_[process]_[port]
+
+       "destroy-only" will only go about destroying the container (not shutting it down).
+
+       For example, here is how you would terminate a container with the following attributes:
+
+           {
+               "app-name": "myApp",
+               "version-tag": "v1337",
+               "process-type": "web",
+               "port-forward": "10001"
+           }
+
+       $ {} myApp_v1337_web_10001
+'''.format(argv[0])
+    print message
+    sys.exit(0)
+
+def validateMainArgs(argv):
+    if len(argv) != 2 or (len(argv) > 2 and argv[2] == 'destroy-only'):
+        sys.stderr.write('{} error: invalid arguments, see [-h|--help] for usage details.\n'.format(sys.argv))
+        sys.exit(1)
+
+def parseMainArgs(argv):
+    validateMainArgs(argv)
+    container = argv[1]
+    app, version, process, port = container.split('` + DYNO_DELIMITER + `') # Format is app_version_process_port.
+    return (container, app, version, process, port)
+
+def main(argv):
+    global container
+    #print 'main argv={0}'.format(argv)
+    if len(argv) > 1 and argv[1] in ('-h', '--help', 'help'):
+        showHelpAndExit(argv)
+
+    container, app, version, process, port = parseMainArgs(argv)
+
+
 def main(argv):
     global container
     container = argv[1]
@@ -330,18 +543,39 @@ stop on [!12345]
 pre-start script
     test ! -d /app/env && mkdir /app/env || true
     touch /app/ip /app/env/PORT || true
-    chown -R ubuntu:ubuntu /app || true
+    chown ubuntu:ubuntu /app/ip /app/env/PORT || true
+    test $(stat -c %U /app/src) = 'root' && chown -R ubuntu:ubuntu /app || true
+    # Create run wrapper script which executes in "envdir" context.
+    echo '#!/usr/bin/env bash
+    . /etc/profile
+    envdir /app/env /app/run' > /app/run_in_context || true
+    chmod a+x /app/run_in_context || true
+    chown ubuntu:ubuntu /app/run_in_context || true
 end script
-exec start-stop-daemon --start --user ubuntu --chuid ubuntu --exec /app/run
+exec start-stop-daemon --start --user ubuntu --chuid ubuntu --exec /app/run_in_context
 `))
 
 	// NB: sshHost has `.*@` portion stripped if an `@` symbol is found.
 	template.Must(HAPROXY_CONFIG.Parse(`
 global
-    maxconn 4096
+    maxconn 32000
     # NB: Base HAProxy logging configuration is as per: http://kvz.io/blog/2010/08/11/haproxy-logging/
     #log 127.0.0.1 local1 info
     log {{.LogServerIpAndPort}} local1 info
+    chroot /var/lib/haproxy
+    stats socket /run/haproxy/admin.sock mode 660 level admin
+    stats timeout 30s
+    user haproxy
+    group haproxy
+    daemon
+
+    # Default SSL material locations
+    ca-base /etc/ssl/certs
+    crt-base /etc/ssl/private
+
+    # Default ciphers to use on SSL-enabled listening sockets.
+    # For more information, see ciphers(1SSL).
+    ssl-default-bind-ciphers kEECDH+aRSA+AES:kRSA+AES:+AES256:RC4-SHA:!kEDH:!LOW:!EXP:!MD5:!aNULL:!eNULL
 
 defaults
     log global
@@ -349,18 +583,17 @@ defaults
     option tcplog
     retries 4
     option redispatch
-    maxconn 32000
-    contimeout 5000
-    clitimeout 30000
-    srvtimeout 30000
+    timeout connect 5000
     timeout client 30000
+    timeout server 30000
     #option http-server-close
 
 frontend frontend
     bind 0.0.0.0:80
     # Require SSL
-    redirect scheme https if !{ ssl_fc }
-    bind 0.0.0.0:443 ssl crt /etc/haproxy/certs.d
+    redirect scheme https code 301 if !{ ssl_fc }
+    bind 0.0.0.0:443 ssl crt /etc/haproxy/certs.d no-sslv3
+    maxconn 32000
     option httplog
     option http-pretend-keepalive
     option forwardfor

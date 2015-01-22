@@ -26,6 +26,7 @@ func (this *Server) validateAppName(applicationName string) error {
 	}
 	return nil
 }
+
 func (this *Server) validateBuildPack(buildPack string) error {
 	_, ok := BUILD_PACKS[buildPack]
 	if !ok {
@@ -170,7 +171,7 @@ func (this *Server) Apps_Destroy(conn net.Conn, applicationName string) error {
 				container := tokens[len(tokens)-1]
 				err = e.DestroyContainer(container)
 				if err != nil {
-					fmt.Fprintf(dimLogger, "warn: Encountered error while destroying container '%v': %v", container, err)
+					fmt.Fprintf(dimLogger, "warn: Encountered error while destroying container '%v': %v\n", container, err)
 				}
 			}
 		}
@@ -245,4 +246,31 @@ func (this *Server) Application(name string) (Application, error) {
 		return Application{}, err
 	}
 	return application, nil
+}
+
+func (this *Server) Apps_Health(conn net.Conn) error {
+	return this.WithConfig(func(cfg *Config) error {
+		for _, app := range cfg.Applications {
+			for process, numDynos := range app.Processes {
+				dynos, err := this.GetRunningDynos(app.Name, process)
+				status := "passed"
+				message := ""
+				if err != nil {
+					status = "error"
+					message = fmt.Sprintf(" error=%v", err)
+				}
+				if numDynos != 0 && len(dynos) != numDynos {
+					if len(dynos) > numDynos {
+						message = fmt.Sprintf(" detail=%v_too_many_dynos", len(dynos)-numDynos)
+					} else if len(dynos) < numDynos {
+						message = fmt.Sprintf(" detail=%v_too_few_dynos", numDynos-len(dynos))
+					}
+					status = "failed"
+					message = fmt.Sprintf(" actual=%v%v", len(dynos), message)
+				}
+				Logf(conn, "%v appName=%v processType=%v numDynos=%v%v\n", status, app.Name, process, numDynos, message)
+			}
+		}
+		return nil
+	})
 }

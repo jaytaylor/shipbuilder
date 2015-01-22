@@ -237,6 +237,7 @@ func (this *Server) start() error {
 
 	initDrains(this)
 	go this.monitorNodes()
+	go this.startCrons()
 
 	go StartWebServer(this, 8080)
 

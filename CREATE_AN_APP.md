@@ -8,7 +8,8 @@ Create the app and add git remotes
 
 # Step 1: Create your app
 # -------
-sb create <my-app> python
+
+    sb create [the-app] python
 
 # Step 2: Set your applications config
 # -------
@@ -16,16 +17,22 @@ sb create <my-app> python
 # Ensure any values with spaces, question marks, quotes, dollars, or
 # other characters with special meaning in the shell are surrounded
 # by single quotes.
-sb config:set a=b c=d e=f HTTP_DEPLOYHOOK_URL='http://example.com?secret=383838' MAINTENANCE_PAGE_URL='http://ashrust.com' -athe-app
+
+    sb config:set a='b' c=d e=f \
+    HTTP_DEPLOYHOOK_URL='http://hipchatz.com?secret=383838' \
+    MAINTENANCE_PAGE_URL='http://mycompany.com' -athe-app
 
 # Step 3: Add domain names
 # -------
-sb domains:add foo.sendhub.com -athe-app
+
+    sb domains:add some-domain.mycompany.com -athe-app
 
 # Step 4: Set the scale for application processes
 # -------
-sb ps:scale web=2 worker=2 -athe-app
+
+    sb ps:scale web=2 worker=2 -athe-app
 
 # Step 5: Add git remote
-git remote add the-app ssh://ubuntu@sb.sendhub.com/git/the-app
+
+    git remote add the-app ssh://ubuntu@sb.mycompany.com/git/the-app
 

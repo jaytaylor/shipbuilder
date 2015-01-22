@@ -33,17 +33,19 @@ Requirements:
 Server Installation
 -------------------
 
-See [SERVER.md](https://github.com/sendhub/shipbuilder/blob/master/SERVER.md)
+See [SERVER.md](https://github.com/jaytaylor/shipbuilder/blob/master/SERVER.md)
 
 Client
 ------
 
-See [CLIENT.md](https://github.com/sendhub/shipbuilder/blob/master/CLIENT.md)
+See [CLIENT.md](https://github.com/jaytaylor/shipbuilder/blob/master/CLIENT.md)
 
 Creating your first app
 -----------------------
 
-See [TUTORIAL.md](https://github.com/sendhub/shipbuilder/blob/master/TUTORIAL.md)
+All applications need a `Procfile`.  In ShipBuilder, these are 100% compatible with [Heroku's Procfiles (documentation)](https://devcenter.heroku.com/articles/procfile).
+
+See [TUTORIAL.md](https://github.com/jaytaylor/shipbuilder/blob/master/TUTORIAL.md)
 
 Getting Help
 ------------

@@ -29,6 +29,8 @@ func (this *Server) SyncContainer(e Executor, address string, container string, 
 		"--times",
 		"--devices",
 		"--specials",
+		"--owner",
+		"--group",
 		"--hard-links",
 		"--acls",
 		"--delete",
@@ -159,7 +161,7 @@ func (this *Server) Node_List(conn net.Conn) error {
 					fmt.Fprintf(dimLogger, "    `- %v\n", application)
 				}
 			} else {
-				fmt.Fprintf(dimLogger, "%v (unknown status: %v)\n", node.Host, nodeStatus.Err)
+				fmt.Fprintf(dimLogger, "%v (unknown status: %v since %v)\n", node.Host, nodeStatus.Err, nodeStatus.Ts)
 			}
 
 		}

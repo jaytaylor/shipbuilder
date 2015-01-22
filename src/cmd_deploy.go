@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -83,7 +84,8 @@ func (this *Deployment) applySshPrivateKeyFile() error {
 
 // Removes To be invoked after dependency retrieval.
 func (this *Deployment) removeSshPrivateKeyFile() {
-	if this.Application.SshPrivateKey != nil && PathExists(this.Application.SshPrivateKeyFilePath()) {
+	exists, _ := PathExists(this.Application.SshPrivateKeyFilePath())
+	if this.Application.SshPrivateKey != nil && exists {
 		os.Remove(this.Application.SshPrivateKeyFilePath())
 	}
 }
@@ -94,16 +96,17 @@ func (this *Deployment) createContainer() error {
 
 	e := Executor{dimLogger}
 
-	fmt.Fprintf(titleLogger, "Creating container\n")
-
 	// If there's not already a container.
 	_, err := os.Stat(this.Application.RootFsDir())
 	if err != nil {
+		fmt.Fprintf(titleLogger, "Creating container\n")
 		// Clone the base application.
 		this.err = e.CloneContainer("base-"+this.Application.BuildPack, this.Application.Name)
 		if this.err != nil {
 			return this.err
 		}
+	} else {
+		fmt.Fprintf(titleLogger, "App image container already exists\n")
 	}
 
 	e.BashCmd("rm -rf " + this.Application.AppDir() + "/*")
@@ -217,6 +220,10 @@ func (this *Deployment) prepareDisabledServices(e *Executor) error {
 			return err
 		}
 	}
+	err = e.BashCmd(`sed -i 's/^NTPSERVERS=".*"$/NTPSERVERS=""/' /etc/default/ntpdate`)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -231,6 +238,12 @@ func (this *Deployment) build() error {
 
 	// Defer removal of the ssh private key file.
 	defer this.removeSshPrivateKeyFile()
+
+	// Prepare /app/env now so that the app env vars are available to the pre-hook script.
+	err := this.prepareEnvironmentVariables(e)
+	if err != nil {
+		return err
+	}
 
 	// Create upstart script.
 	f, err := os.OpenFile(this.Application.RootFsDir()+"/etc/init/app.conf", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0444)
@@ -259,6 +272,7 @@ func (this *Deployment) build() error {
 	}
 	defer f.Close()
 
+	// Run the pre-hook with a timeout.
 	c := make(chan error)
 	go func() {
 		buf := make([]byte, 8192)
@@ -284,7 +298,6 @@ func (this *Deployment) build() error {
 		return err
 	}
 	fmt.Fprintf(titleLogger, "Waiting for container pre-hook\n")
-
 	select {
 	case err = <-c:
 	case <-time.After(30 * time.Minute):
@@ -295,10 +308,6 @@ func (this *Deployment) build() error {
 		return err
 	}
 
-	err = this.prepareEnvironmentVariables(e)
-	if err != nil {
-		return err
-	}
 	err = this.prepareShellEnvironment(e)
 	if err != nil {
 		return err
@@ -370,7 +379,7 @@ func (this *Deployment) extract(version string) error {
 	if e.ContainerExists(versionedAppContainer) {
 		fmt.Fprintf(this.Logger, "Syncing local copy of %v\n", version)
 		// Rsync to versioned container to base app container.
-		rsyncCommand := "rsync --recursive --links --hard-links --devices --specials --acls --owner --perms --times --delete --xattrs --numeric-ids "
+		rsyncCommand := "rsync --recursive --links --hard-links --devices --specials --acls --owner --group --perms --times --delete --xattrs --numeric-ids "
 		return e.BashCmd(rsyncCommand + LXC_DIR + "/" + versionedAppContainer + "/rootfs/ " + this.Application.RootFsDir())
 	}
 
@@ -425,6 +434,7 @@ func (this *Deployment) syncNode(node *Node) error {
 		return err
 	}
 	// Rsync the application container over.
+	//rsync --recursive --links --hard-links --devices --specials --owner --group --perms --times --acls --delete --xattrs --numeric-ids
 	err = e.Run("sudo", "rsync",
 		"--recursive",
 		"--links",
@@ -432,6 +442,7 @@ func (this *Deployment) syncNode(node *Node) error {
 		"--devices",
 		"--specials",
 		"--owner",
+		"--group",
 		"--perms",
 		"--times",
 		"--acls",
@@ -620,10 +631,38 @@ func (this *Deployment) startDynos(availableNodes []*Node, titleLogger io.Writer
 	return addDynos, nil
 }
 
+// Validate application's Procfile.
+func (this *Deployment) validateProcfile() error {
+	f, err := os.Open(this.Application.SrcDir() + "/Procfile")
+	if err != nil {
+		return fmt.Errorf(err.Error() + ", does this application have a \"Procfile\"?")
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	processRe := regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]:.*`)
+	lineNo := 1
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		// Line not empty or commented out
+		if len(line) > 0 && strings.Index(line, "#") != 0 && strings.Index(line, ";") != 0 {
+			if !processRe.MatchString(line) {
+				return fmt.Errorf("Procfile validation failed on line %v: \"%v\", must match regular expression \"%v\"", lineNo, line, processRe.String())
+			}
+		}
+		lineNo++
+	}
+	return nil
+}
+
 // Deploy and launch the container to nodes.
 func (this *Deployment) deploy() error {
 	if len(this.Application.Processes) == 0 {
 		return fmt.Errorf("No processes scaled up, adjust with `ps:scale procType=#` before deploying")
+	}
+
+	err := this.validateProcfile()
+	if err != nil {
+		return err
 	}
 
 	titleLogger := NewFormatter(this.Logger, GREEN)
@@ -633,7 +672,7 @@ func (this *Deployment) deploy() error {
 
 	this.autoDetectRevision()
 
-	err := writeDeployScripts()
+	err = writeDeployScripts()
 	if err != nil {
 		return err
 	}
@@ -731,7 +770,11 @@ func (this *Deployment) postDeployHooks(err error) {
 		if err != nil {
 			fmt.Printf("warn: postDeployHooks scaling caught: %v", err)
 		}
-		message = "Scaled " + this.Application.Name + " to" + procInfo + " in " + duration + revision
+		if len(procInfo) > 0 {
+			message = "Scaled " + this.Application.Name + " to" + procInfo + " in " + duration + revision
+		} else {
+			message = "Scaled down all " + this.Application.Name + " processes down to 0"
+		}
 	} else {
 		message = "Deployed " + this.Application.Name + " " + this.Version + " in " + duration + revision
 	}
@@ -907,7 +950,11 @@ func (this *Server) Rescale(conn net.Conn, applicationName string, args map[stri
 				changes[processType] = newNumDynos - oldNumDynos
 			}
 
-			app.Processes[processType] = newNumDynos
+			if newNumDynos == 0 {
+				delete(app.Processes, processType)
+			} else {
+				app.Processes[processType] = newNumDynos
+			}
 		}
 		return nil
 	})
@@ -940,4 +987,38 @@ func (this *Server) Rescale(conn net.Conn, applicationName string, args map[stri
 		}
 		return deployment.Deploy()
 	})
+}
+
+// Stop, start, restart, or get the status for the service for a particular dyno process type for an app.
+// @param action One of "stop", "start" "restart", or "status".
+func (this *Server) ManageProcessState(action string, conn net.Conn, app *Application, processType string) error {
+	// Require that the process type exist in the applications processes map.
+	if _, ok := app.Processes[processType]; !ok {
+		return fmt.Errorf("unrecognized process type: %v", processType)
+	}
+	dynos, err := this.GetRunningDynos(app.Name, processType)
+	if err != nil {
+		return err
+	}
+	logger := NewLogger(NewTimeLogger(NewMessageLogger(conn)), fmt.Sprintf("[ps:%v] ", action))
+	executor := &Executor{logger}
+	for _, dyno := range dynos {
+		if dyno.Process == processType {
+			if action == "stop" {
+				err = dyno.StopService(executor)
+			} else if action == "start" {
+				err = dyno.StartService(executor)
+			} else if action == "restart" {
+				err = dyno.RestartService(executor)
+			} else if action == "status" {
+				err = dyno.GetServiceStatus(executor)
+			} else {
+				err = fmt.Errorf("unrecognized action: %v", action)
+			}
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

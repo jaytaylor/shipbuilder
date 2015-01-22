@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-cd "$(dirname "$0")"
+# Don't `cd` because it can break the path-to-ssl-cert parameter.
+#cd "$(dirname "$0")"
 
 source libfns.sh
 
@@ -55,8 +56,8 @@ verifySshAndSudoForHosts "${sbHost} ${lbHost}"
 if [ "${action}" = "install" ]; then
     installAccessForSshHost $lbHost
     
-    rsync -azve "ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no'" libfns.sh "${certFile}" $lbHost:/tmp/
-    ssh -o 'BatchMode yes' -o 'StrictHostKeyChecking no' $lbHost "source /tmp/libfns.sh && prepareLoadBalancer $(basename "${certFile}")"
+    rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" libfns.sh "${certFile}" $lbHost:/tmp/
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $lbHost "source /tmp/libfns.sh && prepareLoadBalancer $(basename "${certFile}")"
 
 else
 	echo 'unrecognized action: ${action}' 1>&2 && exit 1

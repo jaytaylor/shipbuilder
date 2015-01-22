@@ -39,6 +39,15 @@ __lb:remove__
 Remove one or more load balancers from the system. Updates the load balancer config.
 
 
+__apps:health__
+
+    [apps:?]health
+
+Display detailed output on the health of each process-type for each app.
+
+IMPORTANT: If this command is run while a deployment is in progress, then it will hang until after the deployment is finished.
+
+
 __nodes:add__
 
     nodes:add [address]..
@@ -57,7 +66,7 @@ __nodes:list__
 
     nodes[:list?]
 
-List all the nodes.
+Display listing of all nodes and processes runnin on each of them.
 
 
 __nodes:remove__
@@ -159,7 +168,7 @@ __domains:remove__
 
     domains:remove [domain-name].. -a[application-name]
 
-Remove one or more domains from an application. Redeploys the app.
+Remove one or more domains from an application. Does NOT redeploy the app.
 
 
 __logs__
@@ -243,11 +252,46 @@ __ps:list__
 List the goal and actual running instances of an application.
 
 
+__ps:restart__
+
+    ps:restart [process-type-x].. -a[application-name]
+
+Restart one or more process types for the app.  Does NOT trigger a redeploy.
+
+
+__ps:start__
+
+    ps:start [process-type-x].. -a[application-name]
+
+Launch the service for one or more process types of the app.  Does NOT trigger a redeploy.
+
+
+__ps:status__
+
+    ps:status [process-type-x?].. -a[application-name]
+
+Launch the service for one or more process types of the app.  Does NOT trigger a redeploy.
+
+
+__ps:stop__
+
+    ps:stop [process-type-x].. -a[application-name]
+
+Stop the service for one or more process types of the app.  Does NOT trigger a redeploy.
+
+
 __ps:scale__
 
     ps:scale [process-type]=#num#.. -a[application-name]
 
-Update the number of instances for one or more process types. Redeploys the app.
+Update the number of dyno instances for one or more process types.  Redeploys the app.
+
+
+__redeploy__
+
+    redeploy -a[application-name]
+
+Trigger a full redeploy for the app.
 
 
 __releases:info__
@@ -291,6 +335,27 @@ __runtime:tests__
 
 Runs and reports the status of ShipBuilder server system and environment checks and tests.  Including:
     - S3 read/write capability to the configured bucket.
+
+
+__sys:zfscleanup__
+
+    sys:zfs[cleanup?]
+
+System command: Manually run the ZFS maintenance cleanup task (NB: this runs automatically via a ShipBuilder cron @ 7:30PM UTC).
+
+__sys:snapshotscleanup__
+
+    sys:snapshots[cleanup?]
+
+System command: Manually run the snapshot cleanup task (NB: this runs automatically via a ShipBuilder cron every 2 hours).
+
+
+__sys:ntpsync__
+
+    sys:ntp[sync?]
+
+System command: Manually run NTP update/sync across all members of the ShipBuilder cluster (i.e. SB server, load-balancers, and nodes) (NB: this runs automatically via a ShipBuilder cron at the top of every hour).
+
 
 
 Project Compilation
