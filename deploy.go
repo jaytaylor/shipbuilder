@@ -114,6 +114,9 @@ if [ -f "${target}.new" ]; then
 start on (local-filesystems and net-device-up IFACE!=lo)
 stop on [!12345]
 
+env GOTRACEBACK=crash
+limit core unlimited unlimited
+
 exec start-stop-daemon --start --chdir /mnt/build --exec /usr/bin/envdir /mnt/build/env /mnt/build/shipbuilder server 2>&1 | logger -t shipbuilder
 EOF
 
