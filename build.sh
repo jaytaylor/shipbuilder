@@ -62,7 +62,7 @@ ZFS_POOL main.defaultZfsPool"); do
             ldflags="${ldflags} "
         fi
         envval=$(head -n1 "env/${envvar}")
-        ldflags="${ldflags}-X ${govar} ${envval}"
+        ldflags="${ldflags}-X ${govar}=${envval}"
         echo "info:     found var ${envvar}, value=${envval}"
     fi
 done
