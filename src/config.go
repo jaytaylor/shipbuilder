@@ -68,7 +68,7 @@ var (
 // LDFLAGS can be specified by compiling with `-ldflags '-X main.defaultSshHost=.. ...'`.
 var (
 	build                     string
-	defaultHaProxyStats       bool
+	defaultHaProxyStats       string
 	defaultHaProxyCredentials string
 	defaultAwsKey             string
 	defaultAwsSecret          string
@@ -667,7 +667,7 @@ func HaProxyStatsEnabled() bool {
 	if maybeValue != "" {
 		return maybeValue == "1" || maybeValue == "true" || maybeValue == "yes"
 	}
-	return defaultHaProxyStats
+	return defaultHaProxyStats == "1" || defaultHaProxyStats == "true" || defaultHaProxyStats == "yes"
 }
 
 func HaProxyCredentials() string {
