@@ -6,6 +6,10 @@
 # @date 2013-07-11
 #
 
+set -o errexit
+set -o pipefail
+set -o nounset
+
 cd "$(dirname "$0")"
 
 # Verify that `go` and `envdir` (daemontools) dependencies are available.
@@ -14,34 +18,13 @@ test -z "$(which envdir)" && echo 'fatal: no "envdir" binary found, make sure da
 
 test ! -d './env' && echo 'fatal: missing "env" configuration directory, see "Compilation" in the README' 1>&2 && exit 1
 
-if test "$1" == '-u' || test "$1" == '--update'; then
-    forceUpdate=1
-    echo 'info: dependency update will be forced'
-fi
-
-
 echo 'info: fetching dependencies'
-# This finds all lines between:
-# import (
-#     ...
-# )
-# and appropriately filters the list down to the projects dependencies.  It also ignores any lines which start with "//", as those are comments.
-dependencies=$(find src -wholename '*.go' -exec awk '{ if ($1 ~ /^import/ && $2 ~ /[(]/) { s=1; next; } if ($1 ~ /[)]/) { s=0; } if (s) print; }' {} \; | grep -v '^[^\.]*$' | tr -d '\t' | tr -d '"' | sed 's/^\. \{1,\}//g' | sort | uniq | grep -v '^[ \t]*\/\/' | sed 's/_ //g')
-for dependency in $dependencies; do
-    echo "info:     retrieving: ${dependency}"
-    if test -n "${forceUpdate}" || ! test -d "${GOPATH}/src/${dependency}"; then
-        go get -u $dependency
-        rc=$?
-        test $rc -ne 0 && echo "error: retrieving dependency ${dependency} exited with non-zero status code ${rc}" && exit $rc
-    else
-        echo 'info:         -> already exists, skipping'
-    fi
-done
-
+go get ./...
 
 # Collect ldflags.
 echo 'info: collecting compilation ldflags values from env/*'
 
+ldflags=''
 IFS_BAK="${IFS}"
 IFS=$'\n'
 for pair in $(echo "$(date +%Y%m%d_%H%M%S) main.build
