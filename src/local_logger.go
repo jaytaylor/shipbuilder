@@ -8,9 +8,11 @@ import (
 	"github.com/jaytaylor/logserver/logger"
 )
 
-func (this *Local) Logger(host, applicationName, process string) error {
-	errors := make(chan error)
-	c := make(chan []byte)
+func (*Local) Logger(host, applicationName, process string) error {
+	var (
+		errors = make(chan error)
+		c      = make(chan []byte)
+	)
 	go func() {
 		r := bufio.NewReader(os.Stdin)
 		for {

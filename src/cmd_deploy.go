@@ -15,67 +15,71 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
-type (
-	// `ScalingOnly`: Flag to indicate whether this is a new release or a scaling activity.
-	Deployment struct {
-		StartedTs   time.Time
-		Server      *Server
-		Logger      io.Writer
-		Application *Application
-		Config      *Config
-		Revision    string
-		Version     string
-		ScalingOnly bool
-		err         error
-	}
-	DeployLock struct {
-		numStarted  int
-		numFinished int
-		mutex       sync.Mutex
-	}
-)
-
-// Notify the DeployLock of a newly started deployment.
-func (this *DeployLock) start() {
-	this.mutex.Lock()
-	this.numStarted++
-	this.mutex.Unlock()
+type Deployment struct {
+	StartedTs   time.Time
+	Server      *Server
+	Logger      io.Writer
+	Application *Application
+	Config      *Config
+	Revision    string
+	Version     string
+	ScalingOnly bool // Flag to indicate whether this is a new release or a scaling activity.
+	err         error
 }
 
-// Mark a deployment as completed.
-func (this *DeployLock) finish() {
-	this.mutex.Lock()
-	this.numFinished++
-	this.mutex.Unlock()
+type DeployLock struct {
+	numStarted  int
+	numFinished int
+	mutex       sync.RWMutex
 }
 
-// Obtain the current number of started deploys.  Used as a marker by the
+// start notifies the DeployLock of a newly started deployment.
+func (dl *DeployLock) start() {
+	dl.mutex.Lock()
+	dl.numStarted++
+	dl.mutex.Unlock()
+}
+
+// finish marks a deployment as completed.
+func (dl *DeployLock) finish() {
+	dl.mutex.Lock()
+	dl.numFinished++
+	dl.mutex.Unlock()
+}
+
+// value returns the current number of started deploys.  Used as a marker by the
 // Dyno cleanup system to protect against taking action with stale data.
-func (this *DeployLock) value() int {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-	return this.numStarted
+func (dl *DeployLock) value() int {
+	dl.mutex.RLock()
+	defer dl.mutex.RUnlock()
+	return dl.numStarted
 }
 
-// Return true if and only if no deploys are in progress and if a possibly
-// out-of-date value matches the current DeployLock.numStarted value.
-func (this *DeployLock) validateLatest(value int) bool {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-	return this.numStarted == this.numFinished && this.numStarted == value
+// validateLatest returns true if and only if no deploys are in progress and if
+// a possibly out-of-date value matches the current DeployLock.numStarted value.
+func (dl *DeployLock) validateLatest(value int) bool {
+	dl.mutex.RLock()
+	defer dl.mutex.RUnlock()
+	return dl.numStarted == dl.numFinished && dl.numStarted == value
 }
 
-// Keep track of deployment run count to avoid cleanup operating on stale data.
-var deployLock = DeployLock{numStarted: 0, numFinished: 0}
+// deployLock keeps track of deployment run count to avoid cleanup operating on stale data.
+var deployLock = DeployLock{
+	numStarted:  0,
+	numFinished: 0,
+}
 
-// Used to enable private github repo access.
-func (this *Deployment) applySshPrivateKeyFile() error {
-	if this.Application.SshPrivateKey != nil {
-		os.Mkdir(this.Application.SshDir(), 0700)
-		err := ioutil.WriteFile(this.Application.SshPrivateKeyFilePath(), []byte(*this.Application.SshPrivateKey), 0500)
-		if err != nil {
+// applySshPrivateKeyFile is used to enable private github repo access.
+func (d *Deployment) applySshPrivateKeyFile() error {
+	if d.Application.SshPrivateKey != nil {
+		if err := os.Mkdir(d.Application.SshDir(), os.FileMode(int(0700))); err != nil {
+			return err
+		}
+		if err := ioutil.WriteFile(d.Application.SshPrivateKeyFilePath(), []byte(*d.Application.SshPrivateKey), 0500); err != nil {
 			return err
 		}
 	}
@@ -83,207 +87,273 @@ func (this *Deployment) applySshPrivateKeyFile() error {
 }
 
 // Removes To be invoked after dependency retrieval.
-func (this *Deployment) removeSshPrivateKeyFile() {
-	exists, _ := PathExists(this.Application.SshPrivateKeyFilePath())
-	if this.Application.SshPrivateKey != nil && exists {
-		os.Remove(this.Application.SshPrivateKeyFilePath())
+func (d *Deployment) removeSshPrivateKeyFile() error {
+	path := d.Application.SshPrivateKeyFilePath()
+	exists, err := PathExists(path)
+	if err != nil {
+		return fmt.Errorf("checking if path=%v exists: %s", path, err)
 	}
+	if d.Application.SshPrivateKey != nil && exists {
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func (this *Deployment) createContainer() error {
-	dimLogger := NewFormatter(this.Logger, DIM)
-	titleLogger := NewFormatter(this.Logger, GREEN)
-
-	e := Executor{dimLogger}
+func (server *Deployment) createContainer() error {
+	var (
+		dimLogger   = NewFormatter(server.Logger, DIM)
+		titleLogger = NewFormatter(server.Logger, GREEN)
+		e           = Executor{
+			logger: dimLogger,
+		}
+	)
 
 	// If there's not already a container.
-	_, err := os.Stat(this.Application.RootFsDir())
-	if err != nil {
+	if _, err := os.Stat(server.Application.RootFsDir()); err != nil {
 		fmt.Fprintf(titleLogger, "Creating container\n")
 		// Clone the base application.
-		this.err = e.CloneContainer("base-"+this.Application.BuildPack, this.Application.Name)
-		if this.err != nil {
-			return this.err
+		if server.err = e.CloneContainer("base-"+server.Application.BuildPack, server.Application.Name); server.err != nil {
+			return server.err
 		}
 	} else {
 		fmt.Fprintf(titleLogger, "App image container already exists\n")
 	}
 
-	e.BashCmd("rm -rf " + this.Application.AppDir() + "/*")
-	e.BashCmd("mkdir -p " + this.Application.SrcDir())
+	if err := e.BashCmd("rm -rf " + server.Application.AppDir() + "/*"); err != nil {
+		return err
+	}
+	if err := e.BashCmd("mkdir -p " + server.Application.SrcDir()); err != nil {
+		return err
+	}
 	// Copy the ShipBuilder binary into the container.
-	this.err = e.BashCmd("cp " + EXE + " " + this.Application.AppDir() + "/" + BINARY)
-	if this.err != nil {
-		return this.err
+	if server.err = e.BashCmd("cp " + EXE + " " + server.Application.AppDir() + "/" + BINARY); server.err != nil {
+		return server.err
 	}
 	// Export the source to the container.  Use `--depth 1` to omit the history which wasn't going to be used anyways.
-	this.err = e.BashCmd("git clone --depth 1 " + this.Application.GitDir() + " " + this.Application.SrcDir())
-	if this.err != nil {
-		return this.err
+	if server.err = e.BashCmd("git clone --depth 1 " + server.Application.GitDir() + " " + server.Application.SrcDir()); server.err != nil {
+		return server.err
 	}
 
 	// Add the public ssh key for submodule (and later dependency) access.
-	err = this.applySshPrivateKeyFile()
-	if err != nil {
+	if err := server.applySshPrivateKeyFile(); err != nil {
 		return err
 	}
 
 	// Checkout the given revision.
-	this.err = e.BashCmd("cd " + this.Application.SrcDir() + " && git checkout -q -f " + this.Revision)
-	if this.err != nil {
-		return this.err
+	if server.err = e.BashCmd("cd " + server.Application.SrcDir() + " && git checkout -q -f " + server.Revision); server.err != nil {
+		return server.err
 	}
+
 	// Convert references to submodules to be read-only.
-	this.err = e.BashCmd(`test -f '` + this.Application.SrcDir() + `/.gitmodules' && echo 'git: converting submodule refs to be read-only' && sed -i 's,git@github.com:,git://github.com/,g' '` + this.Application.SrcDir() + `/.gitmodules' || echo 'git: project does not appear to have any submodules'`)
-	if this.err != nil {
-		return this.err
+	{
+		cmdStr := fmt.Sprintf(`test -f '%[1]v/.gitmodules' && echo 'git: converting submodule refs to be read-only' && sed -i 's,git@github.com:,git://github.com/,g' '%[1]v/.gitmodules' || echo 'git: project does not appear to have any submodules'`, server.Application.SrcDir())
+		if server.err = e.BashCmd(cmdStr); server.err != nil {
+			return server.err
+		}
 	}
+
 	// Update the submodules.
-	this.err = e.BashCmd("cd " + this.Application.SrcDir() + " && git submodule init && git submodule update")
-	if this.err != nil {
-		return this.err
+	if server.err = e.BashCmd("cd " + server.Application.SrcDir() + " && git submodule init && git submodule update"); server.err != nil {
+		return server.err
 	}
+
 	// Clear out and remove all git files from the container; they are unnecessary from this point forward.
 	// NB: If this command fails, don't abort anything, just log the error.
-	ignorableErr := e.BashCmd(`find ` + this.Application.SrcDir() + ` . -regex '^.*\.git\(ignore\|modules\|attributes\)?$' -exec rm -rf {} \; 1>/dev/null 2>/dev/null`)
-	if ignorableErr != nil {
-		fmt.Fprintf(dimLogger, ".git* cleanup failed: %v\n", ignorableErr)
+	{
+		cmdStr := fmt.Sprintf(`find %v . -regex '^.*\.git\(ignore\|modules\|attributes\)?$' -exec rm -rf {} \; 1>/dev/null 2>/dev/null`, server.Application.SrcDir())
+		if ignorableErr := e.BashCmd(cmdStr); ignorableErr != nil {
+			fmt.Fprintf(dimLogger, ".git* cleanup failed: %v\n", ignorableErr)
+		}
 	}
+
 	return nil
 }
 
-func (this *Deployment) prepareEnvironmentVariables(e *Executor) error {
+func (server *Deployment) prepareEnvironmentVariables(e *Executor) error {
 	// Write out the environmental variables.
-	err := e.BashCmd("rm -rf " + this.Application.AppDir() + "/env")
-	if err != nil {
+	if err := e.BashCmd("rm -rf " + server.Application.AppDir() + "/env"); err != nil {
 		return err
 	}
-	err = e.BashCmd("mkdir -p " + this.Application.AppDir() + "/env")
-	if err != nil {
+	if err := e.BashCmd("mkdir -p " + server.Application.AppDir() + "/env"); err != nil {
 		return err
 	}
-	for key, value := range this.Application.Environment {
-		err = ioutil.WriteFile(this.Application.AppDir()+"/env/"+key, []byte(value), 0444)
-		if err != nil {
+	for key, value := range server.Application.Environment {
+		if err := ioutil.WriteFile(server.Application.AppDir()+"/env/"+key, []byte(value), os.FileMode(int(0444))); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (this *Deployment) prepareShellEnvironment(e *Executor) error {
+func (server *Deployment) prepareShellEnvironment(e *Executor) error {
 	// Update the container's /etc/passwd file to use the `envdirbash` script and /app/src as the user's home directory.
-	escapedAppSrc := strings.Replace(this.Application.LocalSrcDir(), "/", `\/`, -1)
+	escapedAppSrc := strings.Replace(server.Application.LocalSrcDir(), "/", `\/`, -1)
 	err := e.Run("sudo",
 		"sed", "-i",
 		`s/^\(`+DEFAULT_NODE_USERNAME+`:.*:\):\/home\/`+DEFAULT_NODE_USERNAME+`:\/bin\/bash$/\1:`+escapedAppSrc+`:\/bin\/bash/g`,
-		this.Application.RootFsDir()+"/etc/passwd",
+		server.Application.RootFsDir()+"/etc/passwd",
 	)
 	if err != nil {
 		return err
 	}
 	// Move /home/<user>/.ssh to the new home directory in /app/src
-	err = e.BashCmd("cp -a /home/" + DEFAULT_NODE_USERNAME + "/.[a-zA-Z0-9]* " + this.Application.SrcDir() + "/")
-	if err != nil {
-		return err
+	{
+		cmdStr := fmt.Sprintf("cp -a /home/%v/.[a-zA-Z0-9]* %v/", DEFAULT_NODE_USERNAME, server.Application.SrcDir())
+		if err := e.BashCmd(cmdStr); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func (this *Deployment) prepareAppFilePermissions(e *Executor) error {
+func (server *Deployment) prepareAppFilePermissions(e *Executor) error {
 	// Chown the app src & output to default user by grepping the uid+gid from /etc/passwd in the container.
 	return e.BashCmd(
-		"touch " + this.Application.AppDir() + "/out && " +
-			"chown $(cat " + this.Application.RootFsDir() + "/etc/passwd | grep '^" + DEFAULT_NODE_USERNAME + ":' | cut -d':' -f3,4) " +
-			this.Application.AppDir() + " && " +
-			"chown -R $(cat " + this.Application.RootFsDir() + "/etc/passwd | grep '^" + DEFAULT_NODE_USERNAME + ":' | cut -d':' -f3,4) " +
-			this.Application.AppDir() + "/{out,src}",
+		"touch " + server.Application.AppDir() + "/out && " +
+			"chown $(cat " + server.Application.RootFsDir() + "/etc/passwd | grep '^" + DEFAULT_NODE_USERNAME + ":' | cut -d':' -f3,4) " +
+			server.Application.AppDir() + " && " +
+			"chown -R $(cat " + server.Application.RootFsDir() + "/etc/passwd | grep '^" + DEFAULT_NODE_USERNAME + ":' | cut -d':' -f3,4) " +
+			server.Application.AppDir() + "/{out,src}",
 	)
 }
 
 // Disable unnecessary services in container.
-func (this *Deployment) prepareDisabledServices(e *Executor) error {
+func (server *Deployment) prepareDisabledServices(e *Executor) error {
 	// Disable `ondemand` power-saving service by unlinking it from /etc/rc*.d.
-	err := e.BashCmd(`find ` + this.Application.RootFsDir() + `/etc/rc*.d/ -wholename '*/S*ondemand' -exec unlink {} \;`)
-	if err != nil {
+	if err := e.BashCmd(`find ` + server.Application.RootFsDir() + `/etc/rc*.d/ -wholename '*/S*ondemand' -exec unlink {} \;`); err != nil {
 		return err
 	}
 	// Disable `ntpdate` client from being triggered when networking comes up.
-	err = e.BashCmd(`chmod a-x ` + this.Application.RootFsDir() + `/etc/network/if-up.d/ntpdate`)
-	if err != nil {
+	if err := e.BashCmd(`chmod a-x ` + server.Application.RootFsDir() + `/etc/network/if-up.d/ntpdate`); err != nil {
 		return err
 	}
 	// Disable auto-start for unnecessary services in /etc/init/*.conf, such as: SSH, rsyslog, cron, tty1-6, and udev.
-	for _, service := range []string{"ssh", "rsyslog", "cron", "tty1", "tty2", "tty3", "tty4", "tty5", "tty6", "udev"} {
-		err = e.BashCmd("echo 'manual' > " + this.Application.RootFsDir() + "/etc/init/" + service + ".override")
-		if err != nil {
+	services := []string{
+		"ssh",
+		"rsyslog",
+		"cron",
+		"tty1",
+		"tty2",
+		"tty3",
+		"tty4",
+		"tty5",
+		"tty6",
+		"udev",
+	}
+	for _, service := range services {
+		if err := e.BashCmd("echo 'manual' > " + server.Application.RootFsDir() + "/etc/init/" + service + ".override"); err != nil {
 			return err
 		}
 	}
-	err = e.BashCmd(`sed -i 's/^NTPSERVERS=".*"$/NTPSERVERS=""/' /etc/default/ntpdate`)
-	if err != nil {
+	if err := e.BashCmd(`sed -i 's/^NTPSERVERS=".*"$/NTPSERVERS=""/' /etc/default/ntpdate`); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (this *Deployment) build() error {
-	dimLogger := NewFormatter(this.Logger, DIM)
-	titleLogger := NewFormatter(this.Logger, GREEN)
+func (server *Deployment) build() (err error) {
+	var (
+		dimLogger   = NewFormatter(server.Logger, DIM)
+		titleLogger = NewFormatter(server.Logger, GREEN)
+		e           = &Executor{
+			logger: dimLogger,
+		}
+	)
 
-	e := &Executor{dimLogger}
+	fmt.Fprint(titleLogger, "Building image\n")
 
-	fmt.Fprintf(titleLogger, "Building image\n")
-	e.StopContainer(this.Application.Name) // To be sure we are starting with a container in the stopped state.
+	// To be sure we are starting with a container in the stopped state.
+	if stopErr := e.StopContainer(server.Application.Name); stopErr != nil {
+		log.Debugf("Error stopping container for app=%v: %s (this can likely be ignored)", server.Application.Name, stopErr)
+	}
 
 	// Defer removal of the ssh private key file.
-	defer this.removeSshPrivateKeyFile()
+	defer func() {
+		if rmErr := server.removeSshPrivateKeyFile(); rmErr != nil {
+			if err == nil {
+				err = rmErr
+			} else {
+				log.Warnf("found pre-existing err=%q and encountered a problem removing ssh private key for app=%q: %s", err, server.Application.Name, rmErr)
+			}
+		}
+	}()
 
 	// Prepare /app/env now so that the app env vars are available to the pre-hook script.
-	err := this.prepareEnvironmentVariables(e)
-	if err != nil {
-		return err
+	if err = server.prepareEnvironmentVariables(e); err != nil {
+		return
 	}
+
+	var f *os.File
 
 	// Create upstart script.
-	f, err := os.OpenFile(this.Application.RootFsDir()+"/etc/init/app.conf", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0444)
-	if err != nil {
-		return err
+	if f, err = os.OpenFile(server.Application.RootFsDir()+"/etc/init/app.conf", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0444); err != nil {
+		return
 	}
-	err = UPSTART.Execute(f, nil)
-	f.Close()
-	if err != nil {
-		return err
+	if err = UPSTART.Execute(f, nil); err != nil {
+		err = fmt.Errorf("applying upstart template: %s", err)
+		return
 	}
+	if err = f.Close(); err != nil {
+		err = fmt.Errorf("closing file=%q: %s", f.Name(), err)
+		return
+	}
+
 	// Create the build script.
-	f, err = os.OpenFile(this.Application.RootFsDir()+APP_DIR+"/run", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777)
-	if err != nil {
-		return err
+	if f, err = os.OpenFile(server.Application.RootFsDir()+APP_DIR+"/run", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777); err != nil {
+		return
 	}
-	err = BUILD_PACKS[this.Application.BuildPack].Execute(f, nil)
-	f.Close()
-	if err != nil {
-		return err
+	if err = BUILD_PACKS[server.Application.BuildPack].Execute(f, nil); err != nil {
+		err = fmt.Errorf("applying build-pack template: %s", err)
+		return
 	}
+	if err = f.Close(); err != nil {
+		err = fmt.Errorf("closing file=%q: %s", f.Name(), err)
+		return
+	}
+
 	// Create a file to store container launch output in.
-	f, err = os.Create(this.Application.AppDir() + "/out")
-	if err != nil {
-		return err
+	if f, err = os.Create(server.Application.AppDir() + "/out"); err != nil {
+		return
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			if err == nil {
+				err = fmt.Errorf("closing file=%q: %s", f.Name(), closeErr)
+			} else {
+				log.Warnf("found pre-existing err=%q and encountered a problem closing file=%q: %s", err, f.Name(), closeErr)
+			}
+		}
+	}()
 
 	// Run the pre-hook with a timeout.
-	c := make(chan error)
+	var (
+		errCh        = make(chan error)
+		cancelCh     = make(chan struct{}, 1)
+		waitDuration = 30 * time.Minute
+	)
+
 	go func() {
 		buf := make([]byte, 8192)
-		var err error
+		var waitErr error
 		for {
-			n, _ := f.Read(buf)
+			select {
+			case <-cancelCh:
+				log.Debugf("Received cancel request, pre-hook waiter bailing out for app=%v", server.Application.Name)
+				return
+			default:
+			}
+
+			n, readErr := f.Read(buf)
+			if readErr != nil {
+				log.Debugf("Unexpected read error while running pre-hook: %s", readErr)
+			}
 			if n > 0 {
 				dimLogger.Write(buf[:n])
 				if bytes.Contains(buf, []byte("RETURN_CODE")) || bytes.Contains(buf, []byte("exited with non-zero status")) {
 					if !bytes.Contains(buf, []byte("RETURN_CODE: 0")) {
-						err = fmt.Errorf("build failed")
+						waitErr = fmt.Errorf("build failed")
 					}
 					break
 				}
@@ -291,54 +361,66 @@ func (this *Deployment) build() error {
 				time.Sleep(time.Millisecond * 100)
 			}
 		}
-		c <- err
+		errCh <- waitErr
 	}()
-	err = e.StartContainer(this.Application.Name)
-	if err != nil {
-		return err
+
+	if err = e.StartContainer(server.Application.Name); err != nil {
+		cancelCh <- struct{}{}
+		err = fmt.Errorf("starting container: %s", err)
+		return
 	}
+
 	fmt.Fprintf(titleLogger, "Waiting for container pre-hook\n")
+
 	select {
-	case err = <-c:
-	case <-time.After(30 * time.Minute):
-		err = fmt.Errorf("timeout")
+	case err = <-errCh:
+	case <-time.After(waitDuration):
+		err = fmt.Errorf("timed out after %v", waitDuration)
+		cancelCh <- struct{}{}
 	}
-	e.StopContainer(this.Application.Name)
+	stopErr := e.StopContainer(server.Application.Name)
 	if err != nil {
-		return err
+		return
+	}
+	if stopErr != nil {
+		err = fmt.Errorf("stopping container: %s", stopErr)
+		return
 	}
 
-	err = this.prepareShellEnvironment(e)
-	if err != nil {
-		return err
+	if err = server.prepareShellEnvironment(e); err != nil {
+		return
 	}
-	err = this.prepareAppFilePermissions(e)
-	if err != nil {
-		return err
+	if err = server.prepareAppFilePermissions(e); err != nil {
+		return
 	}
-	err = this.prepareDisabledServices(e)
-	if err != nil {
-		return err
+	if err = server.prepareDisabledServices(e); err != nil {
+		return
 	}
 
-	return nil
+	return
 }
 
-func (this *Deployment) archive() error {
-	dimLogger := NewFormatter(this.Logger, DIM)
+// TODO: check for ignored errors.
+func (server *Deployment) archive() error {
+	var (
+		dimLogger = NewFormatter(server.Logger, DIM)
+		e         = Executor{
+			logger: dimLogger,
+		}
+		versionedContainerName = server.Application.Name + DYNO_DELIMITER + server.Version
+	)
 
-	e := Executor{dimLogger}
-
-	versionedContainerName := this.Application.Name + DYNO_DELIMITER + this.Version
-
-	e.CloneContainer(this.Application.Name, versionedContainerName)
+	if err := e.CloneContainer(server.Application.Name, versionedContainerName); err != nil {
+		return err
+	}
 
 	// Compress & upload the image to S3.
 	go func() {
-		e = Executor{NewLogger(os.Stdout, "[archive] ")}
+		e = Executor{
+			logger: NewLogger(os.Stdout, "[archive] "),
+		}
 		archiveName := "/tmp/" + versionedContainerName + ".tar.gz"
-		err := e.BashCmd("tar --create --gzip --preserve-permissions --file " + archiveName + " " + this.Application.RootFsDir())
-		if err != nil {
+		if err := e.BashCmd("tar --create --gzip --preserve-permissions --file " + archiveName + " " + server.Application.RootFsDir()); err != nil {
 			return
 		}
 
@@ -356,7 +438,7 @@ func (this *Deployment) archive() error {
 			return
 		}
 		getS3Bucket().PutReader(
-			"/releases/"+this.Application.Name+"/"+this.Version+".tar.gz",
+			"/releases/"+server.Application.Name+"/"+server.Version+".tar.gz",
 			h,
 			stat.Size(),
 			"application/x-tar-gz",
@@ -366,27 +448,33 @@ func (this *Deployment) archive() error {
 	return nil
 }
 
-func (this *Deployment) extract(version string) error {
-	e := Executor{this.Logger}
+// TODO: check for ignored errors.
+func (server *Deployment) extract(version string) error {
+	e := Executor{
+		logger: server.Logger,
+	}
 
-	err := this.Application.CreateBaseContainerIfMissing(&e)
-	if err != nil {
+	if err := server.Application.CreateBaseContainerIfMissing(&e); err != nil {
 		return err
 	}
 
 	// Detect if the container is already present locally.
-	versionedAppContainer := this.Application.Name + DYNO_DELIMITER + version
+	versionedAppContainer := server.Application.Name + DYNO_DELIMITER + version
 	if e.ContainerExists(versionedAppContainer) {
-		fmt.Fprintf(this.Logger, "Syncing local copy of %v\n", version)
+		fmt.Fprintf(server.Logger, "Syncing local copy of %v\n", version)
 		// Rsync to versioned container to base app container.
 		rsyncCommand := "rsync --recursive --links --hard-links --devices --specials --acls --owner --group --perms --times --delete --xattrs --numeric-ids "
-		return e.BashCmd(rsyncCommand + LXC_DIR + "/" + versionedAppContainer + "/rootfs/ " + this.Application.RootFsDir())
+		return e.BashCmd(rsyncCommand + LXC_DIR + "/" + versionedAppContainer + "/rootfs/ " + server.Application.RootFsDir())
 	}
 
 	// The requested app version doesn't exist locally, attempt to download it from S3.
-	return extractAppFromS3(&e, this.Application, version)
+	if err := extractAppFromS3(&e, server.Application, version); err != nil {
+		return err
+	}
+	return nil
 }
 
+// TODO: check for ignored errors.
 func extractAppFromS3(e *Executor, app *Application, version string) error {
 	fmt.Fprintf(e.logger, "Downloading release %v from S3\n", version)
 	r, err := getS3Bucket().GetReader("/releases/" + app.Name + "/" + version + ".tar.gz")
@@ -403,31 +491,32 @@ func extractAppFromS3(e *Executor, app *Application, version string) error {
 	defer h.Close()
 	defer os.Remove(localArchive)
 
-	_, err = io.Copy(h, r)
-	if err != nil {
+	if _, err := io.Copy(h, r); err != nil {
 		return err
 	}
 
 	fmt.Fprintf(e.logger, "Extracting %v\n", localArchive)
-	err = e.BashCmd("rm -rf " + app.RootFsDir() + "/*")
-	if err != nil {
+	if err := e.BashCmd("rm -rf " + app.RootFsDir() + "/*"); err != nil {
 		return err
 	}
-	err = e.BashCmd("tar -C / --extract --gzip --preserve-permissions --file " + localArchive)
-	if err != nil {
+	if err := e.BashCmd("tar -C / --extract --gzip --preserve-permissions --file " + localArchive); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (this *Deployment) syncNode(node *Node) error {
-	logger := NewLogger(this.Logger, "["+node.Host+"] ")
-	e := Executor{logger}
+func (server *Deployment) syncNode(node *Node) error {
+	var (
+		logger = NewLogger(server.Logger, "["+node.Host+"] ")
+		e      = Executor{
+			logger: logger,
+		}
+	)
 
 	// TODO: Maybe add fail check to clone operation.
 	err := e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+node.Host,
 		"sudo", "/bin/bash", "-c",
-		`"test ! -d '`+LXC_DIR+`/`+this.Application.Name+`' && lxc-clone -B `+lxcFs+` -s -o base-`+this.Application.BuildPack+` -n `+this.Application.Name+` || echo 'app image already exists'"`,
+		`"test ! -d '`+LXC_DIR+`/`+server.Application.Name+`' && lxc-clone -B `+lxcFs+` -s -o base-`+server.Application.BuildPack+` -n `+server.Application.Name+` || echo 'app image already exists'"`,
 	)
 	if err != nil {
 		fmt.Fprintf(logger, "error cloning base container: %v\n", err)
@@ -450,8 +539,8 @@ func (this *Deployment) syncNode(node *Node) error {
 		"--xattrs",
 		"--numeric-ids",
 		"-e", "ssh "+DEFAULT_SSH_PARAMETERS,
-		this.Application.LxcDir()+"/rootfs/",
-		"root@"+node.Host+":"+this.Application.LxcDir()+"/rootfs/",
+		server.Application.LxcDir()+"/rootfs/",
+		"root@"+node.Host+":"+server.Application.LxcDir()+"/rootfs/",
 	)
 	if err != nil {
 		return err
@@ -467,18 +556,20 @@ func (this *Deployment) syncNode(node *Node) error {
 	return nil
 }
 
-func (this *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) (Dyno, error) {
-	dyno := dynoGenerator.Next(process)
-
-	logger := NewLogger(this.Logger, "["+dyno.Host+"] ")
-	e := Executor{logger}
-
-	var err error
-	done := make(chan bool)
+func (server *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) (Dyno, error) {
+	var (
+		dyno   = dynoGenerator.Next(process)
+		logger = NewLogger(server.Logger, "["+dyno.Host+"] ")
+		e      = Executor{
+			logger: logger,
+		}
+		done = make(chan struct{})
+		err  error
+	)
 	go func() {
 		fmt.Fprint(logger, "Starting dyno")
 		err = e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+dyno.Host, "sudo", "/tmp/postdeploy.py", dyno.Container)
-		done <- true
+		done <- struct{}{}
 	}()
 	select {
 	case <-done: // implicitly break.
@@ -488,40 +579,40 @@ func (this *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) 
 	return dyno, err
 }
 
-func (this *Deployment) autoDetectRevision() error {
-	if len(this.Revision) == 0 {
-		revision, err := ioutil.ReadFile(this.Application.SrcDir() + "/.git/refs/heads/master")
+func (server *Deployment) autoDetectRevision() error {
+	if len(server.Revision) == 0 {
+		revision, err := ioutil.ReadFile(server.Application.SrcDir() + "/.git/refs/heads/master")
 		if err != nil {
 			return err
 		}
-		this.Revision = strings.Trim(string(revision), "\n")
+		server.Revision = strings.Trim(string(revision), "\n")
 	}
 	return nil
 }
 
 func writeDeployScripts() error {
-	err := ioutil.WriteFile("/tmp/postdeploy.py", []byte(POSTDEPLOY), 0777)
-	if err != nil {
+	if err := ioutil.WriteFile("/tmp/postdeploy.py", []byte(POSTDEPLOY), os.FileMode(int(0777))); err != nil {
 		return err
 	}
-	err = ioutil.WriteFile("/tmp/shutdown_container.py", []byte(SHUTDOWN_CONTAINER), 0777)
-	if err != nil {
+	if err := ioutil.WriteFile("/tmp/shutdown_container.py", []byte(SHUTDOWN_CONTAINER), os.FileMode(int(0777))); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (this *Deployment) calculateDynosToDestroy() ([]Dyno, bool, error) {
-	// Track whether or not new dynos will be allocated.  If no new allocations are necessary, no rsync'ing will be necessary.
-	allocatingNewDynos := false
-	// Build list of running dynos to be deactivated in the LB config upon successful deployment.
-	removeDynos := []Dyno{}
-	for process, numDynos := range this.Application.Processes {
-		runningDynos, err := this.Server.GetRunningDynos(this.Application.Name, process)
+func (server *Deployment) calculateDynosToDestroy() ([]Dyno, bool, error) {
+	var (
+		// Track whether or not new dynos will be allocated.  If no new allocations are necessary, no rsync'ing will be necessary.
+		allocatingNewDynos = false
+		// Build list of running dynos to be deactivated in the LB config upon successful deployment.
+		removeDynos = []Dyno{}
+	)
+	for process, numDynos := range server.Application.Processes {
+		runningDynos, err := server.Server.GetRunningDynos(server.Application.Name, process)
 		if err != nil {
 			return removeDynos, allocatingNewDynos, err
 		}
-		if !this.ScalingOnly {
+		if !server.ScalingOnly {
 			removeDynos = append(removeDynos, runningDynos...)
 			allocatingNewDynos = true
 		} else if numDynos < 0 {
@@ -536,21 +627,21 @@ func (this *Deployment) calculateDynosToDestroy() ([]Dyno, bool, error) {
 			allocatingNewDynos = true
 		}
 	}
-	fmt.Fprintf(this.Logger, "calculateDynosToDestroy :: calculated to remove the following dynos: %v\n", removeDynos)
+	fmt.Fprintf(server.Logger, "calculateDynosToDestroy :: calculated to remove the following dynos: %v\n", removeDynos)
 	return removeDynos, allocatingNewDynos, nil
 }
 
-func (this *Deployment) syncNodes() ([]*Node, error) {
+func (server *Deployment) syncNodes() ([]*Node, error) {
 	type NodeSyncResult struct {
 		node *Node
 		err  error
 	}
 
 	syncStep := make(chan NodeSyncResult)
-	for _, node := range this.Config.Nodes {
+	for _, node := range server.Config.Nodes {
 		go func(node *Node) {
 			c := make(chan error, 1)
-			go func() { c <- this.syncNode(node) }()
+			go func() { c <- server.syncNode(node) }()
 			go func() {
 				time.Sleep(NODE_SYNC_TIMEOUT_SECONDS * time.Second)
 				c <- fmt.Errorf("Sync operation to node '%v' timed out after %v seconds", node.Host, NODE_SYNC_TIMEOUT_SECONDS)
@@ -563,7 +654,7 @@ func (this *Deployment) syncNodes() ([]*Node, error) {
 	availableNodes := []*Node{}
 
 	// Wait for all the syncs to finish or timeout, and collect available nodes.
-	for _ = range this.Config.Nodes {
+	for _ = range server.Config.Nodes {
 		syncResult := <-syncStep
 		if syncResult.err == nil {
 			availableNodes = append(availableNodes, syncResult.node)
@@ -576,11 +667,11 @@ func (this *Deployment) syncNodes() ([]*Node, error) {
 	return availableNodes, nil
 }
 
-func (this *Deployment) startDynos(availableNodes []*Node, titleLogger io.Writer) ([]Dyno, error) {
+func (server *Deployment) startDynos(availableNodes []*Node, titleLogger io.Writer) ([]Dyno, error) {
 	// Now we've successfully sync'd and we have a list of nodes available to deploy to.
 	addDynos := []Dyno{}
 
-	dynoGenerator, err := this.Server.NewDynoGenerator(availableNodes, this.Application.Name, this.Version)
+	dynoGenerator, err := server.Server.NewDynoGenerator(availableNodes, server.Application.Name, server.Version)
 	if err != nil {
 		return addDynos, err
 	}
@@ -592,14 +683,14 @@ func (this *Deployment) startDynos(availableNodes []*Node, titleLogger io.Writer
 	startedChannel := make(chan StartResult)
 
 	startDynoWrapper := func(dynoGenerator *DynoGenerator, process string) {
-		dyno, err := this.startDyno(dynoGenerator, process)
+		dyno, err := server.startDyno(dynoGenerator, process)
 		startedChannel <- StartResult{dyno, err}
 	}
 
 	numDesiredDynos := 0
 
 	// First deploy the changes and start the new dynos.
-	for process, numDynos := range this.Application.Processes {
+	for process, numDynos := range server.Application.Processes {
 		for i := 0; i < numDynos; i++ {
 			go startDynoWrapper(dynoGenerator, process)
 			numDesiredDynos++
@@ -632,8 +723,9 @@ func (this *Deployment) startDynos(availableNodes []*Node, titleLogger io.Writer
 }
 
 // Validate application's Procfile.
-func (this *Deployment) validateProcfile() error {
-	f, err := os.Open(this.Application.SrcDir() + "/Procfile")
+// TODO: check for ignored errors.
+func (server *Deployment) validateProcfile() error {
+	f, err := os.Open(server.Application.SrcDir() + "/Procfile")
 	if err != nil {
 		return fmt.Errorf(err.Error() + ", does this application have a \"Procfile\"?")
 	}
@@ -655,69 +747,67 @@ func (this *Deployment) validateProcfile() error {
 }
 
 // Deploy and launch the container to nodes.
-func (this *Deployment) deploy() error {
-	if len(this.Application.Processes) == 0 {
+func (server *Deployment) deploy() error {
+	if len(server.Application.Processes) == 0 {
 		return fmt.Errorf("No processes scaled up, adjust with `ps:scale procType=#` before deploying")
 	}
 
-	err := this.validateProcfile()
-	if err != nil {
+	if err := server.validateProcfile(); err != nil {
 		return err
 	}
 
-	titleLogger := NewFormatter(this.Logger, GREEN)
-	dimLogger := NewFormatter(this.Logger, DIM)
+	var (
+		titleLogger = NewFormatter(server.Logger, GREEN)
+		dimLogger   = NewFormatter(server.Logger, DIM)
+		e           = Executor{dimLogger}
+	)
 
-	e := Executor{dimLogger}
+	server.autoDetectRevision()
 
-	this.autoDetectRevision()
-
-	err = writeDeployScripts()
-	if err != nil {
+	if err := writeDeployScripts(); err != nil {
 		return err
 	}
 
-	removeDynos, allocatingNewDynos, err := this.calculateDynosToDestroy()
+	removeDynos, allocatingNewDynos, err := server.calculateDynosToDestroy()
 	if err != nil {
 		return err
 	}
 
 	if allocatingNewDynos {
-		availableNodes, err := this.syncNodes()
+		availableNodes, err := server.syncNodes()
 		if err != nil {
 			return err
 		}
 
 		// Now we've successfully sync'd and we have a list of nodes available to deploy to.
-		addDynos, err := this.startDynos(availableNodes, titleLogger)
+		addDynos, err := server.startDynos(availableNodes, titleLogger)
 		if err != nil {
 			return err
 		}
 
-		err = this.Server.SyncLoadBalancers(&e, addDynos, removeDynos)
-		if err != nil {
+		if err := server.Server.SyncLoadBalancers(&e, addDynos, removeDynos); err != nil {
 			return err
 		}
 	}
 
-	if !this.ScalingOnly {
+	if !server.ScalingOnly {
 		// Update releases.
-		releases, err := getReleases(this.Application.Name)
+		releases, err := getReleases(server.Application.Name)
 		if err != nil {
 			return err
 		}
 		// Prepend the release (releases are in descending order)
 		releases = append([]Release{{
-			Version:  this.Version,
-			Revision: this.Revision,
+			Version:  server.Version,
+			Revision: server.Revision,
 			Date:     time.Now(),
-			Config:   this.Application.Environment,
+			Config:   server.Application.Environment,
 		}}, releases...)
 		// Only keep around the latest 15 (older ones are still in S3)
 		if len(releases) > 15 {
 			releases = releases[:15]
 		}
-		err = setReleases(this.Application.Name, releases)
+		err = setReleases(server.Application.Name, releases)
 		if err != nil {
 			return err
 		}
@@ -734,67 +824,71 @@ func (this *Deployment) deploy() error {
 	return nil
 }
 
-func (this *Deployment) postDeployHooks(err error) {
-	var message string
-	notify := "0"
-	color := "green"
+func (server *Deployment) postDeployHooks(err error) {
+	var (
+		message  string
+		notify   = "0"
+		color    = "green"
+		revision = "."
+	)
 
-	revision := "."
-	if len(this.Revision) > 0 {
-		revision = " (" + this.Revision[0:7] + ")."
+	if len(server.Revision) > 0 {
+		revision = " (" + server.Revision[0:7] + ")."
 	}
 
 	durationFractionStripper, _ := regexp.Compile(`^(.*)\.[0-9]*(s)?$`)
-	duration := durationFractionStripper.ReplaceAllString(time.Since(this.StartedTs).String(), "$1$2")
+	duration := durationFractionStripper.ReplaceAllString(time.Since(server.StartedTs).String(), "$1$2")
 
-	hookUrl, ok := this.Application.Environment["DEPLOYHOOKS_HTTP_URL"]
+	hookUrl, ok := server.Application.Environment["DEPLOYHOOKS_HTTP_URL"]
 	if !ok {
-		fmt.Printf("app '%v' doesn't have a DEPLOYHOOKS_HTTP_URL\n", this.Application.Name)
+		log.Errorf("app %q doesn't have a DEPLOYHOOKS_HTTP_URL", server.Application.Name)
 		return
 	} else if err != nil {
 		task := "Deployment"
-		if this.ScalingOnly {
+		if server.ScalingOnly {
 			task = "Scaling"
 		}
-		message = this.Application.Name + ": " + task + " operation failed after " + duration + ": " + err.Error() + revision
+		message = server.Application.Name + ": " + task + " operation failed after " + duration + ": " + err.Error() + revision
 		notify = "1"
 		color = "red"
-	} else if err == nil && this.ScalingOnly {
+	} else if err == nil && server.ScalingOnly {
 		procInfo := ""
-		err := this.Server.WithApplication(this.Application.Name, func(app *Application, cfg *Config) error {
+		err := server.Server.WithApplication(server.Application.Name, func(app *Application, cfg *Config) error {
 			for proc, val := range app.Processes {
 				procInfo += " " + proc + "=" + strconv.Itoa(val)
 			}
 			return nil
 		})
 		if err != nil {
-			fmt.Printf("warn: postDeployHooks scaling caught: %v", err)
+			log.Warnf("PostDeployHooks scaling caught: %v", err)
 		}
 		if len(procInfo) > 0 {
-			message = "Scaled " + this.Application.Name + " to" + procInfo + " in " + duration + revision
+			message = "Scaled " + server.Application.Name + " to" + procInfo + " in " + duration + revision
 		} else {
-			message = "Scaled down all " + this.Application.Name + " processes down to 0"
+			message = "Scaled down all " + server.Application.Name + " processes down to 0"
 		}
 	} else {
-		message = "Deployed " + this.Application.Name + " " + this.Version + " in " + duration + revision
+		message = "Deployed " + server.Application.Name + " " + server.Version + " in " + duration + revision
 	}
 
 	if strings.HasPrefix(hookUrl, "https://api.hipchat.com/v1/rooms/message") {
 		hookUrl += "&notify=" + notify + "&color=" + color + "&from=ShipBuilder&message_format=text&message=" + url.QueryEscape(message)
-		fmt.Printf("info: dispatching app deployhook url, app=%v url=%v\n", this.Application.Name, hookUrl)
+		log.Infof("Dispatching app deployhook url, app=%v url=%v", server.Application.Name, hookUrl)
 		go http.Get(hookUrl)
 	} else {
-		fmt.Printf("error: unrecognized app deployhook url, app=%v url=%v\n", this.Application.Name, hookUrl)
+		log.Errorf("Unrecognized app deployhook url, app=%v url=%v", server.Application.Name, hookUrl)
 	}
 }
 
-func (this *Deployment) undoVersionBump() {
-	e := Executor{this.Logger}
-	e.DestroyContainer(this.Application.Name + DYNO_DELIMITER + this.Version)
-	this.Server.WithPersistentApplication(this.Application.Name, func(app *Application, cfg *Config) error {
+func (server *Deployment) undoVersionBump() {
+	e := Executor{
+		logger: server.Logger,
+	}
+	e.DestroyContainer(server.Application.Name + DYNO_DELIMITER + server.Version)
+	server.Server.WithPersistentApplication(server.Application.Name, func(app *Application, cfg *Config) error {
 		// If the version hasn't been messed with since we incremented it, go ahead and decrement it because
 		// this deploy has failed.
-		if app.LastDeploy == this.Version {
+		if app.LastDeploy == server.Version {
 			prev, err := app.CalcPreviousVersion()
 			if err != nil {
 				return err
@@ -805,57 +899,53 @@ func (this *Deployment) undoVersionBump() {
 	})
 }
 
-func (this *Deployment) Deploy() error {
+func (server *Deployment) Deploy() error {
 	var err error
 
 	// Cleanup any hanging chads upon error.
 	defer func() {
 		if err != nil {
-			this.undoVersionBump()
+			server.undoVersionBump()
 		}
-		this.postDeployHooks(err)
+		server.postDeployHooks(err)
 	}()
 
-	if !this.ScalingOnly {
-		err = this.createContainer()
-		if err != nil {
+	if !server.ScalingOnly {
+		if err = server.createContainer(); err != nil {
 			return err
 		}
 
-		err = this.build()
-		if err != nil {
+		if err = server.build(); err != nil {
 			return err
 		}
 
-		err = this.archive()
-		if err != nil {
+		if err = server.archive(); err != nil {
 			return err
 		}
 	}
 
-	err = this.deploy()
-	if err != nil {
+	if err = server.deploy(); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (this *Server) Deploy(conn net.Conn, applicationName, revision string) error {
+func (server *Server) Deploy(conn net.Conn, applicationName, revision string) error {
 	deployLock.start()
 	defer deployLock.finish()
 
 	logger := NewTimeLogger(NewMessageLogger(conn))
 	fmt.Fprintf(logger, "Deploying revision %v\n", revision)
 
-	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
+	return server.WithApplication(applicationName, func(app *Application, cfg *Config) error {
 		// Bump version.
-		app, cfg, err := this.IncrementAppVersion(app)
+		app, cfg, err := server.IncrementAppVersion(app)
 		if err != nil {
 			return err
 		}
 		deployment := &Deployment{
-			Server:      this,
+			Server:      server,
 			Logger:      logger,
 			Config:      cfg,
 			Application: app,
@@ -871,25 +961,25 @@ func (this *Server) Deploy(conn net.Conn, applicationName, revision string) erro
 	})
 }
 
-func (this *Server) Redeploy(conn net.Conn, applicationName string) error {
+func (server *Server) Redeploy(conn net.Conn, applicationName string) error {
 	deployLock.start()
 	defer deployLock.finish()
 
 	logger := NewTimeLogger(NewMessageLogger(conn))
 
-	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
+	return server.WithApplication(applicationName, func(app *Application, cfg *Config) error {
 		if app.LastDeploy == "" {
 			// Nothing to redeploy.
 			return fmt.Errorf("Redeploy is not going to happen because this app has not yet had a first deploy")
 		}
 		previousVersion := app.LastDeploy
 		// Bump version.
-		app, cfg, err := this.IncrementAppVersion(app)
+		app, cfg, err := server.IncrementAppVersion(app)
 		if err != nil {
 			return err
 		}
 		deployment := &Deployment{
-			Server:      this,
+			Server:      server,
 			Logger:      logger,
 			Config:      cfg,
 			Application: app,
@@ -911,7 +1001,7 @@ func (this *Server) Redeploy(conn net.Conn, applicationName string) error {
 		}
 		if !found {
 			// Roll back the version bump.
-			err = this.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
+			err = server.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
 				app.LastDeploy = previousVersion
 				return nil
 			})
@@ -925,7 +1015,7 @@ func (this *Server) Redeploy(conn net.Conn, applicationName string) error {
 	})
 }
 
-func (this *Server) Rescale(conn net.Conn, applicationName string, args map[string]string) error {
+func (server *Server) Rescale(conn net.Conn, applicationName string, args map[string]string) error {
 	deployLock.start()
 	defer deployLock.finish()
 
@@ -934,7 +1024,7 @@ func (this *Server) Rescale(conn net.Conn, applicationName string, args map[stri
 	// Calculate scale changes to make.
 	changes := map[string]int{}
 
-	err := this.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
+	err := server.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
 		for processType, newNumDynosStr := range args {
 			newNumDynos, err := strconv.Atoi(newNumDynosStr)
 			if err != nil {
@@ -966,7 +1056,7 @@ func (this *Server) Rescale(conn net.Conn, applicationName string, args map[stri
 	}
 
 	// Apply the changes.
-	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
+	return server.WithApplication(applicationName, func(app *Application, cfg *Config) error {
 		if app.LastDeploy == "" {
 			// Nothing to redeploy.
 			return fmt.Errorf("Rescaling will apply only to future deployments because this app has not yet had a first deploy")
@@ -977,7 +1067,7 @@ func (this *Server) Rescale(conn net.Conn, applicationName string, args map[stri
 		// Temporarily replace Processes with the diff.
 		app.Processes = changes
 		deployment := &Deployment{
-			Server:      this,
+			Server:      server,
 			Logger:      logger,
 			Config:      cfg,
 			Application: app,
@@ -991,17 +1081,19 @@ func (this *Server) Rescale(conn net.Conn, applicationName string, args map[stri
 
 // Stop, start, restart, or get the status for the service for a particular dyno process type for an app.
 // @param action One of "stop", "start" "restart", or "status".
-func (this *Server) ManageProcessState(action string, conn net.Conn, app *Application, processType string) error {
+func (server *Server) ManageProcessState(action string, conn net.Conn, app *Application, processType string) error {
 	// Require that the process type exist in the applications processes map.
 	if _, ok := app.Processes[processType]; !ok {
 		return fmt.Errorf("unrecognized process type: %v", processType)
 	}
-	dynos, err := this.GetRunningDynos(app.Name, processType)
+	dynos, err := server.GetRunningDynos(app.Name, processType)
 	if err != nil {
 		return err
 	}
 	logger := NewLogger(NewTimeLogger(NewMessageLogger(conn)), fmt.Sprintf("[ps:%v] ", action))
-	executor := &Executor{logger}
+	executor := &Executor{
+		logger: logger,
+	}
 	for _, dyno := range dynos {
 		if dyno.Process == processType {
 			if action == "stop" {

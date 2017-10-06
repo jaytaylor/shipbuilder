@@ -12,8 +12,8 @@ import (
 )
 
 // TODO: Add support for opening a console when the app is scaled to 0.
-func (this *Server) Console(conn net.Conn, applicationName string, args []string) error {
-	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
+func (server *Server) Console(conn net.Conn, applicationName string, args []string) error {
+	return server.WithApplication(applicationName, func(app *Application, cfg *Config) error {
 		var err error = nil
 		if app.LastDeploy == "" {
 			return fmt.Errorf("console not unavailable - application has not yet had a first deploy")
@@ -96,4 +96,3 @@ func RandomAlphaNumericString(numSourceBytes int) string {
 	randomString := base64.StdEncoding.EncodeToString(randomBytes)
 	return re.ReplaceAllString(randomString, "")
 }
-

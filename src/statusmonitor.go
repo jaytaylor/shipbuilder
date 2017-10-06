@@ -8,50 +8,44 @@ import (
 	"time"
 )
 
-type (
-	// `Ts`: No need to specify, will be automatically filled by `.ParseStatus()`.
-	NodeStatus struct {
-		Host         string
-		FreeMemoryMb int
-		Containers   []string
-		DeployMarker int
-		Ts           time.Time
-		Err          error
-	}
-	NodeStatusRequest struct {
-		host          string
-		resultChannel chan NodeStatus
-	}
-)
+const STATUS_MONITOR_CHECK_COMMAND = `echo $(free -m | sed '1,2d' | head -n1 | grep --only '[0-9]\+$') $(sudo lxc-ls --fancy | sed 's/[ \t]\{1,\}/ /g' | grep '^[^_]\+_v[0-9]\+_[^_]\+_[^_]\+ [^ ]\+' | cut -d' ' -f1,2 | tr ' ' '_' | tr '\n' ' ')`
 
-const (
-	STATUS_MONITOR_CHECK_COMMAND = `echo $(free -m | sed '1,2d' | head -n1 | grep --only '[0-9]\+$') $(sudo lxc-ls --fancy | sed 's/[ \t]\{1,\}/ /g' | grep '^[^_]\+_v[0-9]\+_[^_]\+_[^_]\+ [^ ]\+' | cut -d' ' -f1,2 | tr ' ' '_' | tr '\n' ' ')`
-)
+var nodeStatusRequestChannel = make(chan NodeStatusRequest)
 
-var (
-	nodeStatusRequestChannel = make(chan NodeStatusRequest)
-)
+type NodeStatus struct {
+	Host         string
+	FreeMemoryMb int
+	Containers   []string
+	DeployMarker int
+	Ts           time.Time // No need to specify, will be automatically filled by `.ParseStatus()`.
+	Err          error
+}
 
-func (this *NodeStatus) ParseStatus(input string, err error) {
+type NodeStatusRequest struct {
+	host          string
+	resultChannel chan NodeStatus
+}
+
+func (ns *NodeStatus) ParseStatus(input string, err error) {
 	if err != nil {
-		this.Err = err
+		ns.Err = err
 		return
 	}
 
 	tokens := strings.Fields(strings.TrimSpace(input))
 	if len(tokens) == 0 {
-		this.Err = fmt.Errorf("Parse failed for input '%v'", input)
+		ns.Err = fmt.Errorf("Parse failed for input '%v'", input)
 		return
 	}
 
-	this.FreeMemoryMb, err = strconv.Atoi(tokens[0])
+	ns.FreeMemoryMb, err = strconv.Atoi(tokens[0])
 	if err != nil {
-		this.Err = fmt.Errorf("Integer conversion failed for token '%v' (tokens=%v)", tokens[0], tokens)
+		ns.Err = fmt.Errorf("Integer conversion failed for token '%v' (tokens=%v)", tokens[0], tokens)
 		return
 	}
 
-	this.Containers = tokens[1:]
-	this.Ts = time.Now()
+	ns.Containers = tokens[1:]
+	ns.Ts = time.Now()
 }
 
 func RemoteCommand(sshHost string, sshArgs ...string) (string, error) {
@@ -98,8 +92,8 @@ func checkServer(sshHost string, currentDeployMarker int, ch chan NodeStatus) {
 	}
 }
 
-func (this *Server) checkNodes(resultChan chan NodeStatus) error {
-	cfg, err := this.getConfig(true)
+func (server *Server) checkNodes(resultChan chan NodeStatus) error {
+	cfg, err := server.getConfig(true)
 	if err != nil {
 		return err
 	}
@@ -111,23 +105,23 @@ func (this *Server) checkNodes(resultChan chan NodeStatus) error {
 	return nil
 }
 
-func (this *Server) monitorNodes() {
+func (server *Server) monitorNodes() {
 	repeater := time.Tick(STATUS_MONITOR_INTERVAL_SECONDS * time.Second)
 	nodeStatusChan := make(chan NodeStatus)
 	hostStatusMap := map[string]NodeStatus{}
 
 	// Kick off the initial checks so we don't have to wait for the next tick.
-	this.checkNodes(nodeStatusChan)
+	server.checkNodes(nodeStatusChan)
 
 	for {
 		select {
 		case <-repeater:
-			this.checkNodes(nodeStatusChan)
+			server.checkNodes(nodeStatusChan)
 
 		case result := <-nodeStatusChan:
 			if deployLock.validateLatest(result.DeployMarker) {
 				hostStatusMap[result.Host] = result
-				this.pruneDynos(result, &hostStatusMap)
+				server.pruneDynos(result, &hostStatusMap)
 			}
 
 		case request := <-nodeStatusRequestChannel:
@@ -146,7 +140,7 @@ func (this *Server) monitorNodes() {
 	}
 }
 
-func (this *Server) getNodeStatus(node *Node) NodeStatus {
+func (*Server) getNodeStatus(node *Node) NodeStatus {
 	request := NodeStatusRequest{node.Host, make(chan NodeStatus)}
 	nodeStatusRequestChannel <- request
 	status := <-request.resultChannel

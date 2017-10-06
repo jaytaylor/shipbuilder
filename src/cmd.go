@@ -5,20 +5,6 @@ import (
 	"strings"
 )
 
-type (
-	ParameterType byte
-	Parameter     struct {
-		Name    string
-		Default interface{}
-		Type    ParameterType
-	}
-	Command struct {
-		ShortName, LongName, ServerName string
-		AppRead, AppWrite               bool
-		Parameters                      []Parameter
-	}
-)
-
 const (
 	Required ParameterType = iota // iota is just like enum
 	Optional
@@ -30,7 +16,21 @@ var (
 	commands = []Command{}
 )
 
-func (this Command) Parse(args []string) ([]interface{}, error) {
+type ParameterType byte
+
+type Parameter struct {
+	Name    string
+	Default interface{}
+	Type    ParameterType
+}
+
+type Command struct {
+	ShortName, LongName, ServerName string
+	AppRead, AppWrite               bool
+	Parameters                      []Parameter
+}
+
+func (c Command) Parse(args []string) ([]interface{}, error) {
 	flags := map[string]string{}
 	mapped := map[string]string{}
 	unassigned := []string{}
@@ -63,8 +63,8 @@ func (this Command) Parse(args []string) ([]interface{}, error) {
 		}
 	}
 
-	final := make([]interface{}, len(this.Parameters))
-	for i, p := range this.Parameters {
+	final := make([]interface{}, len(c.Parameters))
+	for i, p := range c.Parameters {
 		// long form
 		if v, ok := flags[p.Name]; ok {
 			final[i] = v

@@ -6,14 +6,6 @@ import (
 	"io"
 )
 
-type (
-	MessageType byte
-	Message     struct {
-		Type MessageType
-		Body string
-	}
-)
-
 const (
 	Error MessageType = iota + 1
 	Log
@@ -22,6 +14,12 @@ const (
 	ReadLineRequest
 	ReadLineResponse
 )
+
+type MessageType byte
+type Message struct {
+	Type MessageType
+	Body string
+}
 
 func write(dst io.Writer, args ...interface{}) error {
 	var err error

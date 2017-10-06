@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-func (this *Server) Rollback(conn net.Conn, applicationName, version string) error {
-	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
+func (server *Server) Rollback(conn net.Conn, applicationName, version string) error {
+	return server.WithApplication(applicationName, func(app *Application, cfg *Config) error {
 		deployLock.start()
 		defer deployLock.finish()
 
@@ -29,13 +29,13 @@ func (this *Server) Rollback(conn net.Conn, applicationName, version string) err
 		fmt.Fprintf(logger, "Rolling back to %v\n", version)
 
 		// Get the next version.
-		app, cfg, err := this.IncrementAppVersion(app)
+		app, cfg, err := server.IncrementAppVersion(app)
 		if err != nil {
 			return err
 		}
 
 		deployment := &Deployment{
-			Server:      this,
+			Server:      server,
 			Logger:      logger,
 			Config:      cfg,
 			Application: app,

@@ -6,14 +6,14 @@ import (
 	"strings"
 )
 
-func (this *Server) LocalRuntimeTests(conn net.Conn) error {
+func (server *Server) LocalRuntimeTests(conn net.Conn) error {
 	tests := map[string]func() error{
 		"S3 write/read test": TestS3Config,
 	}
 
 	failedTests := []string{}
 
-	logger := this.getLogger(conn)
+	logger := server.getLogger(conn)
 
 	fmt.Fprintf(logger, "== Runtime tests ==\n")
 	for testName, testFn := range tests {

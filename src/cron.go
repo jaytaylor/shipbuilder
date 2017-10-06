@@ -6,58 +6,56 @@ import (
 	"os"
 
 	"github.com/robfig/cron"
+	log "github.com/sirupsen/logrus"
 )
 
-type (
-	CronTask struct {
-		Name     string
-		Schedule string
-		Fn       func(io.Writer) error
-	}
-)
+type CronTask struct {
+	Name     string
+	Schedule string
+	Fn       func(io.Writer) error
+}
 
-func (this *Server) GetCronTasks() []CronTask {
+func (server *Server) GetCronTasks() []CronTask {
 	cronTasks := []CronTask{
 		// ZFS maintenance.
 		CronTask{
 			Name:     "ZfsMaintenance",
 			Schedule: "1 30 7 * * *",
-			Fn:       this.sysPerformZfsMaintenance,
+			Fn:       server.sysPerformZfsMaintenance,
 		},
 		// Orphaned snapshots removal.
 		CronTask{
 			Name:     "OrphanedSnapshots",
 			Schedule: "1 45 * * * *",
-			Fn:       this.sysRemoveOrphanedReleaseSnapshots,
+			Fn:       server.sysRemoveOrphanedReleaseSnapshots,
 		},
 		// Hourly NTP sync.
 		CronTask{
 			Name:     "NtpSync",
 			Schedule: "1 1 * * * *",
-			Fn:       this.sysSyncNtp,
+			Fn:       server.sysSyncNtp,
 		},
 	}
 	return cronTasks
 }
 
-func (this *Server) startCrons() {
+func (server *Server) startCrons() {
 	c := cron.New()
-	fmt.Printf("[cron] Configuring..\n")
-	for _, cronTask := range this.GetCronTasks() {
+	log.Infof("[cron] Configuring..")
+	for _, cronTask := range server.GetCronTasks() {
 		if cronTask.Name == "ZfsMaintenance" && lxcFs != "zfs" {
-			fmt.Printf(`[cron] Refusing to add ZFS maintenance cron task because the lxcFs is actuallty "%v"\n`, lxcFs)
+			log.Infof(`[cron] Refusing to add ZFS maintenance cron task because the lxcFs is actuallty "%v"`, lxcFs)
 			continue
 		}
-		fmt.Printf("[cron] Adding cron task '%v'\n", cronTask.Name)
+		log.Infof("[cron] Adding cron task %q", cronTask.Name)
 		c.AddFunc(cronTask.Schedule, func() {
-			logger := NewLogger(os.Stdout, "["+cronTask.Name+"] ")
-			err := cronTask.Fn(logger)
-			if err != nil {
-				fmt.Printf("cron: %v ended with error=%v\n", cronTask.Name, err)
+			logger := NewLogger(os.Stdout, fmt.Sprintf("[%v]", cronTask.Name))
+			if err := cronTask.Fn(logger); err != nil {
+				log.Errorf("cron: %v ended with error=%v\n", cronTask.Name, err)
 			}
 		})
 	}
-	fmt.Printf("[cron] Starting..\n")
+	log.Infof("[cron] Starting..")
 	c.Start()
-	fmt.Printf("[cron] Cron successfully launched.\n")
+	log.Infof("[cron] Cron successfully launched.")
 }

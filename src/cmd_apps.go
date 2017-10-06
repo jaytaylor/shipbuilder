@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-func (this *Server) validateAppName(applicationName string) error {
+func (server *Server) validateAppName(applicationName string) error {
 	forbiddenNames := []string{"base"}
 	for bp, _ := range BUILD_PACKS {
 		forbiddenNames = append(forbiddenNames, "base-"+bp)
@@ -27,7 +27,7 @@ func (this *Server) validateAppName(applicationName string) error {
 	return nil
 }
 
-func (this *Server) validateBuildPack(buildPack string) error {
+func (server *Server) validateBuildPack(buildPack string) error {
 	_, ok := BUILD_PACKS[buildPack]
 	if !ok {
 		validChoices := []string{}
@@ -39,11 +39,11 @@ func (this *Server) validateBuildPack(buildPack string) error {
 	return nil
 }
 
-func (this *Server) Apps_Create(conn net.Conn, applicationName string, buildPack string) error {
-	return this.WithPersistentConfig(func(cfg *Config) error {
+func (server *Server) Apps_Create(conn net.Conn, applicationName string, buildPack string) error {
+	return server.WithPersistentConfig(func(cfg *Config) error {
 		applicationName = strings.ToLower(applicationName) // Always lowercase.
 
-		err := this.validateAppName(applicationName)
+		err := server.validateAppName(applicationName)
 		if err != nil {
 			return err
 		}
@@ -55,7 +55,7 @@ func (this *Server) Apps_Create(conn net.Conn, applicationName string, buildPack
 			}
 		}
 
-		err = this.validateBuildPack(buildPack)
+		err = server.validateBuildPack(buildPack)
 		if err != nil {
 			return err
 		}
@@ -107,8 +107,8 @@ func (this *Server) Apps_Create(conn net.Conn, applicationName string, buildPack
 	})
 }
 
-func (this *Server) Apps_Destroy(conn net.Conn, applicationName string) error {
-	err := this.validateAppName(applicationName)
+func (server *Server) Apps_Destroy(conn net.Conn, applicationName string) error {
+	err := server.validateAppName(applicationName)
 	if err != nil {
 		return err
 	}
@@ -125,8 +125,8 @@ func (this *Server) Apps_Destroy(conn net.Conn, applicationName string) error {
 		return fmt.Errorf("Incorrect application name entered. Operation aborted.")
 	}
 
-	return this.WithPersistentConfig(func(cfg *Config) error {
-		titleLogger, dimLogger := this.getTitleAndDimLoggers(conn)
+	return server.WithPersistentConfig(func(cfg *Config) error {
+		titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
 		e := Executor{dimLogger}
 
 		if len(applicationName) == 0 {
@@ -186,28 +186,28 @@ func (this *Server) Apps_Destroy(conn net.Conn, applicationName string) error {
 	})
 }
 
-func (this *Server) Apps_Clone(conn net.Conn, oldApplicationName, newApplicationName string) error {
+func (server *Server) Apps_Clone(conn net.Conn, oldApplicationName, newApplicationName string) error {
 	var oldApp *Application
-	err := this.WithApplication(oldApplicationName, func(app *Application, cfg *Config) error {
+	err := server.WithApplication(oldApplicationName, func(app *Application, cfg *Config) error {
 		oldApp = app
 		return nil
 	})
 	if err != nil {
 		return err
 	}
-	err = this.Apps_Create(conn, newApplicationName, oldApp.BuildPack)
+	err = server.Apps_Create(conn, newApplicationName, oldApp.BuildPack)
 	if err != nil {
 		return err
 	}
-	return this.WithPersistentApplication(newApplicationName, func(newApp *Application, cfg *Config) error {
+	return server.WithPersistentApplication(newApplicationName, func(newApp *Application, cfg *Config) error {
 		newApp.Environment = oldApp.Environment
 		newApp.Processes = oldApp.Processes
 		return nil
 	})
 }
 
-func (this *Server) Apps_List(conn net.Conn) error {
-	return this.WithConfig(func(cfg *Config) error {
+func (server *Server) Apps_List(conn net.Conn) error {
+	return server.WithConfig(func(cfg *Config) error {
 		for _, app := range cfg.Applications {
 			Logf(conn, "%v\n", app.Name)
 		}
@@ -215,11 +215,11 @@ func (this *Server) Apps_List(conn net.Conn) error {
 	})
 }
 
-func (this *Server) Apps_Health(conn net.Conn) error {
-	return this.WithConfig(func(cfg *Config) error {
+func (server *Server) Apps_Health(conn net.Conn) error {
+	return server.WithConfig(func(cfg *Config) error {
 		for _, app := range cfg.Applications {
 			for process, numDynos := range app.Processes {
-				dynos, err := this.GetRunningDynos(app.Name, process)
+				dynos, err := server.GetRunningDynos(app.Name, process)
 				status := "passed"
 				message := ""
 				if err != nil {
