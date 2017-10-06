@@ -2,20 +2,19 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
-type (
-	Tunnel struct {
-		*exec.Cmd
-	}
-)
+type Tunnel struct {
+	*exec.Cmd
+}
 
 func OpenTunnel() (Tunnel, error) {
-	fmt.Printf("Client connecting via '%v'..\n", sshHost)
+	log.Infof("Client connecting via %q ..", sshHost)
 
 	sshArgs := append(defaultSshParametersList, "-N", "-L", "9999:127.0.0.1:9999")
 	if len(sshKey) > 0 {
@@ -39,7 +38,7 @@ func OpenTunnel() (Tunnel, error) {
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
-			//fmt.Printf("SSH DEBUG: %v\n", scanner.Text())
+			//log.Debugf("SSH DEBUG: %v", scanner.Text())
 			if strings.Contains(scanner.Text(), "Entering interactive session.") {
 				wait <- nil
 				break
@@ -53,10 +52,10 @@ func OpenTunnel() (Tunnel, error) {
 	return t, <-wait
 }
 
-func (this Tunnel) Close() error {
-	err := this.Process.Signal(os.Interrupt)
+func (tun Tunnel) Close() error {
+	err := tun.Process.Signal(os.Interrupt)
 	if err != nil {
-		err = this.Process.Signal(os.Kill)
+		err = tun.Process.Signal(os.Kill)
 	}
 	return err
 }

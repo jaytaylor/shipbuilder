@@ -7,7 +7,7 @@ import (
 	"github.com/jaytaylor/logserver"
 )
 
-func (this *Server) Logs_Get(conn net.Conn, applicationName, process, filter string) error {
+func (server *Server) Logs_Get(conn net.Conn, applicationName, process, filter string) error {
 	msgLogger := NewMessageLogger(conn)
 	var r *regexp.Regexp
 
@@ -19,7 +19,7 @@ func (this *Server) Logs_Get(conn net.Conn, applicationName, process, filter str
 		}
 	}
 
-	return this.LogServer.StartListener(msgLogger, log.EntryFilter{
+	return server.LogServer.StartListener(msgLogger, log.EntryFilter{
 		Application: applicationName,
 		Process:     process,
 		Data:        r,

@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"text/template"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -641,7 +643,7 @@ backend load_balancer
 	}
 	for _, buildPack := range listing {
 		if buildPack.IsDir() {
-			fmt.Printf("Discovered build-pack: %v\n", buildPack.Name())
+			log.Infof("Discovered build-pack: %v", buildPack.Name())
 			contents, err := ioutil.ReadFile(DIRECTORY + "/build-packs/" + buildPack.Name() + "/pre-hook")
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "fatal: build-pack '%v' missing pre-hook file: %v\n", buildPack.Name(), err)

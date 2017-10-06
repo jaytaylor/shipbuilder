@@ -10,23 +10,6 @@ import (
 	"time"
 )
 
-type (
-	MessageWriter struct {
-		conn net.Conn
-	}
-	Logger struct {
-		writer               io.Writer
-		prefix               func() string
-		suffix               func() string
-		written              bool
-		lastEndedWithNewline bool
-		lock                 sync.Mutex
-	}
-	NilLogger struct{}
-
-	Format byte
-)
-
 const (
 	DIM    Format = 2
 	RED    Format = 31
@@ -34,12 +17,29 @@ const (
 	YELLOW Format = 33
 )
 
-func (this *NilLogger) Write(bs []byte) (int, error) {
+type MessageWriter struct {
+	conn net.Conn
+}
+
+type Logger struct {
+	writer               io.Writer
+	prefix               func() string
+	suffix               func() string
+	written              bool
+	lastEndedWithNewline bool
+	lock                 sync.Mutex
+}
+
+type NilLogger struct{}
+
+type Format byte
+
+func (*NilLogger) Write(bs []byte) (int, error) {
 	return len(bs), nil
 }
 
-func (this *MessageWriter) Write(p []byte) (n int, err error) {
-	err = Send(this.conn, Message{Log, string(p)})
+func (w *MessageWriter) Write(p []byte) (n int, err error) {
+	err = Send(w.conn, Message{Log, string(p)})
 	n = len(p)
 	return
 }
@@ -89,31 +89,33 @@ func NewTimeLogger(writer io.Writer) io.Writer {
 	}
 }
 
-func (this *Logger) Write(bs []byte) (int, error) {
-	this.lock.Lock()
-	defer this.lock.Unlock()
+func (l *Logger) Write(bs []byte) (int, error) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
 
-	prefix := this.prefix()
-	suffix := this.suffix()
+	var (
+		prefix = l.prefix()
+		suffix = l.suffix()
+		final  = bs
+	)
 
-	final := bs
-	if !this.written || this.lastEndedWithNewline {
-		this.written = true
+	if !l.written || l.lastEndedWithNewline {
+		l.written = true
 		final = append([]byte(prefix), final...)
 	}
 	if bytes.HasSuffix(final, []byte{byte('\n')}) {
 		final = final[:len(final)-1]
-		this.lastEndedWithNewline = true
+		l.lastEndedWithNewline = true
 	} else {
-		this.lastEndedWithNewline = false
+		l.lastEndedWithNewline = false
 	}
 	final = bytes.Replace(final, []byte("\r\n"), []byte("\n"), -1)
 	final = bytes.Replace(final, []byte("\n"), []byte(suffix+"\n"+prefix), -1)
-	if this.lastEndedWithNewline {
+	if l.lastEndedWithNewline {
 		final = append(final, []byte(suffix)...)
 		final = append(final, '\n')
 	}
-	n, err := this.writer.Write(final)
+	n, err := l.writer.Write(final)
 	if n > len(bs) {
 		n = len(bs)
 	}

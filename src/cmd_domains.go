@@ -6,11 +6,11 @@ import (
 	"strings"
 )
 
-func (this *Server) Domains_Add(conn net.Conn, applicationName string, domains []string) error {
-	titleLogger, dimLogger := this.getTitleAndDimLoggers(conn)
+func (server *Server) Domains_Add(conn net.Conn, applicationName string, domains []string) error {
+	titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
 	fmt.Fprintf(titleLogger, "=== Adding domains to %v\n", applicationName)
 
-	err := this.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
+	err := server.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
 		fmt.Fprintf(dimLogger, "new=%v\n", domains)
 		for _, domain := range domains {
 			if len(domain) > 0 {
@@ -46,14 +46,14 @@ func (this *Server) Domains_Add(conn net.Conn, applicationName string, domains [
 		return err
 	}
 	e := &Executor{dimLogger}
-	return this.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
+	return server.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
 }
 
-func (this *Server) Domains_List(conn net.Conn, applicationName string) error {
-	titleLogger, dimLogger := this.getTitleAndDimLoggers(conn)
+func (server *Server) Domains_List(conn net.Conn, applicationName string) error {
+	titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
 	fmt.Fprintf(titleLogger, "=== Domains for %v\n", applicationName)
 
-	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
+	return server.WithApplication(applicationName, func(app *Application, cfg *Config) error {
 		for _, domain := range app.Domains {
 			fmt.Fprintf(dimLogger, "%v\n", domain)
 		}
@@ -61,11 +61,11 @@ func (this *Server) Domains_List(conn net.Conn, applicationName string) error {
 	})
 }
 
-func (this *Server) Domains_Remove(conn net.Conn, applicationName string, domains []string) error {
-	titleLogger, dimLogger := this.getTitleAndDimLoggers(conn)
+func (server *Server) Domains_Remove(conn net.Conn, applicationName string, domains []string) error {
+	titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
 	fmt.Fprintf(titleLogger, "=== Removing domains from %v\n", applicationName)
 
-	err := this.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
+	err := server.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
 		nDomains := []string{}
 		for _, existing := range app.Domains {
 			removalRequested := false
@@ -88,5 +88,5 @@ func (this *Server) Domains_Remove(conn net.Conn, applicationName string, domain
 		return err
 	}
 	e := &Executor{dimLogger}
-	return this.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
+	return server.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
 }

@@ -6,18 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"os/exec"
 	"reflect"
 	"strings"
 
+	log "github.com/sirupsen/logrus"
 	//"code.google.com/p/go.crypto/ssh/terminal"
-)
-
-type (
-	Client struct{}
 )
 
 const (
@@ -26,12 +22,14 @@ const (
 	STDERR_FD = 2
 )
 
+type Client struct{}
+
 func fail(format string, args ...interface{}) {
 	fmt.Printf("\033[%vm%v\033[0m\n", RED, fmt.Sprintf(format, args...))
 	os.Exit(1)
 }
 
-func (this *Client) send(msg Message) error {
+func (*Client) send(msg Message) error {
 	//fmt.Printf("CLIENT DEBUG: msg=%v\n", msg)
 	// Open a tunnel if necessary
 	/*if terminal.IsTerminal(STDOUT_FD) {
@@ -100,9 +98,11 @@ func (this *Client) send(msg Message) error {
 	return nil
 }
 
-func (this *Client) Do(args []string) {
-	local := &Local{}
-	localType := reflect.TypeOf(local)
+func (client *Client) Do(args []string) {
+	var (
+		local     = &Local{}
+		localType = reflect.TypeOf(local)
+	)
 
 	for _, cmd := range commands {
 		if args[1] == cmd.ShortName || args[1] == cmd.LongName {
@@ -140,7 +140,7 @@ func (this *Client) Do(args []string) {
 			}*/
 
 			bs, _ := json.Marshal(append([]interface{}{cmd.ServerName}, parsed...))
-			err = this.send(Message{Call, string(bs)})
+			err = client.send(Message{Call, string(bs)})
 			if err != nil {
 				fail("%v", err)
 				return

@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func (this *Server) SyncContainer(e Executor, address string, container string, cloneOrCreateArgs ...string) error {
+func (server *Server) SyncContainer(e Executor, address string, container string, cloneOrCreateArgs ...string) error {
 	e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+address, "sudo lxc-stop -k -n "+container+";sudo lxc-destroy -n "+container)
 	err := e.Run("ssh", append(
 		[]string{
@@ -46,11 +46,11 @@ func (this *Server) SyncContainer(e Executor, address string, container string, 
 	return nil
 }
 
-func (this *Server) addNode(addAddress string, logger io.Writer) (string, error) {
+func (server *Server) addNode(addAddress string, logger io.Writer) (string, error) {
 	prefixLogger := NewLogger(logger, "["+addAddress+"] ")
 	e := Executor{prefixLogger}
 	fmt.Fprintf(prefixLogger, "Transmitting base LXC container image to node: %v\n", addAddress)
-	err := this.SyncContainer(e, addAddress, "base", "lxc-create", "-n", "base", "-B", lxcFs, "-t", "ubuntu")
+	err := server.SyncContainer(e, addAddress, "base", "lxc-create", "-n", "base", "-B", lxcFs, "-t", "ubuntu")
 	if err != nil {
 		return addAddress, err
 	}
@@ -58,7 +58,7 @@ func (this *Server) addNode(addAddress string, logger io.Writer) (string, error)
 	for buildPack, _ := range BUILD_PACKS {
 		nContainer := "base-" + buildPack
 		fmt.Fprintf(prefixLogger, "Transmitting build-pack '%v' LXC container image to node: %v\n", nContainer, addAddress)
-		err = this.SyncContainer(e, addAddress, nContainer, "lxc-clone", "-s", "-B", lxcFs, "-o", "base", "-n", nContainer)
+		err = server.SyncContainer(e, addAddress, nContainer, "lxc-clone", "-s", "-B", lxcFs, "-o", "base", "-n", nContainer)
 		if err != nil {
 			return addAddress, err
 		}
@@ -68,7 +68,7 @@ func (this *Server) addNode(addAddress string, logger io.Writer) (string, error)
 
 // Require that the node name does not contain the word "backend",
 // as it would break Server.dynoRoutingActive().
-func (this *Server) validateNodeNames(addresses *[]string) error {
+func (server *Server) validateNodeNames(addresses *[]string) error {
 	for _, address := range *addresses {
 		if strings.Contains(strings.ToLower(address), "backend") {
 			return fmt.Errorf(`Invalid name "%v", must not contain "backend"`, address)
@@ -77,8 +77,8 @@ func (this *Server) validateNodeNames(addresses *[]string) error {
 	return nil
 }
 
-func (this *Server) Node_Add(conn net.Conn, addresses []string) error {
-	err := this.validateNodeNames(&addresses)
+func (server *Server) Node_Add(conn net.Conn, addresses []string) error {
+	err := server.validateNodeNames(&addresses)
 	if err != nil {
 		return err
 	}
@@ -91,17 +91,17 @@ func (this *Server) Node_Add(conn net.Conn, addresses []string) error {
 	addChannel := make(chan AddResult)
 
 	addNodeWrapper := func(addAddress string, logger io.Writer) {
-		result, err := this.addNode(addAddress, logger)
+		result, err := server.addNode(addAddress, logger)
 		addChannel <- AddResult{result, err}
 	}
 
 	addresses = replaceLocalhostWithSystemIp(&addresses)
 
-	titleLogger, dimLogger := this.getTitleAndDimLoggers(conn)
+	titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
 
 	fmt.Fprintf(titleLogger, "=== Adding Nodes\n\n")
 
-	return this.WithPersistentConfig(func(cfg *Config) error {
+	return server.WithPersistentConfig(func(cfg *Config) error {
 		numRemaining := 0
 
 		for _, addAddress := range addresses {
@@ -147,14 +147,14 @@ func (this *Server) Node_Add(conn net.Conn, addresses []string) error {
 	})
 }
 
-func (this *Server) Node_List(conn net.Conn) error {
-	titleLogger, dimLogger := this.getTitleAndDimLoggers(conn)
+func (server *Server) Node_List(conn net.Conn) error {
+	titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
 
 	fmt.Fprintf(titleLogger, "=== System Nodes\n\n")
 
-	return this.WithConfig(func(cfg *Config) error {
+	return server.WithConfig(func(cfg *Config) error {
 		for _, node := range cfg.Nodes {
-			nodeStatus := this.getNodeStatus(node)
+			nodeStatus := server.getNodeStatus(node)
 			if nodeStatus.Err == nil {
 				fmt.Fprintf(dimLogger, "%v (%vMB free)\n", node.Host, nodeStatus.FreeMemoryMb)
 				for _, application := range nodeStatus.Containers {
@@ -169,14 +169,14 @@ func (this *Server) Node_List(conn net.Conn) error {
 	})
 }
 
-func (this *Server) Node_Remove(conn net.Conn, addresses []string) error {
+func (server *Server) Node_Remove(conn net.Conn, addresses []string) error {
 	addresses = replaceLocalhostWithSystemIp(&addresses)
 
-	titleLogger, dimLogger := this.getTitleAndDimLoggers(conn)
+	titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
 
 	fmt.Fprintf(titleLogger, "=== Removing Nodes\n\n")
 
-	return this.WithPersistentConfig(func(cfg *Config) error {
+	return server.WithPersistentConfig(func(cfg *Config) error {
 		nNodes := []*Node{}
 		for _, node := range cfg.Nodes {
 			keep := true

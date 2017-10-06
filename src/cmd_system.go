@@ -8,26 +8,26 @@ import (
 	"time"
 )
 
-func (this *Server) System_ZfsCleanup(conn net.Conn) error {
-	logger := NewLogger(this.getLogger(conn), "[ZfsMaintenance] ")
-	err := this.sysPerformZfsMaintenance(logger)
+func (server *Server) System_ZfsCleanup(conn net.Conn) error {
+	logger := NewLogger(server.getLogger(conn), "[ZfsMaintenance] ")
+	err := server.sysPerformZfsMaintenance(logger)
 	return err
 }
 
-func (this *Server) System_SnapshotsCleanup(conn net.Conn) error {
-	logger := NewLogger(this.getLogger(conn), "[OrphanedSnapshots] ")
-	err := this.sysRemoveOrphanedReleaseSnapshots(logger)
+func (server *Server) System_SnapshotsCleanup(conn net.Conn) error {
+	logger := NewLogger(server.getLogger(conn), "[OrphanedSnapshots] ")
+	err := server.sysRemoveOrphanedReleaseSnapshots(logger)
 	return err
 }
 
-func (this *Server) System_NtpSync(conn net.Conn) error {
-	logger := NewLogger(this.getLogger(conn), "[NtpSync] ")
-	err := this.sysSyncNtp(logger)
+func (server *Server) System_NtpSync(conn net.Conn) error {
+	logger := NewLogger(server.getLogger(conn), "[NtpSync] ")
+	err := server.sysSyncNtp(logger)
 	return err
 }
 
 // Cleanup any ZFS containers identified as stragglers.
-func (this *Server) sysPerformZfsMaintenance(logger io.Writer) error {
+func (server *Server) sysPerformZfsMaintenance(logger io.Writer) error {
 	if lxcFs != "zfs" {
 		return fmt.Errorf(`This command requires the LXC filesystem type to be "zfs", but instead found "%v"`, lxcFs)
 	}
@@ -45,7 +45,7 @@ func (this *Server) sysPerformZfsMaintenance(logger io.Writer) error {
 
 	e := Executor{logger}
 
-	err = this.WithConfig(func(cfg *Config) error {
+	err = server.WithConfig(func(cfg *Config) error {
 		for _, node := range cfg.Nodes {
 			fmt.Fprintf(logger, "Starting ZFS maintenance for node=%v\n", node.Host)
 			err = e.Run("rsync", "-azve", "ssh "+DEFAULT_SSH_PARAMETERS, maintenanceScriptPath, "root@"+node.Host+":"+maintenanceScriptPath)
@@ -70,7 +70,7 @@ func (this *Server) sysPerformZfsMaintenance(logger io.Writer) error {
 }
 
 // Remove any orphaned release snapshot archives which are more than 2 hours old.
-func (this *Server) sysRemoveOrphanedReleaseSnapshots(logger io.Writer) error {
+func (server *Server) sysRemoveOrphanedReleaseSnapshots(logger io.Writer) error {
 	deployLock.start()
 	defer deployLock.finish()
 
@@ -82,9 +82,9 @@ func (this *Server) sysRemoveOrphanedReleaseSnapshots(logger io.Writer) error {
 }
 
 // Get all hostnames of the members of this ShipBuilder cluster.  Includes all nodes and load-balancers.
-func (this *Server) GetClusterHosts() ([]string, error) {
+func (server *Server) GetClusterHosts() ([]string, error) {
 	var clusterHosts []string
-	err := this.WithConfig(func(cfg *Config) error {
+	err := server.WithConfig(func(cfg *Config) error {
 		clusterHosts = cfg.LoadBalancers
 		for _, node := range cfg.Nodes {
 			clusterHosts = append(clusterHosts, node.Host)
@@ -101,7 +101,7 @@ func SyncNtpForHost(host string, logger io.Writer) error {
 	return err
 }
 
-func (this *Server) sysSyncNtp(logger io.Writer) error {
+func (server *Server) sysSyncNtp(logger io.Writer) error {
 	// sudo service ntp stop && sudo /usr/sbin/ntpdate 0.pool.ntp.org 1.pool.ntp.org time.apple.com time.windows.com && sudo service ntp start
 
 	type SyncResult struct {
@@ -109,7 +109,7 @@ func (this *Server) sysSyncNtp(logger io.Writer) error {
 		err  error
 	}
 
-	clusterHosts, err := this.GetClusterHosts()
+	clusterHosts, err := server.GetClusterHosts()
 	if err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func (this *Server) sysSyncNtp(logger io.Writer) error {
 			go func() { c <- SyncNtpForHost(host, logger) }()
 			go func() {
 				time.Sleep(NODE_SYNC_TIMEOUT_SECONDS * time.Second)
-				c <- fmt.Errorf("Sync operation to host '%v' timed out after %v seconds", host, NODE_SYNC_TIMEOUT_SECONDS)
+				c <- fmt.Errorf("Sync operation to host %q timed out after %v seconds", host, NODE_SYNC_TIMEOUT_SECONDS)
 			}()
 			// Block until chan has something, at which point syncStep will be notified.
 			syncStep <- SyncResult{host, <-c}

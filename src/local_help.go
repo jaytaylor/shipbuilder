@@ -21,7 +21,7 @@ func init() {
 	}
 }
 
-func (this *Local) Help(command string) {
+func (*Local) Help(command string) {
 	if command == "" {
 		fmt.Print(help)
 		return

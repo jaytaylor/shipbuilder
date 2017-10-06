@@ -8,6 +8,7 @@ import (
 	//"strconv"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"launchpad.net/goamz/aws"
 	"launchpad.net/goamz/s3"
 )
@@ -19,9 +20,7 @@ type Release struct {
 	Config   map[string]string
 }
 
-var (
-	awsAuth aws.Auth = aws.Auth{awsKey, awsSecret}
-)
+var awsAuth aws.Auth = aws.Auth{awsKey, awsSecret}
 
 func getS3Bucket() *s3.Bucket {
 	return s3.New(awsAuth, awsRegion).Bucket(s3BucketName)
@@ -40,7 +39,7 @@ func getS3Bucket() *s3.Bucket {
 		}
 		version = fmt.Sprint("v", v+1)
 	}
-	fmt.Printf("Next version for %v will be %v", applicationName, version)
+	log.Infof("Next version for %v will be %v", applicationName, version)
 	return version, nil
 }*/
 
@@ -54,7 +53,7 @@ func getReleases(applicationName string) ([]Release, error) {
 			if err != nil {
 				return releases, err
 			}
-			fmt.Printf("warn: getReleases S3 key was missing for application \"%v\", so an empty releases list was set", applicationName)
+			log.Warnf("getReleases S3 key was missing for application \"%v\", so an empty releases list was set", applicationName)
 			return []Release{}, err
 		}
 		return releases, err
@@ -88,7 +87,7 @@ func delReleases(applicationName string, logger io.Writer) error {
 	return nil
 }
 
-func (this *Server) Releases_List(conn net.Conn, applicationName string) error {
+func (*Server) Releases_List(conn net.Conn, applicationName string) error {
 	releases, err := getReleases(applicationName)
 	if err != nil {
 		Logf(conn, "%v", err)
@@ -99,6 +98,6 @@ func (this *Server) Releases_List(conn net.Conn, applicationName string) error {
 	}
 	return nil
 }
-func (this *Server) Releases_Info(conn net.Conn, applicationName, version string) error {
+func (*Server) Releases_Info(conn net.Conn, applicationName, version string) error {
 	return fmt.Errorf("not implemented")
 }

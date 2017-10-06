@@ -13,33 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jaytaylor/logserver"
+	lslog "github.com/jaytaylor/logserver"
+	log "github.com/sirupsen/logrus"
 	"launchpad.net/goamz/aws"
-)
-
-type (
-	Application struct {
-		Name          string
-		Domains       []string
-		BuildPack     string
-		Environment   map[string]string
-		Processes     map[string]int
-		LastDeploy    string
-		Maintenance   bool
-		Drains        []string
-		SshPrivateKey *string
-	}
-	Node struct {
-		Host string
-	}
-	Config struct {
-		LoadBalancers []string
-		Nodes         []*Node
-		Port          int
-		GitRoot       string
-		LxcRoot       string
-		Applications  []*Application
-	}
 )
 
 const (
@@ -61,9 +37,7 @@ const (
 	DEFAULT_SSH_PARAMETERS             = "-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30" // NB: Notice 30s connect timeout.
 )
 
-var (
-	defaultSshParametersList = strings.Split(DEFAULT_SSH_PARAMETERS, " ")
-)
+var defaultSshParametersList = strings.Split(DEFAULT_SSH_PARAMETERS, " ")
 
 // LDFLAGS can be specified by compiling with `-ldflags '-X main.defaultSshHost=.. ...'`.
 var (
@@ -102,44 +76,69 @@ var (
 	ntpSyncCommand = "sudo service ntp stop && sudo /usr/sbin/ntpdate " + ntpServers + " && sudo service ntp start"
 )
 
-func (this *Application) LxcDir() string {
-	return LXC_DIR + "/" + this.Name
+type Application struct {
+	Name          string
+	Domains       []string
+	BuildPack     string
+	Environment   map[string]string
+	Processes     map[string]int
+	LastDeploy    string
+	Maintenance   bool
+	Drains        []string
+	SshPrivateKey *string
 }
-func (this *Application) RootFsDir() string {
-	return LXC_DIR + "/" + this.Name + "/rootfs"
+
+type Node struct {
+	Host string
 }
-func (this *Application) AppDir() string {
-	return this.RootFsDir() + APP_DIR
+
+type Config struct {
+	LoadBalancers []string
+	Nodes         []*Node
+	Port          int
+	GitRoot       string
+	LxcRoot       string
+	Applications  []*Application
 }
-func (this *Application) SrcDir() string {
-	return this.AppDir() + "/src"
+
+func (app *Application) LxcDir() string {
+	return LXC_DIR + "/" + app.Name
 }
-func (this *Application) LocalAppDir() string {
+func (app *Application) RootFsDir() string {
+	return LXC_DIR + "/" + app.Name + "/rootfs"
+}
+func (app *Application) AppDir() string {
+	return app.RootFsDir() + APP_DIR
+}
+func (app *Application) SrcDir() string {
+	return app.AppDir() + "/src"
+}
+func (app *Application) LocalAppDir() string {
 	return APP_DIR
 }
-func (this *Application) LocalSrcDir() string {
+func (app *Application) LocalSrcDir() string {
 	return APP_DIR + "/src"
 }
-func (this *Application) SshDir() string {
-	return this.SrcDir() + "/.ssh"
+func (app *Application) SshDir() string {
+	return app.SrcDir() + "/.ssh"
 }
-func (this *Application) SshPrivateKeyFilePath() string {
-	return this.SshDir() + "/id_rsa"
+func (app *Application) SshPrivateKeyFilePath() string {
+	return app.SshDir() + "/id_rsa"
 }
-func (this *Application) BaseContainerName() string {
-	return "base-" + this.BuildPack
+func (app *Application) BaseContainerName() string {
+	return "base-" + app.BuildPack
 }
-func (this *Application) GitDir() string {
-	return GIT_DIRECTORY + "/" + this.Name
+func (app *Application) GitDir() string {
+	return GIT_DIRECTORY + "/" + app.Name
 }
-func (this *Application) LastDeployNumber() (int, error) {
-	return strconv.Atoi(strings.TrimPrefix(this.LastDeploy, "v"))
+func (app *Application) LastDeployNumber() (int, error) {
+	return strconv.Atoi(strings.TrimPrefix(app.LastDeploy, "v"))
 }
 
 // Get total requested number of Dynos (based on Processes).
-func (this *Application) TotalRequestedDynos() int {
+func (app *Application) TotalRequestedDynos() int {
 	n := 0
-	for _, value := range this.Processes {
+	for _, value := range app.Processes {
 		if value > 0 { // Ensure negative values are never added.
 			n += value
 		}
@@ -150,43 +149,43 @@ func (this *Application) TotalRequestedDynos() int {
 // Get any valid domain for the app.  HAProxy will use this to formulate checks which are maximally valid, compliant and compatible.
 // Note: Not a pointer because this needs to be available for invocation from inside templates.
 // Also see: http://stackoverflow.com/questions/10200178/call-a-method-from-a-go-template
-func (this *Application) FirstDomain() string {
-	if len(this.Domains) > 0 {
-		return this.Domains[0]
+func (app *Application) FirstDomain() string {
+	if len(app.Domains) > 0 {
+		return app.Domains[0]
 	} else {
 		return "example.com"
 	}
 }
 
 // Entire maintenance page URL (e.g. "http://example.com/static/maintenance.html").
-func (this *Application) MaintenancePageUrl() string {
-	maintenanceUrl, ok := this.Environment["MAINTENANCE_PAGE_URL"]
+func (app *Application) MaintenancePageUrl() string {
+	maintenanceUrl, ok := app.Environment["MAINTENANCE_PAGE_URL"]
 	if ok {
 		return maintenanceUrl
 	}
 	// Fall through to searching for a universal maintenance page URL in an environment variable, and
 	// defaulting to a potentially useful page.
-	return ConfigFromEnv("SB_DEFAULT_MAINTENANCE_URL", "http://www.downforeveryoneorjustme.com/"+this.FirstDomain())
+	return ConfigFromEnv("SB_DEFAULT_MAINTENANCE_URL", "http://www.downforeveryoneorjustme.com/"+app.FirstDomain())
 }
 
 // Maintenance page URL path. (e.g. "/static/maintenance.html").
-func (this *Application) MaintenancePageFullPath() string {
-	maintenanceUrl := this.MaintenancePageUrl()
+func (app *Application) MaintenancePageFullPath() string {
+	maintenanceUrl := app.MaintenancePageUrl()
 	if len(maintenanceUrl) < 3 {
-		fmt.Printf("error :: Application.MaintenancePageFullPath :: url too short: '%v'\n", maintenanceUrl)
+		log.Errorf("Application.MaintenancePageFullPath :: url too short: '%v'\n", maintenanceUrl)
 		return maintenanceUrl
 	}
 	u, err := url.Parse(maintenanceUrl)
 	if err != nil {
-		fmt.Printf("error :: Application.MaintenancePageFullPath :: %v: '%v'\n", err, maintenanceUrl)
+		log.Errorf("Application.MaintenancePageFullPath :: %v: '%v'\n", err, maintenanceUrl)
 		return "/"
 	}
 	return u.Path
 }
 
 // Maintenance page URL without the document name (e.g. "/static/).
-func (this *Application) MaintenancePageBasePath() string {
-	path := this.MaintenancePageFullPath()
+func (app *Application) MaintenancePageBasePath() string {
+	path := app.MaintenancePageFullPath()
 	i := strings.LastIndex(path, "/")
 	if i == -1 || len(path) == 1 {
 		return path
@@ -195,54 +194,54 @@ func (this *Application) MaintenancePageBasePath() string {
 }
 
 // Maintenance page URL domain-name. (e.g. "example.com").
-func (this *Application) MaintenancePageDomain() string {
-	maintenanceUrl := this.MaintenancePageUrl()
+func (app *Application) MaintenancePageDomain() string {
+	maintenanceUrl := app.MaintenancePageUrl()
 	if len(maintenanceUrl) < 3 {
-		fmt.Printf("error :: Application.MaintenancePageDomain :: url too short: '%v'\n", maintenanceUrl)
+		log.Errorf("Application.MaintenancePageDomain :: url too short: '%v'\n", maintenanceUrl)
 		return maintenanceUrl
 	}
 	u, err := url.Parse(maintenanceUrl)
 	if err != nil {
-		fmt.Printf("error :: Application.MaintenancePageDomain :: %v: '%v'\n", err, maintenanceUrl)
+		log.Errorf("Application.MaintenancePageDomain :: %v: '%v'\n", err, maintenanceUrl)
 		return "domain-parse-failed"
 	}
 	return u.Host
 }
 
-func (this *Application) NextVersion() (string, error) {
-	if this.LastDeploy == "" {
+func (app *Application) NextVersion() (string, error) {
+	if app.LastDeploy == "" {
 		return "v1", nil
 	}
-	current, err := strconv.Atoi(this.LastDeploy[1:])
+	current, err := strconv.Atoi(app.LastDeploy[1:])
 	if err != nil {
 		return "", err
 	}
 	return "v" + strconv.Itoa(current+1), nil
 }
-func (this *Application) CalcPreviousVersion() (string, error) {
-	if this.LastDeploy == "" || this.LastDeploy == "v1" {
+func (app *Application) CalcPreviousVersion() (string, error) {
+	if app.LastDeploy == "" || app.LastDeploy == "v1" {
 		return "", nil
 	}
-	v, err := strconv.Atoi(this.LastDeploy[1:])
+	v, err := strconv.Atoi(app.LastDeploy[1:])
 	if err != nil {
 		return "", err
 	}
 	return "v" + strconv.Itoa(v-1), nil
 }
-func (this *Application) CreateBaseContainerIfMissing(e *Executor) error {
-	if !e.ContainerExists(this.Name) {
-		return e.CloneContainer(this.BaseContainerName(), this.Name)
+func (app *Application) CreateBaseContainerIfMissing(e *Executor) error {
+	if !e.ContainerExists(app.Name) {
+		return e.CloneContainer(app.BaseContainerName(), app.Name)
 	}
 	return nil
 }
 
-func (this *Server) IncrementAppVersion(app *Application) (*Application, *Config, error) {
+func (server *Server) IncrementAppVersion(app *Application) (*Application, *Config, error) {
 	var updatedApp *Application
 	var updatedCfg *Config
 
-	err := this.WithPersistentApplication(app.Name, func(app *Application, cfg *Config) error {
+	err := server.WithPersistentApplication(app.Name, func(app *Application, cfg *Config) error {
 		nextVersion, err := app.NextVersion()
-		fmt.Printf("NEXT VERSION OF %v -> %v\n", app.Name, nextVersion)
+		log.Infof("NEXT VERSION OF %v -> %v\n", app.Name, nextVersion)
 		if err != nil {
 			return err
 		}
@@ -255,7 +254,7 @@ func (this *Server) IncrementAppVersion(app *Application) (*Application, *Config
 }
 
 // Only to be invoked by safe locking getters/setters, never externally!!!
-func (this *Server) getConfig(lock bool) (*Config, error) {
+func (*Server) getConfig(lock bool) (*Config, error) {
 	if lock {
 		configLock.Lock()
 		defer configLock.Unlock()
@@ -287,7 +286,8 @@ func (this *Server) getConfig(lock bool) (*Config, error) {
 }
 
 // IMPORTANT: Only to be invoked by `WithPersistentConfig`.
-func (this *Server) writeConfig(config *Config) error {
+// TODO: Check for ignored errors.
+func (*Server) writeConfig(config *Config) error {
 	f, err := os.Create(CONFIG)
 	if err != nil {
 		return err
@@ -301,83 +301,82 @@ func (this *Server) writeConfig(config *Config) error {
 }
 
 // Obtains the config lock, then applies the passed function which can mutate the config, then writes out the changes.
-func (this *Server) WithPersistentConfig(fn func(*Config) error) error {
+func (server *Server) WithPersistentConfig(fn func(*Config) error) error {
 	configLock.Lock()
 	defer configLock.Unlock()
 
-	cfg, err := this.getConfig(false)
+	cfg, err := server.getConfig(false)
 	if err != nil {
 		return err
 	}
-	err = fn(cfg)
-	if err != nil {
+	if err := fn(cfg); err != nil {
 		return err
 	}
-	err = this.writeConfig(cfg)
-	if err != nil {
+	if err := server.writeConfig(cfg); err != nil {
 		return err
 	}
 	return nil
 }
 
 // Reads the config and invokes the passed function with it.  Does not store any config changes.
-func (this *Server) WithConfig(fn func(*Config) error) error {
-	cfg, err := this.getConfig(true)
+func (server *Server) WithConfig(fn func(*Config) error) error {
+	cfg, err := server.getConfig(true)
 	if err != nil {
 		return err
 	}
-	err = fn(cfg)
-	if err != nil {
+	if err := fn(cfg); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (this *Server) WithPersistentApplication(name string, fn func(*Application, *Config) error) error {
-	return this.WithPersistentConfig(func(cfg *Config) error {
+func (server *Server) WithPersistentApplication(name string, fn func(*Application, *Config) error) error {
+	return server.WithPersistentConfig(func(cfg *Config) error {
 		for _, app := range cfg.Applications {
 			if app.Name == name {
 				return fn(app, cfg)
 			}
 		}
-		return fmt.Errorf("Unknown application: %v", name)
+		return fmt.Errorf("unknown application: %v", name)
 	})
 }
 
-func (this *Server) WithApplication(name string, fn func(*Application, *Config) error) error {
-	return this.WithConfig(func(cfg *Config) error {
+func (server *Server) WithApplication(name string, fn func(*Application, *Config) error) error {
+	return server.WithConfig(func(cfg *Config) error {
 		for _, app := range cfg.Applications {
 			if app.Name == name {
 				return fn(app, cfg)
 			}
 		}
-		return fmt.Errorf("Unknown application: %v", name)
+		return fmt.Errorf("unknown application: %v", name)
 	})
 }
 
-// Returns the ShipBuilder log server ip:port to send HAProxy UDP logs to.
-// Autmatically takes care of transforming ssh hostname into just a hostname.
-func (this *Server) ResolveLogServerIpAndPort() (string, error) {
+// ResolveLogServerIpAndPortr eturns the ShipBuilder log server ip:port to send
+// HAProxy UDP logs to.  Autmatically takes care of transforming ssh hostname
+// into just a hostname.
+func (*Server) ResolveLogServerIpAndPort() (string, error) {
 	hostname := sshHost[int(math.Max(float64(strings.Index(sshHost, "@")+1), 0)):]
 	ipAddr, err := net.ResolveIPAddr("ip", hostname)
 	if err != nil {
 		return "", err
 	}
 	ip := ipAddr.IP.String()
-	port := strconv.Itoa(log.Port)
+	port := strconv.Itoa(lslog.Port)
 	return ip + ":" + port, nil
 }
 
-func (this *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDynos []Dyno) error {
+// TODO: Check for ignored errors.
+func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDynos []Dyno) error {
 	syncLoadBalancerLock.Lock()
 	defer syncLoadBalancerLock.Unlock()
 
-	cfg, err := this.getConfig(true)
+	cfg, err := server.getConfig(true)
 	if err != nil {
 		return err
 	}
 
-	logServerIpAndPort, err := this.ResolveLogServerIpAndPort()
+	logServerIpAndPort, err := server.ResolveLogServerIpAndPort()
 	if err != nil {
 		return err
 	}
@@ -425,7 +424,7 @@ func (this *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDynos 
 		for proc, _ := range app.Processes {
 			if proc == "web" {
 				// Find and don't add `removeDynos`.
-				runningDynos, err := this.GetRunningDynos(app.Name, proc)
+				runningDynos, err := server.GetRunningDynos(app.Name, proc)
 				if err != nil {
 					return err
 				}
@@ -480,7 +479,7 @@ func (this *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDynos 
 	}
 
 	// Save it to the load balancer
-	f, err := os.OpenFile("/tmp/haproxy.cfg", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0x666)
+	f, err := os.OpenFile("/tmp/haproxy.cfg", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(int(0666)))
 	if err != nil {
 		return err
 	}
@@ -550,7 +549,7 @@ func (this *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDynos 
 	if err != nil {
 		return err
 	}
-	this.currentLoadBalancerConfig = cfgBuffer.String()
+	server.currentLoadBalancerConfig = cfgBuffer.String()
 
 	// Pause briefly to ensure HAProxy has time to complete it's reload.
 	time.Sleep(time.Second * 1)
@@ -561,29 +560,30 @@ func (this *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDynos 
 // The first time this method is invoked the current config will read from a load-balancer, if one is available.
 // Subsequent invocations will use the current version.
 // After a deployment, the `SyncLoadBalancers` method automatically updates `currentLoadBalancerConfig`.
-func (this *Server) GetActiveLoadBalancerConfig() (string, error) {
-	if len(this.currentLoadBalancerConfig) == 0 {
-		cfg, err := this.getConfig(true)
+func (server *Server) GetActiveLoadBalancerConfig() (string, error) {
+	if len(server.currentLoadBalancerConfig) == 0 {
+		cfg, err := server.getConfig(true)
 		if err != nil {
-			return this.currentLoadBalancerConfig, err
+			return server.currentLoadBalancerConfig, err
 		}
 		if len(cfg.LoadBalancers) == 0 {
-			return this.currentLoadBalancerConfig, fmt.Errorf("There are currently no load-balancers configured to pull LB config from")
+			return server.currentLoadBalancerConfig, fmt.Errorf("There are currently no load-balancers configured to pull LB config from")
 		}
 
 		syncLoadBalancerLock.Lock()
 		defer syncLoadBalancerLock.Unlock()
-		this.currentLoadBalancerConfig, err = RemoteCommand(cfg.LoadBalancers[0], "sudo cat /etc/haproxy/haproxy.cfg")
+		server.currentLoadBalancerConfig, err = RemoteCommand(cfg.LoadBalancers[0], "sudo cat /etc/haproxy/haproxy.cfg")
 		if err != nil {
-			return this.currentLoadBalancerConfig, err
+			return server.currentLoadBalancerConfig, err
 		}
 	} else {
 		syncLoadBalancerLock.Lock()
 		defer syncLoadBalancerLock.Unlock()
 	}
-	return this.currentLoadBalancerConfig, nil
+	return server.currentLoadBalancerConfig, nil
 }
 
+// TODO: Replace with gigawattio/oslib.
 func PathExists(path string) (bool, error) {
 	_, err := os.Stat(path)
 	if err == nil {
@@ -595,6 +595,7 @@ func PathExists(path string) (bool, error) {
 	return false, err
 }
 
+// TODO: This should probably be replaced with os.Mkdirs.
 func MkdirIfNotExists(path string, perm os.FileMode) error {
 	exists, err := PathExists(path)
 	if err != nil {
@@ -620,18 +621,19 @@ func ConfigFromEnv(key string, defaultValue string) string {
 func OverridableByEnv(key string, ldflagsValue string) string {
 	envValue := os.Getenv(key)
 	if len(envValue) > 0 {
-		fmt.Printf("info: environmental override detected for %v: %v\n", key, envValue)
+		log.Infof("environmental override detected for %q: %v", key, envValue)
 		return envValue
 	}
 	if len(ldflagsValue) == 0 {
-		fmt.Printf("fatal: missing required configuration value for '%v'\n", key)
+		log.Errorf("fatal: missing required configuration value for %q", key)
 		os.Exit(1)
 	}
-	//fmt.Printf("info: ldflags value detected for %v: %v\n", key, ldflagsValue)
+	//log.Infof("ldflags value detected for %v: %v\n", key, ldflagsValue)
 	return ldflagsValue
 }
 
-// Validate that the configured key exists in the provided options.
+// GetAwsRegion validates that the configured key exists in the provided
+// options.
 func GetAwsRegion(key string, ldflagsValue string) aws.Region {
 	regionKey := OverridableByEnv(key, ldflagsValue)
 	region, ok := aws.Regions[regionKey]
@@ -640,7 +642,7 @@ func GetAwsRegion(key string, ldflagsValue string) aws.Region {
 		for _, r := range aws.Regions {
 			validRegions = append(validRegions, r.Name)
 		}
-		fmt.Printf("fatal: invalid option '%v' for parameter '%v', acceptable values are: %v\n", regionKey, key, validRegions)
+		log.Errorf("fatal: invalid option %q for parameter %q, acceptable values are: %v", regionKey, key, validRegions)
 		os.Exit(1)
 	}
 	return region
@@ -649,7 +651,7 @@ func GetAwsRegion(key string, ldflagsValue string) aws.Region {
 func GetSystemIp() string {
 	name, err := os.Hostname()
 	if err != nil {
-		fmt.Printf("error: GetSystemIp: Oops-1: %v\n", err)
+		log.Errorf("GetSystemIp: Oops-1: %v", err)
 	} else {
 		addrs, err := net.LookupHost(name)
 		if err != nil {

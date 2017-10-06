@@ -1,6 +1,4 @@
 package main
 
-type (
-	Local struct {
-	}
-)
+type Local struct {
+}

@@ -6,18 +6,16 @@ import (
 	"strings"
 
 	. "github.com/jaytaylor/logserver"
-	"github.com/jaytaylor/logserver/server"
+	lserver "github.com/jaytaylor/logserver/server"
 )
 
-var (
-	activeDrains = []*server.Drainer{}
-)
+var activeDrains = []*lserver.Drainer{}
 
-func initDrains(this *Server) {
-	this.WithConfig(func(cfg *Config) error {
+func initDrains(server *Server) {
+	server.WithConfig(func(cfg *Config) error {
 		for _, app := range cfg.Applications {
 			for _, address := range app.Drains {
-				drain := this.LogServer.StartDrainer(address, EntryFilter{
+				drain := server.LogServer.StartDrainer(address, EntryFilter{
 					Application: app.Name,
 				})
 				activeDrains = append(activeDrains, drain)
@@ -27,12 +25,12 @@ func initDrains(this *Server) {
 	})
 }
 
-func (this *Server) Drains_Add(conn net.Conn, applicationName string, addresses []string) error {
-	return this.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
-		app.Drains = this.UniqueStringsAppender(conn, app.Drains, addresses, "drain",
+func (server *Server) Drains_Add(conn net.Conn, applicationName string, addresses []string) error {
+	return server.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
+		app.Drains = server.UniqueStringsAppender(conn, app.Drains, addresses, "drain",
 			func(addItem string) {
 				// Open a new drain.
-				drain := this.LogServer.StartDrainer(addItem, EntryFilter{Application: applicationName})
+				drain := server.LogServer.StartDrainer(addItem, EntryFilter{Application: applicationName})
 				activeDrains = append(activeDrains, drain)
 			},
 		)
@@ -40,12 +38,12 @@ func (this *Server) Drains_Add(conn net.Conn, applicationName string, addresses 
 	})
 }
 
-func (this *Server) Drains_List(conn net.Conn, applicationName string) error {
-	titleLogger, dimLogger := this.getTitleAndDimLoggers(conn)
+func (server *Server) Drains_List(conn net.Conn, applicationName string) error {
+	titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
 
 	fmt.Fprintf(titleLogger, "=== Listing drains for %v\n", applicationName)
 
-	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
+	return server.WithApplication(applicationName, func(app *Application, cfg *Config) error {
 		for _, address := range app.Drains {
 			fmt.Fprintf(dimLogger, "%v\n", address)
 		}
@@ -53,9 +51,9 @@ func (this *Server) Drains_List(conn net.Conn, applicationName string) error {
 	})
 }
 
-func (this *Server) Drains_Remove(conn net.Conn, applicationName string, addresses []string) error {
-	err := this.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
-		app.Drains = this.UniqueStringsRemover(conn, app.Drains, addresses, "drain", nil)
+func (server *Server) Drains_Remove(conn net.Conn, applicationName string, addresses []string) error {
+	err := server.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
+		app.Drains = server.UniqueStringsRemover(conn, app.Drains, addresses, "drain", nil)
 		return nil
 	})
 	if err != nil {
@@ -63,7 +61,8 @@ func (this *Server) Drains_Remove(conn net.Conn, applicationName string, address
 	}
 
 	// Close and remove any matching active drains.
-	newDrains := []*server.Drainer{}
+
+	newDrains := []*lserver.Drainer{}
 	for _, drain := range activeDrains {
 		keep := true
 		if drain.Filter.Application == applicationName {

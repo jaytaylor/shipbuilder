@@ -5,7 +5,7 @@ import (
 	//"os"
 )
 
-func (this *Server) PostReceive(conn net.Conn, dir, oldrev, newrev, ref string) error {
+func (*Server) PostReceive(conn net.Conn, dir, oldrev, newrev, ref string) error {
 	// We only care about master
 	if ref != "refs/heads/master" {
 		return nil

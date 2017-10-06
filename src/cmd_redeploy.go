@@ -5,10 +5,10 @@ import (
 	"net"
 )
 
-func (this *Server) Redeploy_App(conn net.Conn, applicationName string) error {
-	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
-		titleLogger, _ := this.getTitleAndDimLoggers(conn)
+func (server *Server) Redeploy_App(conn net.Conn, applicationName string) error {
+	return server.WithApplication(applicationName, func(app *Application, cfg *Config) error {
+		titleLogger, _ := server.getTitleAndDimLoggers(conn)
 		fmt.Fprintf(titleLogger, "=== Redeploying %v\n", app.Name)
-		return this.Redeploy(conn, applicationName)
+		return server.Redeploy(conn, applicationName)
 	})
 }

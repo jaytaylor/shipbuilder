@@ -18,24 +18,24 @@ func replaceLocalhostWithSystemIp(addresses *[]string) []string {
 	return out
 }
 
-func (this *Server) LoadBalancer_Add(conn net.Conn, addresses []string) error {
+func (server *Server) LoadBalancer_Add(conn net.Conn, addresses []string) error {
 	addresses = replaceLocalhostWithSystemIp(&addresses)
-	err := this.WithPersistentConfig(func(cfg *Config) error {
-		cfg.LoadBalancers = this.UniqueStringsAppender(conn, cfg.LoadBalancers, addresses, "load-balancer", nil)
+	err := server.WithPersistentConfig(func(cfg *Config) error {
+		cfg.LoadBalancers = server.UniqueStringsAppender(conn, cfg.LoadBalancers, addresses, "load-balancer", nil)
 		return nil
 	})
 	if err != nil {
 		return err
 	}
 	e := &Executor{NewLogger(NewMessageLogger(conn), "[lb:add] ")}
-	return this.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
+	return server.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
 }
 
-func (this *Server) LoadBalancer_List(conn net.Conn) error {
-	titleLogger, _ := this.getTitleAndDimLoggers(conn)
+func (server *Server) LoadBalancer_List(conn net.Conn) error {
+	titleLogger, _ := server.getTitleAndDimLoggers(conn)
 	fmt.Fprintf(titleLogger, "=== Listing load-balancers\n")
 
-	return this.WithConfig(func(cfg *Config) error {
+	return server.WithConfig(func(cfg *Config) error {
 		for _, lb := range cfg.LoadBalancers {
 			Logf(conn, "%v\n", lb)
 		}
@@ -43,15 +43,15 @@ func (this *Server) LoadBalancer_List(conn net.Conn) error {
 	})
 }
 
-func (this *Server) LoadBalancer_Remove(conn net.Conn, addresses []string) error {
+func (server *Server) LoadBalancer_Remove(conn net.Conn, addresses []string) error {
 	addresses = replaceLocalhostWithSystemIp(&addresses)
-	err := this.WithPersistentConfig(func(cfg *Config) error {
-		cfg.LoadBalancers = this.UniqueStringsRemover(conn, cfg.LoadBalancers, addresses, "load-balancer", nil)
+	err := server.WithPersistentConfig(func(cfg *Config) error {
+		cfg.LoadBalancers = server.UniqueStringsRemover(conn, cfg.LoadBalancers, addresses, "load-balancer", nil)
 		return nil
 	})
 	if err != nil {
 		return err
 	}
 	e := &Executor{NewLogger(NewMessageLogger(conn), "[lb:remove] ")}
-	return this.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
+	return server.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
 }

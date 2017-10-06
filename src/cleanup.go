@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func (this *Server) numDynosAtVersion(applicationName, version string, hostStatusMap *map[string]NodeStatus) (int, error) {
+func (server *Server) numDynosAtVersion(applicationName, version string, hostStatusMap *map[string]NodeStatus) (int, error) {
 	numFound := 0
 	for _, nodeStatus := range *hostStatusMap {
 		dynos, err := NodeStatusToDynos(&nodeStatus)
@@ -23,8 +23,8 @@ func (this *Server) numDynosAtVersion(applicationName, version string, hostStatu
 	return numFound, nil
 }
 
-func (this *Server) pruneDynos(nodeStatus NodeStatus, hostStatusMap *map[string]NodeStatus) error {
-	cfg, err := this.getConfig(true)
+func (server *Server) pruneDynos(nodeStatus NodeStatus, hostStatusMap *map[string]NodeStatus) error {
+	cfg, err := server.getConfig(true)
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (this *Server) pruneDynos(nodeStatus NodeStatus, hostStatusMap *map[string]
 				app, ok := appsByName[dyno.Application]
 				if ok {
 					if app.TotalRequestedDynos() > 0 {
-						numAtCurrentVersion, err := this.numDynosAtVersion(app.Name, app.LastDeploy, hostStatusMap)
+						numAtCurrentVersion, err := server.numDynosAtVersion(app.Name, app.LastDeploy, hostStatusMap)
 						if err != nil {
 							return err
 						}
@@ -107,7 +107,7 @@ func (this *Server) pruneDynos(nodeStatus NodeStatus, hostStatusMap *map[string]
 				}
 
 				if destroy {
-					dynoInUseByLoadBalancer, err := this.dynoRoutingActive(&dyno)
+					dynoInUseByLoadBalancer, err := server.dynoRoutingActive(&dyno)
 					if err != nil {
 						return err
 					}
@@ -133,14 +133,14 @@ func (this *Server) pruneDynos(nodeStatus NodeStatus, hostStatusMap *map[string]
 }
 
 // Determine if a Dyno has active routes defined in the current load-balancer configuration.
-func (this *Server) dynoRoutingActive(dyno *Dyno) (bool, error) {
+func (server *Server) dynoRoutingActive(dyno *Dyno) (bool, error) {
 	// LB config check to ensure that dyno.Node + "-" + dyno.Port does not appear anywhere in the haproxy config.
 	// Non-web dynos have nothing to do with the load-balancer.
 	if dyno.Process != "web" {
 		return false, nil
 	}
 
-	config, err := this.getConfig(true)
+	config, err := server.getConfig(true)
 	if err != nil {
 		return true, err
 	}
@@ -150,7 +150,7 @@ func (this *Server) dynoRoutingActive(dyno *Dyno) (bool, error) {
 		return false, nil
 	}
 
-	lbConfig, err := this.GetActiveLoadBalancerConfig()
+	lbConfig, err := server.GetActiveLoadBalancerConfig()
 	if err != nil {
 		return true, err
 	}

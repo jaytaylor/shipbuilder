@@ -5,9 +5,9 @@ import (
 	"net"
 )
 
-func (this *Server) Reset_App(conn net.Conn, applicationName string) error {
-	return this.WithApplication(applicationName, func(app *Application, cfg *Config) error {
-		titleLogger, dimLogger := this.getTitleAndDimLoggers(conn)
+func (server *Server) Reset_App(conn net.Conn, applicationName string) error {
+	return server.WithApplication(applicationName, func(app *Application, cfg *Config) error {
+		titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
 		e := Executor{dimLogger}
 
 		fmt.Fprintf(titleLogger, "=== Resetting %v\n", app.Name)
