@@ -24,10 +24,10 @@ Any app server can run on ShipBuilder, but it will need a build-pack! The curren
 
 Requirements:
 
-* Ubuntu 13.10, 13.04, or 12.04 (tested and verified compatible)
-* go-lang v1.2 or v1.1
-* envdir (linux: `apt-get install daemontools`, os-x: `brew install daemontools`)
+* Ubuntu 16.04 (tested and verified compatible)
+* golang v1.9+
 * git and bzr clients
+* fpm (for building debs and RPMs, automatic installation available via `make deps`)
 * Amazon AWS credentials + an s3 bucket
 
 Server Installation
@@ -47,25 +47,21 @@ All applications need a `Procfile`.  In ShipBuilder, these are 100% compatible w
 
 See [TUTORIAL.md](https://github.com/jaytaylor/shipbuilder/blob/master/TUTORIAL.md)
 
-Getting Help
-------------
-Have a question? Want some help? You can reach shipbuilder experts any of the following ways:
+Development
+-----------
 
-Discussion List: [ShipBuilder Google Group](https://groups.google.com/forum/#!forum/shipbuilder)
-IRC: [#shipbuilder on FreeNode](irc://chat.freenode.node/shipbuilder)
-Twitter: [ShipBuilderIO](https://twitter.com/ShipBuilderIO)
+Sample development workflow:
 
-Or open a GitHub issue.
-
-Contributing
-------------
-1. "Fork"
-2. Make a feature branch.
-3. Do your commits
-4. Send "pull request". This can be
-	1. A github pull request
-	2. A issue with a pointer to your publicly readable git repo
-	3. An email to me with a pointer to your publicly readable git repo
+1. Make local edits
+2. Run:
+```bash
+    make clean deb \
+    && rsync -azve ssh dist/*.deb dev-host.lan:/tmp/ \
+    && ssh dev-host.lan /bin/sh -c \
+        'set -e && cd /tmp/ ' \
+        '&& sudo --non-interactive dpkg -i *.deb && rm *.deb ' \
+        '&& sudo --non-interactive systemctl daemon-reload ' \
+        '&& sudo --non-interactive systemctl restart shipbuilder'
 
 Thanks
 ------

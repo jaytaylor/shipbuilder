@@ -15,7 +15,12 @@ Thumbs.db
 #########################
 bin/
 env/
-shipbuilder
+/shipbuilder/shipbuilder-*
+/build/darwin
+/build/linux
+/build/shipbuilder
+/build/environment
+/dist
 config.json
 *.pem
 

@@ -1,0 +1,10 @@
+LXC_FS=zfs
+SB_AWS_KEY=YOUR-KEY
+SB_AWS_REGION=us-east-1
+SB_AWS_SECRET=YOUR-SECRET
+SB_HAPROXY_CREDENTIALS=admin:password
+SB_HAPROXY_STATS=true
+SB_S3_BUCKET=shipbuilder
+SB_SSH_HOST=gigawatt.io
+SB_SSH_KEY=/Users/jtaylor/.ssh/id_rsa
+ZFS_POOL=tank

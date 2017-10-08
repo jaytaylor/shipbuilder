@@ -1,0 +1,10 @@
+[Unit]
+Description=Shipbuilder Service
+
+[Service]
+Restart=always
+EnvironmentFile=/etc/default/shipbuilder
+ExecStart=/usr/local/bin/shipbuilder server
+
+[Install]
+WantedBy=multi-user.target
