@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/jaytaylor/shipbuilder/pkg/buildpacks"
+
 	logserver "github.com/jaytaylor/logserver/server"
 	log "github.com/sirupsen/logrus"
 )
@@ -218,9 +220,8 @@ func (server *Server) handleConnection(conn net.Conn) {
 func (server *Server) verifyRequiredBuildPacks() error {
 	return server.WithConfig(func(cfg *Config) error {
 		for _, app := range cfg.Applications {
-			_, ok := BUILD_PACKS[app.BuildPack]
-			if !ok {
-				return fmt.Errorf("fatal: missing build-pack '%v' for application '%v'", app.BuildPack, app.Name)
+			if _, err := buildpacks.Asset(app.BuildPack); err != nil {
+				return fmt.Errorf("missing build-pack %q for application %q", app.BuildPack, app.Name)
 			}
 		}
 		return nil
@@ -244,19 +245,21 @@ func (server *Server) Start() error {
 		return err
 	}
 
-	err = server.verifyRequiredBuildPacks()
-	if err != nil {
+	if err = server.verifyRequiredBuildPacks(); err != nil {
 		return err
 	}
 
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			log.Printf("err in connection loop: %v", err)
-			continue
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				log.Printf("err in connection loop: %v", err)
+				continue
+			}
+			log.Printf("new connection %v", conn.RemoteAddr())
+			go server.handleConnection(conn)
 		}
-		log.Printf("new connection %v", conn.RemoteAddr())
-		go server.handleConnection(conn)
-	}
+	}()
+
 	return nil
 }

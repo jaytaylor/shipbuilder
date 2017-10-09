@@ -43,8 +43,8 @@ func (server *Server) startCrons() {
 	c := cron.New()
 	log.Infof("[cron] Configuring..")
 	for _, cronTask := range server.GetCronTasks() {
-		if cronTask.Name == "ZfsMaintenance" && lxcFs != "zfs" {
-			log.Infof(`[cron] Refusing to add ZFS maintenance cron task because the lxcFs is actuallty "%v"`, lxcFs)
+		if cronTask.Name == "ZfsMaintenance" && DefaultLXCFS != "zfs" {
+			log.Infof(`[cron] Refusing to add ZFS maintenance cron task because the DefaultLXCFS is actually "%v"`, DefaultLXCFS)
 			continue
 		}
 		log.Infof("[cron] Adding cron task %q", cronTask.Name)

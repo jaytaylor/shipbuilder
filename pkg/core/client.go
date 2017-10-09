@@ -38,7 +38,7 @@ func (*Client) send(msg Message) error {
 		fmt.Print("HEY DUDE, I COULD TELL DIZ AIN'T NO TERMNAL\n")
 	}*/
 
-	if !strings.Contains(strings.ToLower(sshHost), "localhost") && !strings.Contains(strings.ToLower(sshHost), "127.0.0.1") {
+	if !strings.Contains(strings.ToLower(DefaultSSHHost), "localhost") && !strings.Contains(strings.ToLower(DefaultSSHHost), "127.0.0.1") {
 		bs, err := exec.Command("hostname").Output()
 		if err != nil || !bytes.HasPrefix(bs, []byte("ip-")) {
 			t, err := OpenTunnel()
@@ -104,9 +104,10 @@ func (client *Client) Do(args []string) {
 		localType = reflect.TypeOf(local)
 	)
 
+	// log.Infof("Args=%+v", args)
 	for _, cmd := range commands {
-		if args[1] == cmd.ShortName || args[1] == cmd.LongName {
-			parsed, err := cmd.Parse(args[2:])
+		if args[0] == cmd.ShortName || args[0] == cmd.LongName {
+			parsed, err := cmd.Parse(args[1:])
 			if err != nil {
 				fail("%v", err)
 				return

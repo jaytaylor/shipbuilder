@@ -27,6 +27,7 @@ Requirements:
 * Ubuntu 16.04 (tested and verified compatible)
 * golang v1.9+
 * git and bzr clients
+* go-bindata (`go get -u github.com/jteeuwen/go-bindata/...`)
 * fpm (for building debs and RPMs, automatic installation available via `make deps`)
 * Amazon AWS credentials + an s3 bucket
 
@@ -39,6 +40,8 @@ Client
 ------
 
 See [CLIENT.md](https://github.com/jaytaylor/shipbuilder/blob/master/CLIENT.md)
+
+TODO 2017-10-15: Migrate client commands to `cli.v2`.
 
 Creating your first app
 -----------------------

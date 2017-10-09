@@ -7,11 +7,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/jaytaylor/shipbuilder/pkg/buildpacks"
 )
 
 func (server *Server) validateAppName(applicationName string) error {
 	forbiddenNames := []string{"base"}
-	for bp, _ := range BUILD_PACKS {
+	for _, bp := range buildpacks.AssetNames() {
 		forbiddenNames = append(forbiddenNames, "base-"+bp)
 	}
 	for _, forbiddenName := range forbiddenNames {
@@ -28,13 +30,8 @@ func (server *Server) validateAppName(applicationName string) error {
 }
 
 func (server *Server) validateBuildPack(buildPack string) error {
-	_, ok := BUILD_PACKS[buildPack]
-	if !ok {
-		validChoices := []string{}
-		for bp, _ := range BUILD_PACKS {
-			validChoices = append(validChoices, bp)
-		}
-		return fmt.Errorf("unsupported buildpack requested: %v, valid choices are: %v", buildPack, validChoices)
+	if _, err := buildpacks.Asset(buildPack); err != nil {
+		return fmt.Errorf("unsupported buildpack requested: %v, valid choices are: %v", buildPack, buildpacks.AssetNames())
 	}
 	return nil
 }

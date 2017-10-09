@@ -1,11 +1,10 @@
 package core
 
 import (
-	"fmt"
-	"io/ioutil"
 	"os"
-	"strings"
 	"text/template"
+
+	"github.com/jaytaylor/shipbuilder/pkg/buildpacks"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -238,7 +237,7 @@ def cloneContainer(app, container, check=True):
     log('cloning container: {0}'.format(container))
     fn = subprocess.check_call if check else subprocess.call
     return fn(
-        ['/usr/bin/lxc-clone', '-s', '-B', '` + lxcFs + `', '-o', app, '-n', container],
+        ['/usr/bin/lxc-clone', '-s', '-B', '` + DefaultLXCFS + `', '-o', app, '-n', container],
         stdout=sys.stdout,
         stderr=sys.stderr
     )
@@ -307,7 +306,7 @@ def main(argv):
     log('creating run script for app "{0}" with process type={1}'.format(app, process))
     # NB: The curly braces are kinda crazy here, to get a single '{' or '}' with python.format(), use double curly
     # braces.
-    host = '''` + sshHost + `'''
+    host = '''` + DefaultSSHHost + `'''
     runScript = '''#!/bin/bash
 ip addr show eth0 | grep 'inet.*eth0' | awk '{{print $2}}' > /app/ip
 rm -rf /tmp/log
@@ -382,8 +381,8 @@ var SHUTDOWN_CONTAINER = `#!/usr/bin/python -u
 
 import subprocess, sys, time
 
-lxcFs = '` + lxcFs + `'
-zfsPool = '` + zfsPool + `'
+DefaultLXCFS = '` + DefaultLXCFS + `'
+DefaultZFSPool = '` + DefaultZFSPool + `'
 container = None
 log = lambda message: sys.stdout.write('[{0}] {1}\n'.format(container, message))
 
@@ -505,9 +504,9 @@ def main(argv):
         if not destroyOnly:
             raise e # Otherwise ignore.
 
-    if lxcFs == 'zfs':
+    if DefaultLXCFS == 'zfs':
         try:
-            retriableCommand('/sbin/zfs', 'destroy', '-r', zfsPool + '/' + container)
+            retriableCommand('/sbin/zfs', 'destroy', '-r', DefaultZFSPool + '/' + container)
         except subprocess.CalledProcessError, e:
             print 'warn: zfs destroy command failed: {0}'.format(e)
 
@@ -524,7 +523,7 @@ main(sys.argv)`
 var (
 	UPSTART        = template.New("UPSTART")
 	HAPROXY_CONFIG = template.New("HAPROXY_CONFIG")
-	BUILD_PACKS    = map[string]*template.Template{}
+	// BUILD_PACKS    = map[string]*template.Template{}
 )
 
 func init() {
@@ -549,7 +548,7 @@ end script
 exec start-stop-daemon --start --chuid ubuntu --exec /bin/sh -- -c "exec envdir /app/env /app/run"
 `))
 
-	// NB: sshHost has `.*@` portion stripped if an `@` symbol is found.
+	// NB: DefaultSSHHost has `.*@` portion stripped if an `@` symbol is found.
 	template.Must(HAPROXY_CONFIG.Parse(`
 global
     maxconn 32000
@@ -635,27 +634,26 @@ backend load_balancer
 {{end}}
 `))
 
-	// Discover all available build-packs.
-	listing, err := ioutil.ReadDir(DIRECTORY + "/build-packs")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
-		os.Exit(1)
-	}
-	for _, buildPack := range listing {
-		if buildPack.IsDir() {
-			log.Infof("Discovered build-pack: %v", buildPack.Name())
-			contents, err := ioutil.ReadFile(DIRECTORY + "/build-packs/" + buildPack.Name() + "/pre-hook")
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "fatal: build-pack '%v' missing pre-hook file: %v\n", buildPack.Name(), err)
-				os.Exit(1)
-			}
-			// Map to template.
-			BUILD_PACKS[buildPack.Name()] = template.Must(template.New("BUILD_" + strings.ToUpper(buildPack.Name())).Parse(string(contents)))
-		}
-	}
+	// // Discover all available build-packs.
+	// listing, err := ioutil.ReadDir(DIRECTORY + "/build-packs")
+	// if err != nil {
+	// 	fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+	// 	os.Exit(1)
+	// }
+	// for _, buildPack := range listing {
+	// 	if buildPack.IsDir() {
+	// 		log.Infof("Discovered build-pack: %v", buildPack.Name())
+	// 		contents, err := ioutil.ReadFile(DIRECTORY + "/build-packs/" + buildPack.Name() + "/pre-hook")
+	// 		if err != nil {
+	// 			fmt.Fprintf(os.Stderr, "fatal: build-pack '%v' missing pre-hook file: %v\n", buildPack.Name(), err)
+	// 			os.Exit(1)
+	// 		}
+	// 		// Map to template.
+	// 		BUILD_PACKS[buildPack.Name()] = template.Must(template.New("BUILD_" + strings.ToUpper(buildPack.Name())).Parse(string(contents)))
+	// 	}
+	// }
 
-	if len(BUILD_PACKS) == 0 {
-		fmt.Fprintf(os.Stderr, "fatal: no build-packs found\n")
-		os.Exit(1)
+	if len(buildpacks.AssetNames()) == 0 {
+		log.Fatalf("no build-packs found")
 	}
 }

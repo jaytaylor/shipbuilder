@@ -11,16 +11,19 @@ Thumbs.db
 *.sublime-workspace
 .*.swp
 
-# Untracked Directories #
-#########################
-bin/
-env/
+# Don't accidentally commit these #
+###################################
+/env
+/build/environment
+config.json
+*.pem
+
+# Build artifacts #
+###################
+/pkg/buildpacks/buildpacks.go
 /shipbuilder/shipbuilder-*
 /build/darwin
 /build/linux
 /build/shipbuilder
-/build/environment
 /dist
-config.json
-*.pem
 

@@ -14,7 +14,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
+
+	"github.com/jaytaylor/shipbuilder/pkg/buildpacks"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -304,7 +307,14 @@ func (server *Deployment) build() (err error) {
 	if f, err = os.OpenFile(server.Application.RootFsDir()+APP_DIR+"/run", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777); err != nil {
 		return
 	}
-	if err = BUILD_PACKS[server.Application.BuildPack].Execute(f, nil); err != nil {
+
+	var content []byte
+	if content, err = buildpacks.Asset(server.Application.BuildPack); err != nil {
+		err = fmt.Errorf("fetching buildpack contentnt for %q: %s", server.Application.BuildPack, err)
+		return
+	}
+
+	if err = template.Must(template.New(server.Application.BuildPack).Parse(string(content))).Execute(f, nil); err != nil {
 		err = fmt.Errorf("applying build-pack template: %s", err)
 		return
 	}
@@ -516,7 +526,7 @@ func (server *Deployment) syncNode(node *Node) error {
 	// TODO: Maybe add fail check to clone operation.
 	err := e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+node.Host,
 		"sudo", "/bin/bash", "-c",
-		`"test ! -d '`+LXC_DIR+`/`+server.Application.Name+`' && lxc-clone -B `+lxcFs+` -s -o base-`+server.Application.BuildPack+` -n `+server.Application.Name+` || echo 'app image already exists'"`,
+		`"test ! -d '`+LXC_DIR+`/`+server.Application.Name+`' && lxc-clone -B `+DefaultLXCFS+` -s -o base-`+server.Application.BuildPack+` -n `+server.Application.Name+` || echo 'app image already exists'"`,
 	)
 	if err != nil {
 		fmt.Fprintf(logger, "error cloning base container: %v\n", err)

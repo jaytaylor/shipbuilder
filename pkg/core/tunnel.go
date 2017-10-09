@@ -14,13 +14,13 @@ type Tunnel struct {
 }
 
 func OpenTunnel() (Tunnel, error) {
-	log.Infof("Client connecting via %q ..", sshHost)
+	log.Infof("Client connecting via %q ..", DefaultSSHHost)
 
 	sshArgs := append(defaultSshParametersList, "-N", "-L", "9999:127.0.0.1:9999")
-	if len(sshKey) > 0 {
-		sshArgs = append(sshArgs, "-i", sshKey)
+	if len(DefaultSSHKey) > 0 {
+		sshArgs = append(sshArgs, "-i", DefaultSSHKey)
 	}
-	sshArgs = append(sshArgs, "-v", sshHost)
+	sshArgs = append(sshArgs, "-v", DefaultSSHHost)
 
 	cmd := exec.Command("ssh", sshArgs...)
 	t := Tunnel{cmd}

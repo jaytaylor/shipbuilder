@@ -20,10 +20,10 @@ type Release struct {
 	Config   map[string]string
 }
 
-var awsAuth aws.Auth = aws.Auth{awsKey, awsSecret}
+var awsAuth aws.Auth = aws.Auth{DefaultAWSKey, DefaultAWSSecret}
 
 func getS3Bucket() *s3.Bucket {
-	return s3.New(awsAuth, awsRegion).Bucket(s3BucketName)
+	return s3.New(awsAuth, aws.Regions[DefaultAWSRegion]).Bucket(DefaultS3BucketName)
 }
 
 /*func getNextReleaseVersion(applicationName string) (string, error) {

@@ -28,8 +28,8 @@ func (server *Server) System_NtpSync(conn net.Conn) error {
 
 // Cleanup any ZFS containers identified as stragglers.
 func (server *Server) sysPerformZfsMaintenance(logger io.Writer) error {
-	if lxcFs != "zfs" {
-		return fmt.Errorf(`This command requires the LXC filesystem type to be "zfs", but instead found "%v"`, lxcFs)
+	if DefaultLXCFS != "zfs" {
+		return fmt.Errorf(`This command requires the LXC filesystem type to be "zfs", but instead found "%v"`, DefaultLXCFS)
 	}
 
 	deployLock.start()

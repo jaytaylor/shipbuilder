@@ -1,7 +1,7 @@
 Client Commands
 ---------------
 
-Build the client by running `./build.sh`.
+Build the client by running `make`, and run it with `shipbuilder client [command]`.
 
 Note:
 

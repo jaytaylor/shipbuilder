@@ -48,8 +48,8 @@ func (ns *NodeStatus) ParseStatus(input string, err error) {
 	ns.Ts = time.Now()
 }
 
-func RemoteCommand(sshHost string, sshArgs ...string) (string, error) {
-	frontArgs := append([]string{"1m", "ssh", DEFAULT_NODE_USERNAME + "@" + sshHost}, defaultSshParametersList...)
+func RemoteCommand(DefaultSSHHost string, sshArgs ...string) (string, error) {
+	frontArgs := append([]string{"1m", "ssh", DEFAULT_NODE_USERNAME + "@" + DefaultSSHHost}, defaultSshParametersList...)
 	combinedArgs := append(frontArgs, sshArgs...)
 
 	//fmt.Printf("debug: cmd is -> ssh %v <-\n", combinedArgs)
@@ -62,19 +62,19 @@ func RemoteCommand(sshHost string, sshArgs ...string) (string, error) {
 	return string(bs), nil
 }
 
-func checkServer(sshHost string, currentDeployMarker int, ch chan NodeStatus) {
+func checkServer(DefaultSSHHost string, currentDeployMarker int, ch chan NodeStatus) {
 	// Shell command which combines free MB with list of running containers.
 	done := make(chan NodeStatus)
 
 	go func() {
 		result := NodeStatus{
-			Host:         sshHost,
+			Host:         DefaultSSHHost,
 			FreeMemoryMb: -1,
 			Containers:   nil,
 			DeployMarker: currentDeployMarker,
 			Err:          nil,
 		}
-		result.ParseStatus(RemoteCommand(sshHost, STATUS_MONITOR_CHECK_COMMAND))
+		result.ParseStatus(RemoteCommand(DefaultSSHHost, STATUS_MONITOR_CHECK_COMMAND))
 		done <- result
 	}()
 
@@ -83,11 +83,11 @@ func checkServer(sshHost string, currentDeployMarker int, ch chan NodeStatus) {
 		ch <- result // Sends result to channel.
 	case <-time.After(30 * time.Second):
 		ch <- NodeStatus{
-			Host:         sshHost,
+			Host:         DefaultSSHHost,
 			FreeMemoryMb: -1,
 			Containers:   nil,
 			DeployMarker: currentDeployMarker,
-			Err:          fmt.Errorf("Timed out for host %v", sshHost),
+			Err:          fmt.Errorf("Timed out for host %v", DefaultSSHHost),
 		} // Sends timeout result to channel.
 	}
 }

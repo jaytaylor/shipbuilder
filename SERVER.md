@@ -68,6 +68,29 @@ Installation
     echo 'MY_S3_BUCKET_NAME' > env/SB_S3_BUCKET
 ```
 
+This directory will need to be rsync'd to the server host under ~/go/src/github.com/jaytaylor/.
+
+Example session:
+
+```bash
+git clone https://github.com/jaytaylor/shipbuilder.git
+cd shipbuilder
+cp -r env.example env
+
+# Make edits to env/* ..
+
+cd ..
+ssh SERVERHOSTNAME mkdir -p ~/go/src/github.com/jaytaylor
+rsync -azve ssh shipbuilder SERVERHOSTNAME:~/go/src/github.com/jaytaylor/
+ssh SERVERHOSTNAME bash -c 'cd ~/go/src/github.com/jaytaylor/shipbuilder && ./install/shipbuilder.sh -d /dev/sdb'
+```
+
+*or*, to just build and deploy shipbuilder (locally, so run from the server):
+
+```bash
+ssh SERVERHOSTNAME bash -c 'cd ~/go/src/github.com/jaytaylor/shipbuilder && ./install/shipbuilder.sh build-deploy'
+```
+
 3. Run Installers:
 ```
     # For shipbuilder server (make sure this device is a persistent volume as this will be the source of truth):

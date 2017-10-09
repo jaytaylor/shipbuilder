@@ -61,7 +61,7 @@ func (exe *Executor) DestroyContainer(name string) error {
 	if exe.ContainerExists(name) {
 		exe.StopContainer(name)
 		// zfs-fuse sometimes takes a few tries to destroy a container.
-		if lxcFs == "zfs" {
+		if DefaultLXCFS == "zfs" {
 			return exe.zfsDestroyContainerAndChildren(name)
 		} else {
 			return exe.Run("sudo", "lxc-destroy", "-n", name)
@@ -74,11 +74,11 @@ func (exe *Executor) DestroyContainer(name string) error {
 // Recursively destroys children of the requested container before destroying.  This should only be invoked by an Executor to destroy containers.
 func (exe *Executor) zfsDestroyContainerAndChildren(name string) error {
 	// NB: This is not working yet, and may not be required.
-	/* fmt.Fprintf(exe.logger, "sudo /bin/bash -c \""+`zfs list -t snapshot | grep --only-matching '^`+zfsPool+`/`+name+`@[^ ]\+' | sed 's/^`+zfsPool+`\/`+name+`@//'`+"\"\n")
-	childrenBytes, err := exec.Command("sudo", "/bin/bash", "-c", `zfs list -t snapshot | grep --only-matching '^`+zfsPool+`/`+name+`@[^ ]\+' | sed 's/^`+zfsPool+`\/`+name+`@//'`).Output()
+	/* fmt.Fprintf(exe.logger, "sudo /bin/bash -c \""+`zfs list -t snapshot | grep --only-matching '^`+DefaultZFSPool+`/`+name+`@[^ ]\+' | sed 's/^`+DefaultZFSPool+`\/`+name+`@//'`+"\"\n")
+	childrenBytes, err := exec.Command("sudo", "/bin/bash", "-c", `zfs list -t snapshot | grep --only-matching '^`+DefaultZFSPool+`/`+name+`@[^ ]\+' | sed 's/^`+DefaultZFSPool+`\/`+name+`@//'`).Output()
 	if err != nil {
 		// Allude to one possible cause and rememdy for the failure.
-		return fmt.Errorf("zfs snapshot listing failed- check that 'listsnapshots' is enabled for "+zfsPool+" ('zpool set listsnapshots=on "+zfsPool+"'), error=%v", err)
+		return fmt.Errorf("zfs snapshot listing failed- check that 'listsnapshots' is enabled for "+DefaultZFSPool+" ('zpool set listsnapshots=on "+DefaultZFSPool+"'), error=%v", err)
 	}
 	if len(strings.TrimSpace(string(childrenBytes))) > 0 {
 		fmt.Fprintf(exe.logger, "Found some children for parent=%v: %v\n", name, strings.Split(strings.TrimSpace(string(childrenBytes)), "\n"))
@@ -87,16 +87,16 @@ func (exe *Executor) zfsDestroyContainerAndChildren(name string) error {
 		if len(child) > 0 {
 			exe.StopContainer(child)
 			exe.zfsDestroyContainerAndChildren(child)
-			exe.zfsRunAndResistDatasetIsBusy("sudo", "zfs", "destroy", "-R", zfsPool+"/"+name+"@"+child)
+			exe.zfsRunAndResistDatasetIsBusy("sudo", "zfs", "destroy", "-R", DefaultZFSPool+"/"+name+"@"+child)
 			err = exe.zfsRunAndResistDatasetIsBusy("sudo", "lxc-destroy", "-n", child)
 			//err := exe.zfsDestroyContainerAndChildren(child)
 			if err != nil {
 				return err
 			}
 		}
-		//exe.Run("sudo", "zfs", "destroy", zfsPool+"/"+name+"@"+child)
+		//exe.Run("sudo", "zfs", "destroy", DefaultZFSPool+"/"+name+"@"+child)
 	}*/
-	exe.zfsRunAndResistDatasetIsBusy("sudo", "zfs", "destroy", "-R", zfsPool+"/"+name)
+	exe.zfsRunAndResistDatasetIsBusy("sudo", "zfs", "destroy", "-R", DefaultZFSPool+"/"+name)
 	err := exe.zfsRunAndResistDatasetIsBusy("sudo", "lxc-destroy", "-n", name)
 	if err != nil {
 		return err
@@ -122,7 +122,7 @@ func (exe *Executor) zfsRunAndResistDatasetIsBusy(cmd string, args ...string) er
 
 // Clone a local container.
 func (exe *Executor) CloneContainer(oldName, newName string) error {
-	return exe.Run("sudo", "lxc-clone", "-s", "-B", lxcFs, "-o", oldName, "-n", newName)
+	return exe.Run("sudo", "lxc-clone", "-s", "-B", DefaultLXCFS, "-o", oldName, "-n", newName)
 }
 
 // Run a command in a local container.

@@ -5,6 +5,8 @@ import (
 	"io"
 	"net"
 	"strings"
+
+	"github.com/jaytaylor/shipbuilder/pkg/buildpacks"
 )
 
 func (server *Server) SyncContainer(e Executor, address string, container string, cloneOrCreateArgs ...string) error {
@@ -50,15 +52,15 @@ func (server *Server) addNode(addAddress string, logger io.Writer) (string, erro
 	prefixLogger := NewLogger(logger, "["+addAddress+"] ")
 	e := Executor{prefixLogger}
 	fmt.Fprintf(prefixLogger, "Transmitting base LXC container image to node: %v\n", addAddress)
-	err := server.SyncContainer(e, addAddress, "base", "lxc-create", "-n", "base", "-B", lxcFs, "-t", "ubuntu")
+	err := server.SyncContainer(e, addAddress, "base", "lxc-create", "-n", "base", "-B", DefaultLXCFS, "-t", "ubuntu")
 	if err != nil {
 		return addAddress, err
 	}
 	// Add build-packs.
-	for buildPack, _ := range BUILD_PACKS {
+	for _, buildPack := range buildpacks.AssetNames() {
 		nContainer := "base-" + buildPack
 		fmt.Fprintf(prefixLogger, "Transmitting build-pack '%v' LXC container image to node: %v\n", nContainer, addAddress)
-		err = server.SyncContainer(e, addAddress, nContainer, "lxc-clone", "-s", "-B", lxcFs, "-o", "base", "-n", nContainer)
+		err = server.SyncContainer(e, addAddress, nContainer, "lxc-clone", "-s", "-B", DefaultLXCFS, "-o", "base", "-n", nContainer)
 		if err != nil {
 			return addAddress, err
 		}

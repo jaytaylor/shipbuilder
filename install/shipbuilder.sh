@@ -4,7 +4,13 @@ cd "$(dirname "$0")"
 
 source libfns.sh
 
+device=
+lxcFs=
+denyRestart=0
+sbHost=
+swapDevice=
 skipIfExists=0
+buildPackToInstall=
 
 while getopts "b:d:f:hS:s:ne" OPTION; do
     case $OPTION in
@@ -72,25 +78,39 @@ getIpCommand="ifconfig | tr '\t' ' '| sed 's/ \{1,\}/ /g' | grep '^e[a-z]\+0[: ]
 
 
 function deployShipBuilder() {
-    mv ../env/SB_SSH_HOST{,.bak}
-    echo "${sbHost}" > ../env/SB_SSH_HOST
-    ../deploy.sh
-    abortIfNonZero $? 'ShipBuilder deployment via deploy.sh failed'
-    mv ../env/SB_SSH_HOST{.bak,}
+    # Builds and installs shipbuilder deb.
+    OLD_SHELLOPTS="$(set +o)"
+
+    set -o errexit
+    set -o pipefail
+    set -o nounset
+
+    sudo systemctl stop shipbuilder || :
+    cd ..
+    envdir env bash -c 'make clean get generate test deb | tee /tmp/make.log'
+    deb="$(tail -n1 /tmp/make.log | sed 's/^.*=>"\([^"]\+\)"}$/\1/')"
+    test -n "${deb}" || (echo 'error: no deb artifact name detected, see /tmp/make.log for more information' 1>&2 && exit 1)
+    sudo dpkg -i "dist/${deb}"
+    sudo systemctl start shipbuilder
+
+    $OLD_SHELLOPTS
 }
 
 
 function rsyncLibfns() {
-    rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" libfns.sh $sbHost:/tmp/
+    rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" libfns.sh "${sbHost}:/tmp/"
     abortIfNonZero $? 'rsync libfns.sh failed'
 }
 
 
 if [ "${action}" = "list-devices" ]; then
     echo '----'
-    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost 'sudo find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" 'sudo find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
     abortIfNonZero $? "retrieving storage devices from host ${sbHost}"
     exit 0
+
+elif [ "${action}" = "build-deploy" ]; then
+    deployShipBuilder
 
 elif [ "${action}" = "install" ]; then
     if [ -n "${buildPackToInstall}" ]; then
@@ -102,7 +122,7 @@ elif [ "${action}" = "install" ]; then
         fi
         deployShipBuilder
         rsyncLibfns
-        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost "source /tmp/libfns.sh && installSingleBuildPack ${buildPackToInstall} ${skipIfExists} ${lxcFs} ${zfsPool}"
+        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "source /tmp/libfns.sh && installSingleBuildPack ${buildPackToInstall} ${skipIfExists} ${lxcFs}"
 
     else
         # Perform a full ShipBuilder install.
@@ -113,17 +133,17 @@ elif [ "${action}" = "install" ]; then
         abortIfNonZero $? 'installAccessForSshHost() failed'
 
         rsyncLibfns
-        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost "source /tmp/libfns.sh && prepareServerPart1 ${sbHost} ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
+        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "source /tmp/libfns.sh && prepareServerPart1 ${sbHost} ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
         abortIfNonZero $? 'remote prepareServerPart1() invocation'
 
         deployShipBuilder
 
-        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost "source /tmp/libfns.sh && prepareServerPart2 ${skipIfExists} ${lxcFs} ${zfsPool}"
+        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "source /tmp/libfns.sh && prepareServerPart2 ${skipIfExists} ${lxcFs}"
         abortIfNonZero $? 'remote prepareServerPart2() invocation'
 
         if test -z "${denyRestart}"; then
             echo 'info: checking if system restart is necessary'
-            ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $sbHost "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && sudo reboot || echo 'no system restart is necessary'"
+            ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && sudo reboot || echo 'no system restart is necessary'"
             abortIfNonZero $? 'remote system restart check failed'
         else
             echo 'warn: a restart may be required on the shipbuilder server to complete installation, but the action was disabled by a flag' 1>&2
@@ -133,3 +153,4 @@ elif [ "${action}" = "install" ]; then
 else
     echo "unrecognized action: ${action}" 1>&2 && exit 1
 fi
+

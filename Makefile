@@ -50,23 +50,37 @@ DESCRIPTION = $(shell \
 	| awk 1 ORS='\\n' \
 )
 
-all: generate test build
+all: get generate test build
+
+get:
+	$(EXIT_ON_ERROR) go get ./...
 
 generate:
-	$(EXIT_ON_ERROR) echo -e 'package public\nfunc Asset(name string) ([]byte, error) { return nil, nil }' > public/public.go
-	$(EXIT_ON_ERROR) find . -type f -name '*.go' | grep -v '^\(\.\/\)\?\(public\|vendor\)' | xargs -n1 dirname | sort | uniq | xargs -n1 go generate
+	$(EXIT_ON_ERROR) echo -e 'package buildpacks\nfunc Asset(name string) ([]byte, error) { return nil, nil }' > pkg/buildpacks/buildpacks.go
+	$(EXIT_ON_ERROR) find . -type f -name '*.go' | grep -v '^\(\.\/\)\?\(vendor\)' | xargs -n1 dirname | sort | uniq | xargs -n1 go generate
 
 test:
 	$(EXIT_ON_ERROR) go test -race -v $$(go list ./... | grep -v /vendor/) || ( rc=$$? && echo "rc=$${rc}" && exit $${rc} )
 
 # Generate build targets for long form,
 # e.g. `make shipbuilder/shipbuilder-linux`.
-$(foreach target,$(TARGETS),$(foreach os,$(OSES),$(target)/$(target)-$(os))):
+$(foreach target,$(TARGETS),$(foreach os,$(OSES),$(target)/$(target)-$(os))): generate
 	$(eval tool := $(subst /,,$(dir $@)))
 	$(eval binary := $(subst $(dir $@),,$@))
 	$(eval os := $(subst $(dir $@)$(tool)-,,$@))
 	@echo "info: Building tool=$(tool) binary=$(binary) os=$(os) verion=$(VERSION_CLEAN)"
-	$(EXIT_ON_ERROR) cd $(tool) && GOOS=$(os) GOARCH=amd64 go build -ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/version.Version=$(VERSION_CLEAN)" -o $(binary)
+	$(EXIT_ON_ERROR) cd $(tool) && GOOS=$(os) GOARCH=amd64 go build \
+		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/version.Version=$(VERSION_CLEAN)" \
+		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultHAProxyCredentials=$(SB_HAPROXY_CREDENTIALS)" \
+		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultAWSKey=$(SB_AWS_KEY)" \
+		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultAWSSecret=$(SB_AWS_SECRET)" \
+		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultAWSRegion=$(SB_AWS_REGION)" \
+		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultS3BucketName=$(SB_S3_BUCKET)" \
+		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultSSHHost=$(SB_SSH_HOST)" \
+		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultSSHKey=$(SB_SSH_KEY)" \
+		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultLXCFS=$(SB_LXC_FS)" \
+		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultZFSPool=$(SB_ZFS_POOL)" \
+		-o $(binary)
 
 # Generate build targets for single-OS short form,
 # e.g. `make shipbuilder-linux`.
@@ -112,7 +126,7 @@ ifeq ($(UNAME_S),Linux)
 	@#$(EXIT_ON_ERROR) command gem || sudo --non-interactive apt-get install --yes gem
 	@#$(EXIT_ON_ERROR) command git || sudo --non-interactive apt-get install --yes git
 	@#$(EXIT_ON_ERROR) command unzip || sudo --non-interactive apt-get install --yes unzip
-	$(EXIT_ON_ERROR) sudo --non-interactive apt-get install --yes gcc gem git rpm ruby-dev rubygems unzip
+	$(EXIT_ON_ERROR) sudo --non-interactive apt-get install --yes bzr gcc gem git rpm ruby-dev rubygems unzip
 	$(EXIT_ON_ERROR) sudo --non-interactive gem install fpm
 else
 ifeq ($(UNAME_S),Darwin)

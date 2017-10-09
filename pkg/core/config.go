@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gigawattio/errorlib"
 	lslog "github.com/jaytaylor/logserver"
 	log "github.com/sirupsen/logrus"
 	"launchpad.net/goamz/aws"
@@ -22,7 +23,7 @@ const (
 	APP_DIR                            = "/app"
 	ENV_DIR                            = APP_DIR + "/env"
 	LXC_DIR                            = "/var/lib/lxc"
-	DIRECTORY                          = "/mnt/build"
+	DIRECTORY                          = "/etc/shipbuilder"
 	BINARY                             = "shipbuilder"
 	EXE                                = DIRECTORY + "/" + BINARY
 	CONFIG                             = DIRECTORY + "/config.json"
@@ -39,10 +40,12 @@ const (
 
 var defaultSshParametersList = strings.Split(DEFAULT_SSH_PARAMETERS, " ")
 
-var DefaultHAProxyStats = true // NB: Bools are not settable via ldflags.
-
-// LDFLAGS can be specified by compiling with `-ldflags '-X main.DefaultSSHHost=.. ...'`.
+// Global configuration.
 var (
+	// TODO: Remove "Default" prefix from all these vars.
+	DefaultHAProxyStats = true // NB: Bools are not settable via ldflags.
+
+	// NB: LDFLAGS can be specified by compiling with `-ldflags '-X main.DefaultSSHHost=.. ...'`.
 	DefaultHAProxyCredentials string
 	DefaultAWSKey             string
 	DefaultAWSSecret          string
@@ -52,18 +55,6 @@ var (
 	DefaultSSHKey             string
 	DefaultLXCFS              string
 	DefaultZFSPool            string
-)
-
-// Global configuration.
-var (
-	sshHost      = OverridableByEnv("SB_SSH_HOST", DefaultSSHHost)
-	sshKey       = OverridableByEnv("SB_SSH_KEY", DefaultSSHKey)
-	awsKey       = OverridableByEnv("SB_AWS_KEY", DefaultAWSKey)
-	awsSecret    = OverridableByEnv("SB_AWS_SECRET", DefaultAWSSecret)
-	awsRegion    = GetAwsRegion("SB_AWS_REGION", DefaultAWSRegion)
-	s3BucketName = OverridableByEnv("SB_S3_BUCKET", DefaultS3BucketName)
-	lxcFs        = OverridableByEnv("LXC_FS", DefaultLXCFS)
-	zfsPool      = OverridableByEnv("ZFS_POOL", DefaultZFSPool)
 )
 
 var (
@@ -356,7 +347,7 @@ func (server *Server) WithApplication(name string, fn func(*Application, *Config
 // HAProxy UDP logs to.  Autmatically takes care of transforming ssh hostname
 // into just a hostname.
 func (*Server) ResolveLogServerIpAndPort() (string, error) {
-	hostname := sshHost[int(math.Max(float64(strings.Index(sshHost, "@")+1), 0)):]
+	hostname := DefaultSSHHost[int(math.Max(float64(strings.Index(DefaultSSHHost, "@")+1), 0)):]
 	ipAddr, err := net.ResolveIPAddr("ip", hostname)
 	if err != nil {
 		return "", err
@@ -618,34 +609,26 @@ func ConfigFromEnv(key string, defaultValue string) string {
 	return value
 }
 
-func OverridableByEnv(key string, ldflagsValue string) string {
-	envValue := os.Getenv(key)
-	if len(envValue) > 0 {
-		log.Infof("environmental override detected for %q: %v", key, envValue)
-		return envValue
-	}
-	if len(ldflagsValue) == 0 {
-		log.Errorf("fatal: missing required configuration value for %q", key)
-		os.Exit(1)
-	}
-	//log.Infof("ldflags value detected for %v: %v\n", key, ldflagsValue)
-	return ldflagsValue
-}
+// ValidateConfig validates global configuration.
+func ValidateConfig() error {
+	errs := []error{}
 
-// GetAwsRegion validates that the configured key exists in the provided
-// options.
-func GetAwsRegion(key string, ldflagsValue string) aws.Region {
-	regionKey := OverridableByEnv(key, ldflagsValue)
-	region, ok := aws.Regions[regionKey]
-	if !ok {
-		validRegions := []string{}
-		for _, r := range aws.Regions {
-			validRegions = append(validRegions, r.Name)
+	// Validate AWS region.
+	{
+		regionKey, ok := aws.Regions[DefaultAWSRegion]
+		if !ok {
+			validRegions := []string{}
+			for _, r := range aws.Regions {
+				validRegions = append(validRegions, r.Name)
+			}
+			errs = append(errs, fmt.Errorf("invalid option %q for AWS region parameter, acceptable values are: %v", regionKey, validRegions))
 		}
-		log.Errorf("fatal: invalid option %q for parameter %q, acceptable values are: %v", regionKey, key, validRegions)
-		os.Exit(1)
 	}
-	return region
+
+	if err := errorlib.Merge(errs); err != nil {
+		return err
+	}
+	return nil
 }
 
 func GetSystemIp() string {
