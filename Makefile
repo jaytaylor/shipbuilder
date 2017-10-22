@@ -3,8 +3,8 @@
 
 GITHUB_REPO ?= shipbuilder
 GITHUB_ORG ?= jaytaylor
-# GITHUB_API ?= https://github.$(GITHUB_ORG).com/api/v3
-GITHUB_API ?= https://github.com/api/v3
+GITHUB_DOMAIN ?= github.com
+GITHUB_API ?= https://$(GITHUB_DOMAIN)/api/v3
 GITHUB_TOKEN ?=
 # DOCKER_REGISTRY ?= hub.docker.com
 
@@ -70,16 +70,8 @@ $(foreach target,$(TARGETS),$(foreach os,$(OSES),$(target)/$(target)-$(os))): ge
 	$(eval os := $(subst $(dir $@)$(tool)-,,$@))
 	@echo "info: Building tool=$(tool) binary=$(binary) os=$(os) verion=$(VERSION_CLEAN)"
 	$(EXIT_ON_ERROR) cd $(tool) && GOOS=$(os) GOARCH=amd64 go build \
-		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/version.Version=$(VERSION_CLEAN)" \
-		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultHAProxyCredentials=$(SB_HAPROXY_CREDENTIALS)" \
-		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultAWSKey=$(SB_AWS_KEY)" \
-		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultAWSSecret=$(SB_AWS_SECRET)" \
-		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultAWSRegion=$(SB_AWS_REGION)" \
-		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultS3BucketName=$(SB_S3_BUCKET)" \
-		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultSSHHost=$(SB_SSH_HOST)" \
-		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultSSHKey=$(SB_SSH_KEY)" \
-		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultLXCFS=$(SB_LXC_FS)" \
-		-ldflags "-X github.$(GITHUB_ORG).com/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/core.DefaultZFSPool=$(SB_ZFS_POOL)" \
+		-ldflags "-X $(GITHUB_DOMAIN)/$(GITHUB_ORG)/$(GITHUB_REPO)/pkg/version.Version=$(VERSION_CLEAN) \
+		$(shell bash -c 'test -x ldflags.sh && ./ldflags.sh || :')" \
 		-o $(binary)
 
 # Generate build targets for single-OS short form,
