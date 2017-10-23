@@ -33,10 +33,18 @@ TARGETS := $(shell \
 	| uniq \
 )
 
-VERSION := $(shell \
+VERSION_RAW := $(shell \
 	git describe --abbrev=4 --dirty --always --tags \
 	| tr -d '\n' \
 )
+
+# NB: For ubuntu packaging version name compatibility, add a leading '0-' when
+# the version doesn't start with a number.
+VERSION := $(shell \
+	if ! [[ $(VERSION_RAW) =~ ^[0-9] ]] ; then echo -n '0-' ; fi \
+	&& echo -n $(VERSION_RAW) \
+)
+
 VERSION_CLEAN = $(VERSION:v%=%)
 
 RPM_VERSION = $(shell echo $(VERSION) | tr '-' '_')
@@ -44,7 +52,7 @@ RPM_FILENAME = $(GITHUB_REPO)-$(RPM_VERSION)-1.x86_64.rpm
 DEB_FILENAME = $(GITHUB_REPO)_$(VERSION)_amd64.deb
 
 DESCRIPTION = $(shell \
-	git tag --list -n999 $$(echo $(VERSION) | sed 's/-dirty$$//') \
+	git tag --list -n999 $$(echo $(VERSION) | sed -e 's/-dirty$$//' -e 's/^0-//') \
 	| sed "s/'/''/g" \
 	| sed '1 s/^[^ ]* *//' \
 	| awk 1 ORS='\\n' \
@@ -200,6 +208,9 @@ publish-release: package publish-github publish-packagecloud publish-docker
 
 list-targets:
 	@$(EXIT_ON_ERROR) echo "$$(echo $(TARGETS) | tr ' ' '\n')"
+
+show-version:
+	@$(EXIT_ON_ERROR) echo $(VERSION)
 
 clean:
 	$(EXIT_ON_ERROR) rm -rf $(foreach os,$(OSES), \
