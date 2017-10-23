@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"net"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gigawattio/errorlib"
+	"github.com/gigawattio/oslib"
 	lslog "github.com/jaytaylor/logserver"
 	log "github.com/sirupsen/logrus"
 	"launchpad.net/goamz/aws"
@@ -252,6 +254,16 @@ func (*Server) getConfig(lock bool) (*Config, error) {
 	}
 
 	var config Config
+
+	// Create config if it doesn't exist.
+	if exists, err := oslib.PathExists(CONFIG); err != nil {
+		return nil, fmt.Errorf("checking if config file at location %q exists: %s", CONFIG, err)
+	} else if !exists {
+		if err := ioutil.WriteFile(CONFIG, []byte("{}"), os.FileMode(int(0600))); err != nil {
+			return nil, fmt.Errorf("writing to new config file at location %q: %s", CONFIG, err)
+		}
+		log.Infof("Created new shipbuilder config file at location %q", CONFIG)
+	}
 
 	f, err := os.Open(CONFIG)
 	if err == nil {

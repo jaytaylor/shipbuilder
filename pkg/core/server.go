@@ -11,8 +11,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/jaytaylor/shipbuilder/pkg/buildpacks"
-
 	logserver "github.com/jaytaylor/logserver/server"
 	log "github.com/sirupsen/logrus"
 )
@@ -221,7 +219,7 @@ func (server *Server) handleConnection(conn net.Conn) {
 func (server *Server) verifyRequiredBuildPacks() error {
 	return server.WithConfig(func(cfg *Config) error {
 		for _, app := range cfg.Applications {
-			if _, err := buildpacks.Asset(app.BuildPack); err != nil {
+			if _, err := server.BuildpacksProvider.New(app.BuildPack); err != nil {
 				return fmt.Errorf("missing build-pack %q for application %q", app.BuildPack, app.Name)
 			}
 		}
@@ -233,6 +231,10 @@ func (server *Server) Start() error {
 	var err error
 
 	if server.LogServer, err = logserver.Start(); err != nil {
+		return err
+	}
+
+	if err = server.initTemplates(); err != nil {
 		return err
 	}
 

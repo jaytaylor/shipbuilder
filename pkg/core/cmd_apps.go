@@ -7,13 +7,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-
-	"github.com/jaytaylor/shipbuilder/pkg/buildpacks"
 )
 
 func (server *Server) validateAppName(applicationName string) error {
 	forbiddenNames := []string{"base"}
-	for _, bp := range buildpacks.AssetNames() {
+	for _, bp := range server.BuildpacksProvider.Available() {
 		forbiddenNames = append(forbiddenNames, "base-"+bp)
 	}
 	for _, forbiddenName := range forbiddenNames {
@@ -29,33 +27,46 @@ func (server *Server) validateAppName(applicationName string) error {
 	return nil
 }
 
-func (server *Server) validateBuildPack(buildPack string) error {
-	if _, err := buildpacks.Asset(buildPack); err != nil {
-		return fmt.Errorf("unsupported buildpack requested: %v, valid choices are: %v", buildPack, buildpacks.AssetNames())
-	}
-	return nil
-}
+// func BuildpackNames() []string {
+// 	m := map[string]struct{}{}
+// 	for _, name := range buildpacks.AsssetNames() {
+// 		name = strings.Split(name, "/")[0]
+// 		if _, ok := m[name]; !ok {
+// 			m[name] = struct{}{}
+// 		}
+// 	}
+// 	names := []string{}
+// 	for name, _ := range m {
+// 		names = append(names, name)
+// 	}
+// 	return names
+// }
+
+// func (server *Server) validateBuildPack(buildPack string) error {
+// 	if _, err := buildpacks.Assset(buildPack + "/pre-hook"); err != nil {
+// 		return fmt.Errorf("unsupported buildpack requested: %v, valid choices are: %v", buildPack, strings.Join(server.BuildpacksProvider.Available(), ", "))
+// 	}
+// 	return nil
+// }
 
 func (server *Server) Apps_Create(conn net.Conn, applicationName string, buildPack string) error {
 	return server.WithPersistentConfig(func(cfg *Config) error {
 		applicationName = strings.ToLower(applicationName) // Always lowercase.
 
-		err := server.validateAppName(applicationName)
-		if err != nil {
+		if err := server.validateAppName(applicationName); err != nil {
 			return err
 		}
 
-		// Existing app
+		// Existing app.
 		for _, app := range cfg.Applications {
 			if app.Name == applicationName {
 				return fmt.Errorf("application with name `%v` already exists", applicationName)
 			}
 		}
 
-		err = server.validateBuildPack(buildPack)
-		if err != nil {
-			return err
-		}
+		// if err := server.validateBuildPack(buildPack); err != nil {
+		// 	return err
+		// }
 
 		dimLogger := NewFormatter(NewTimeLogger(NewMessageLogger(conn)), DIM)
 		e := Executor{dimLogger}
@@ -65,31 +76,29 @@ func (server *Server) Apps_Create(conn net.Conn, applicationName string, buildPa
 			"cd " + GIT_DIRECTORY + "/" + applicationName + " && git symbolic-ref HEAD refs/heads/not-a-real-branch", // Make master deletable.
 			"chmod -R 777 " + GIT_DIRECTORY + "/" + applicationName,
 		} {
-			err = e.Run("sudo", "/bin/bash", "-c", command)
-			if err != nil {
+			if err := e.Run("sudo", "/bin/bash", "-c", command); err != nil {
 				return err
 			}
 		}
 
-		// Add pre receive hook
-		err = ioutil.WriteFile(
+		// Add pre- and post- receive hooks.
+		if err := ioutil.WriteFile(
 			GIT_DIRECTORY+"/"+applicationName+"/hooks/pre-receive",
 			[]byte(PRE_RECEIVE),
 			0777,
-		)
-		if err != nil {
-			return err
-		}
-		err = ioutil.WriteFile(
-			GIT_DIRECTORY+"/"+applicationName+"/hooks/post-receive",
-			[]byte(POST_RECEIVE),
-			0777,
-		)
-		if err != nil {
+		); err != nil {
 			return err
 		}
 
-		// Save the config
+		if err := ioutil.WriteFile(
+			GIT_DIRECTORY+"/"+applicationName+"/hooks/post-receive",
+			[]byte(POST_RECEIVE),
+			0777,
+		); err != nil {
+			return err
+		}
+
+		// Save the config.
 		cfg.Applications = append(cfg.Applications, &Application{
 			Name:        applicationName,
 			BuildPack:   buildPack,

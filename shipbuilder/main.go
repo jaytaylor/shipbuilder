@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"sort"
-	"strings"
 	"syscall"
 
-	"github.com/jaytaylor/shipbuilder/pkg/buildpacks"
+	"github.com/jaytaylor/shipbuilder/pkg/bindata_buildpacks"
 	"github.com/jaytaylor/shipbuilder/pkg/core"
 	"github.com/jaytaylor/shipbuilder/pkg/version"
 
@@ -121,7 +119,9 @@ func main() {
 					return nil
 				},
 				Action: func(ctx *cli.Context) error {
-					server := &core.Server{}
+					server := &core.Server{
+						BuildpacksProvider: bindata_buildpacks.NewProvider(),
+					}
 					if err := server.Start(); err != nil {
 						return err
 					}
@@ -165,21 +165,7 @@ func main() {
 				Aliases:     []string{"build-packs"},
 				Description: "List available build-packs",
 				Action: func(ctx *cli.Context) error {
-					var (
-						packs    = []string{}
-						packsMap = map[string]struct{}{} // For ensuring uniqueness.
-					)
-
-					for _, name := range buildpacks.AssetNames() {
-						name = strings.Split(name, "/")[0]
-						if _, ok := packsMap[name]; !ok {
-							packsMap[name] = struct{}{}
-							packs = append(packs, name)
-						}
-					}
-
-					sort.Strings(packs)
-					for _, name := range packs {
+					for _, name := range bindata_buildpacks.NewProvider().Available() {
 						fmt.Fprintf(os.Stdout, "%v\n", name)
 					}
 					return nil

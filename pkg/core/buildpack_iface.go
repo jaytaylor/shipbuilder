@@ -2,6 +2,9 @@ package core
 
 // Buildpack contains the interface to be implemented by Buildpack providers.
 type Buildpack interface {
+	// Name identifier of the buildpack.
+	Name() string
+
 	// ContainerCustomCommands returns a string of the bash script commands unique
 	// to the buildpack.
 	ContainerCustomCommands() string
@@ -17,4 +20,14 @@ type Buildpack interface {
 
 // BuildpacksProvider defines a generalized function type for constructing and
 // retrieving buildpacks.
-type BuildpacksProvider func(name string) (Buildpack, error)
+type BuildpacksProvider interface {
+
+	// New locates and constructs the corresponding buildpack.
+	New(name string) (Buildpack, error)
+
+	// Available returns the listing of available buildpacks.
+	Available() []string
+
+	// All returns all buildpacks.
+	All() []Buildpack
+}

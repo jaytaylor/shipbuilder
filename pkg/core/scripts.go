@@ -1,10 +1,10 @@
 package core
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"text/template"
-
-	"github.com/jaytaylor/shipbuilder/pkg/buildpacks"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -523,16 +523,18 @@ main(sys.argv)`
 var (
 	UPSTART        = template.New("UPSTART")
 	HAPROXY_CONFIG = template.New("HAPROXY_CONFIG")
-	// BUILD_PACKS    = map[string]*template.Template{}
+	BUILD_PACKS    = map[string]*template.Template{}
 )
 
-func init() {
+func (server *Server) initTemplates() error {
 	// Only validate templates if not running in server-mode.
 	if len(os.Args) > 1 && os.Args[1] != "server" {
-		return
+		return errors.New("initTemplates should only be invoked when running in server-mode")
 	}
 
-	template.Must(UPSTART.Parse(`
+	var err error
+
+	UPSTART, err = template.New("UPSTART").Parse(`
 # Start on "networking up" state.
 # @see http://upstart.ubuntu.com/cookbook/#how-to-establish-a-jobs-start-on-and-stop-on-conditions
 start on runlevel [2345]
@@ -546,10 +548,13 @@ pre-start script
     test $(stat -c %U /app/src) = 'root' && chown -R ubuntu:ubuntu /app || true
 end script
 exec start-stop-daemon --start --chuid ubuntu --exec /bin/sh -- -c "exec envdir /app/env /app/run"
-`))
+`)
+	if err != nil {
+		return fmt.Errorf("parsing UPSTART template: %s", err)
+	}
 
 	// NB: DefaultSSHHost has `.*@` portion stripped if an `@` symbol is found.
-	template.Must(HAPROXY_CONFIG.Parse(`
+	HAPROXY_CONFIG, err = template.New("HAPROXY_CONFIG").Parse(`
 global
     maxconn 32000
     # NB: Base HAProxy logging configuration is as per: http://kvz.io/blog/2010/08/11/haproxy-logging/
@@ -632,7 +637,10 @@ backend load_balancer
     stats uri /haproxy
     stats auth {{.HaProxyCredentials}}
 {{end}}
-`))
+`)
+	if err != nil {
+		return fmt.Errorf("parsing HAPROXY_CONFIG template: %s", err)
+	}
 
 	// // Discover all available build-packs.
 	// listing, err := ioutil.ReadDir(DIRECTORY + "/build-packs")
@@ -640,20 +648,23 @@ backend load_balancer
 	// 	fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 	// 	os.Exit(1)
 	// }
-	// for _, buildPack := range listing {
-	// 	if buildPack.IsDir() {
-	// 		log.Infof("Discovered build-pack: %v", buildPack.Name())
-	// 		contents, err := ioutil.ReadFile(DIRECTORY + "/build-packs/" + buildPack.Name() + "/pre-hook")
+	// for _, bp := range server.BuildpacksProvider.Available() {
+	// 	if bp.IsDir() {
+	// 		log.Infof("Discovered build-pack: %v", bp.Name())
+	// 		contents, err := ioutil.ReadFile(DIRECTORY + "/build-packs/" + bp.Name() + "/pre-hook")
 	// 		if err != nil {
-	// 			fmt.Fprintf(os.Stderr, "fatal: build-pack '%v' missing pre-hook file: %v\n", buildPack.Name(), err)
+	// 			fmt.Fprintf(os.Stderr, "fatal: build-pack '%v' missing pre-hook file: %v\n", bp.Name(), err)
 	// 			os.Exit(1)
 	// 		}
 	// 		// Map to template.
-	// 		BUILD_PACKS[buildPack.Name()] = template.Must(template.New("BUILD_" + strings.ToUpper(buildPack.Name())).Parse(string(contents)))
+	//            tpl, err = template.New("BUILD_" + strings.ToUpper(bp.Name())).Parse(string())
+	// 		BUILD_PACKS[bp.Name()] = template.Must(template.New("BUILD_" + strings.ToUpper(bp.Name())).Parse(string(contents)))
 	// 	}
 	// }
 
-	if len(buildpacks.AssetNames()) == 0 {
-		log.Fatalf("no build-packs found")
+	if server.BuildpacksProvider == nil || len(server.BuildpacksProvider.Available()) == 0 {
+		log.Fatalf("no build-packs found for provider=%T", server.BuildpacksProvider)
 	}
+
+	return nil
 }

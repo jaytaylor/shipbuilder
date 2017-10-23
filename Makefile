@@ -154,7 +154,7 @@ _prep_fpm: _create_environment build-linux package-linux deps
 	$(EXIT_ON_ERROR) \
 		mkdir -p dist \
 		&& cd build \
-		&& mkdir -p $(GITHUB_REPO)/etc/default $(GITHUB_REPO)/etc/systemd/system $(GITHUB_REPO)/usr/local/bin \
+		&& mkdir -p $(GITHUB_REPO)/etc/default $(GITHUB_REPO)/etc/$(GITHUB_REPO) $(GITHUB_REPO)/etc/systemd/system $(GITHUB_REPO)/usr/local/bin \
 		&& cp linux/$(GITHUB_REPO) $(GITHUB_REPO)/usr/local/bin/$(GITHUB_REPO) \
 		&& chmod 755 $(GITHUB_REPO)/usr/local/bin/$(GITHUB_REPO) \
 		&& cp ../build/environment $(GITHUB_REPO)/etc/default/$(GITHUB_REPO) \

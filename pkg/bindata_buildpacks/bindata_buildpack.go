@@ -6,11 +6,13 @@ import (
 	"strings"
 
 	"github.com/jaytaylor/shipbuilder/pkg/bindata_buildpacks/data"
+	"github.com/jaytaylor/shipbuilder/pkg/core"
 
 	"github.com/gigawattio/errorlib"
 )
 
 type BindataBuildpack struct {
+	name                    string
 	containerCustomCommands []byte
 	containerPackages       []byte
 	preHook                 []byte
@@ -18,7 +20,7 @@ type BindataBuildpack struct {
 
 // New retrieves raw buildpack data from gobindata compiled assets and
 // constructs a new BindataBuildpack from it.
-func New(name string) (*BindataBuildpack, error) {
+func New(name string) (core.Buildpack, error) {
 	errs := []error{}
 
 	containerCustomCommands, err := data.Asset(name + "/container-custom-commands")
@@ -41,12 +43,18 @@ func New(name string) (*BindataBuildpack, error) {
 	}
 
 	bp := &BindataBuildpack{
+		name: name,
 		containerCustomCommands: containerCustomCommands,
 		containerPackages:       bytes.Trim(containerPackages, "\r\n"),
 		preHook:                 preHook,
 	}
 
 	return bp, nil
+}
+
+// Name identifier of the buildpack.
+func (bp BindataBuildpack) Name() string {
+	return bp.name
 }
 
 // ContainerCustomCommands returns string containing the corresponding bash
