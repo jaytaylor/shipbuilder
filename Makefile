@@ -144,7 +144,12 @@ else
 endif
 endif
 
-_prep_fpm: build-linux package-linux deps
+_create_environment:
+	@$(EXIT_ON_ERROR) test -d env || ( echo 'error: missing required "env" configuration directory' 1>&2 && exit 1 )
+	$(EXIT_ON_ERROR) echo -n '' > build/environment
+	$(EXIT_ON_ERROR) cd env && for f in $$(ls -1) ; do echo "$${f}='$$(cat "$${f}")'" >> ../build/environment ; done ; cd - 1>/dev/null
+
+_prep_fpm: _create_environment build-linux package-linux deps
 	$(EXIT_ON_ERROR) test -r build/environment || ( echo 'error: missing build/environment; hint: start out by copying build/environment.example' 1>&2 && exit 1 )
 	$(EXIT_ON_ERROR) \
 		mkdir -p dist \
