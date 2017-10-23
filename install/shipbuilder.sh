@@ -87,6 +87,7 @@ function deployShipBuilder() {
 
     sudo systemctl stop shipbuilder || :
     cd ..
+    # TODO: Consider removing generate step, since it's included in `test'.
     envdir env bash -c 'make clean get generate test deb | tee /tmp/make.log'
     deb="$(tail -n1 /tmp/make.log | sed 's/^.*=>"\([^"]\+\)"}$/\1/')"
     test -n "${deb}" || (echo 'error: no deb artifact name detected, see /tmp/make.log for more information' 1>&2 && exit 1)

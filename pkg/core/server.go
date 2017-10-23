@@ -24,6 +24,7 @@ var (
 
 type Server struct {
 	LogServer                 *logserver.Server
+	BuildpacksProvider        BuildpacksProvider
 	currentLoadBalancerConfig string
 }
 

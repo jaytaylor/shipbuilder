@@ -58,16 +58,16 @@ DESCRIPTION = $(shell \
 	| awk 1 ORS='\\n' \
 )
 
-all: get generate test build
+all: get test build
 
 get:
 	$(EXIT_ON_ERROR) go get ./...
 
 generate:
-	$(EXIT_ON_ERROR) echo -e 'package buildpacks\nfunc Asset(name string) ([]byte, error) { return nil, nil }' > pkg/buildpacks/buildpacks.go
+	$(EXIT_ON_ERROR) echo -e 'package data\nfunc Asset(name string) ([]byte, error) { return nil, nil }' > pkg/bindata_buildpacks/data/buildpacks_data.go
 	$(EXIT_ON_ERROR) find . -type f -name '*.go' | grep -v '^\(\.\/\)\?\(vendor\)' | xargs -n1 dirname | sort | uniq | xargs -n1 go generate
 
-test:
+test: generate
 	$(EXIT_ON_ERROR) go test -race -v $$(go list ./... | grep -v /vendor/) || ( rc=$$? && echo "rc=$${rc}" && exit $${rc} )
 
 # Generate build targets for long form,

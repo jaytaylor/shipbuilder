@@ -30,8 +30,8 @@ Any server application can be run on ShipBuilder, but it will need a correspondi
 
 * `python` - Any python 2.x app
 * `nodejs` - Node.js apps
-* `java8` - Java 8
-* `java9` - Java 9
+* `java8-mvn` - Java 8 + Maven
+* `java9-mvn` - Java 9 + Maven
 * `scala-sbt` - Scala SBT applications and projects
 * `playframework2` - Play-framework 2.1.x
 

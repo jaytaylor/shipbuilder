@@ -20,7 +20,7 @@ config.json
 
 # Build artifacts #
 ###################
-/pkg/buildpacks/buildpacks.go
+/pkg/bindata_buildpacks/data/buildpacks_data.go
 /shipbuilder/shipbuilder-*
 /build/darwin
 /build/linux
