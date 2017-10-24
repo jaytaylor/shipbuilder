@@ -33,7 +33,7 @@ done
 # Clear options from $n.
 shift $(($OPTIND - 1))
 
-action=$1
+action="${1:-install}"
 
 test -z "${sbHost}" && autoDetectServer
 
@@ -41,10 +41,6 @@ test -z "${sbHost}" && autoDetectServer
 test -z "${sbHost}" && echo 'error: missing required parameter: -S [shipbuilder-host]' 1>&2 && exit 1
 test -z "${lbHost}" && echo 'error: missing required parameter: -H [load-balancer-host]' 1>&2 && exit 1
 #test -z "${action}" && echo 'error: missing required parameter: action' 1>&2 && exit 1
-if test -z "${action}"; then
-    echo 'info: action defaulted to: install'
-    action='install'
-fi
 
 test -n "${certFile}" && test ! -r "${certFile}" && echo "error: unable to read ssl certificate file; verify that it exists and user has permission to read it: ${certFile}" 1>&2 && exit 1
 test -z "${certFile}" && echo "warn: no ssl certificate file specified, ssl support will not be available (specify with '-c [path-to-ssl-cert]'" 1>&2
