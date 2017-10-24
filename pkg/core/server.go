@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/jaytaylor/shipbuilder/pkg/domain"
+
 	logserver "github.com/jaytaylor/logserver/server"
 	log "github.com/sirupsen/logrus"
 )
@@ -22,7 +24,8 @@ var (
 
 type Server struct {
 	LogServer                 *logserver.Server
-	BuildpacksProvider        BuildpacksProvider
+	BuildpacksProvider        domain.BuildpacksProvider
+	ReleasesProvider          domain.ReleasesProvider
 	currentLoadBalancerConfig string
 }
 

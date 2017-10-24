@@ -1,6 +1,6 @@
 set -x
 
-export SB_REPO_PATH="${GOPATH}/src/github.com/jaytaylor/shipbuilder"
+export SB_REPO_PATH="${GOPATH:-${HOME}/go}/src/github.com/jaytaylor/shipbuilder"
 
 function abortIfNonZero() {
     # @param $1 command return code/exit status (e.g. $?, '0', '1').
@@ -34,11 +34,11 @@ function autoDetectServer() {
 
 function autoDetectFilesystem() {
     # Attempts to auto-detect the target filesystem type by reading the contents of ../env/LXC_FS.
-    if test -r '../env/LXC_FS'; then
-        lxcFs=$(head -n1 ../env/LXC_FS)
+    if test -r '../env/SB_LXC_FS'; then
+        lxcFs=$(head -n1 ../env/SB_LXC_FS)
         test -n "${lxcFs}" && echo "info: auto-detected lxc filesystem: ${lxcFs}"
     else
-        echo 'warn: lxc filesystem auto-detection failed: no such file: ../env/LXC_FS' 1>&2
+        echo 'warn: lxc filesystem auto-detection failed: no such file: ../env/SB_LXC_FS' 1>&2
     fi
 }
 
@@ -46,15 +46,15 @@ function autoDetectZfsPool() {
     # When fs type is 'zfs', attempt to auto-detect the zfs pool name to create by reading the contents of ../env/ZFS_POOL.
     test -z "${lxcFs}" && autoDetectFilesystem # Attempt to ensure that the target filesystem type is available.
     if test "${lxcFs}" = 'zfs'; then
-        if test -r '../env/ZFS_POOL'; then
-            zfsPool="$(head -n1 ../env/ZFS_POOL)"
+        if test -r '../env/SB_ZFS_POOL'; then
+            zfsPool="$(head -n1 ../env/SB_ZFS_POOL)"
             test -n "${zfsPool}" && echo "info: auto-detected zfs pool: ${zfsPool}"
             # Validate to ensure zfs pool name won't conflict with typical ubuntu root-fs items.
             for x in bin boot dev etc git home lib lib64 media mnt opt proc root run sbin selinux srv sys tmp usr var vmlinuz zfs-kstat; do
                 test "${zfsPool}" = "${x}" && echo "error: invalid zfs pool name detected, '${x}' is a forbidden because it may conflict with a system directory" 1>&2 && exit 1
             done
         else
-            echo 'warn: zfs pool auto-detection failed: no such file: ../env/ZFS_POOL' 1>&2
+            echo 'warn: zfs pool auto-detection failed: no such file: ../env/SB_ZFS_POOL' 1>&2
         fi
     fi
 }
@@ -305,28 +305,31 @@ function prepareNode() {
             abortIfNonZero $? "mounting ${device}"
 
         elif test "${lxcFs}" = 'zfs'; then
+            # Strip leading '/' from $zfsPool, this is actually a compatibility update for 2017.
+            zfsPoolArg="$(echo "${zfsPool}" | sed 's/^\///')"
+
             # Create ZFS pool mount point.
-            test ! -d "/${zfsPool}" && sudo rm -rf "/${zfsPool}" && sudo mkdir "/${zfsPool}" || :
+            test ! -d "/${zfsPoolArg}" && sudo rm -rf "/${zfsPoolArg}" && sudo mkdir "/${zfsPoolArg}" || :
             abortIfNonZero $? "creating /${zfsPool} mount point"
 
             # Create ZFS pool and attach to a device.
-            if test -z "$(sudo zfs list -o name,mountpoint | sed '1d' | grep "^${zfsPool}.*\/${zfsPool}"'$')"; then
+            if test -z "$(sudo zfs list -o name,mountpoint | sed '1d' | grep "^${zfsPoolArg}.*\/${zfsPoolArg}"'$')"; then
                 # Format the device with any filesystem (mkfs.ext4 is fast).
                 sudo mkfs.ext4 -q "${device}"
                 abortIfNonZero $? "command 'sudo mkfs.ext4 -q ${device}'"
 
-                sudo zpool destroy "${zfsPool}" 2>/dev/null
+                sudo zpool destroy "${zfsPoolArg}" 2>/dev/null
 
-                #sudo zpool create -o ashift=12 "${zfsPool}" "${device}"
-                #abortIfNonZero $? "command 'sudo zpool create -o ashift=12 ${zfsPool} ${device}'"
-                sudo zpool create -f "${zfsPool}" "${device}"
-                abortIfNonZero $? "command 'sudo zpool create -f ${zfsPool} ${device}'"
+                #sudo zpool create -o ashift=12 "${zfsPoolArg}" "${device}"
+                #abortIfNonZero $? "command 'sudo zpool create -o ashift=12 ${zfsPoolArg} ${device}'"
+                sudo zpool create -f "${zfsPoolArg}" "${device}"
+                abortIfNonZero $? "command 'sudo zpool create -f ${zfsPoolArg} ${device}'"
             fi
 
             # Create lxc and git volumes.
             for volume in lxc git; do
-                test -z "$(sudo zfs list -o name | sed '1d' | grep "^${zfsPool}\/${volume}")" && sudo zfs create -o compression=on "${zfsPool}/${volume}" || :
-                abortIfNonZero $? "command 'sudo zfs create -o compression=on ${zfsPool}/${volume}'"
+                test -z "$(sudo zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" && sudo zfs create -o compression=on "${zfsPoolArg}/${volume}" || :
+                abortIfNonZero $? "command 'sudo zfs create -o compression=on ${zfsPoolArg}/${volume}'"
             done
 
             # Unmount all ZFS volumes.
@@ -334,37 +337,37 @@ function prepareNode() {
             abortIfNonZero $? "command 'sudo zfs umount -a'"
 
             # Export the pool.
-            sudo zpool export $zfsPool
-            abortIfNonZero $? "command 'sudo zpool export ${zfsPool}'"
+            sudo zpool export "${zfsPoolArg}"
+            abortIfNonZero $? "command 'sudo zpool export ${zfsPoolArg}'"
 
             # Import the zfs pool, this will mount the volumes.
-            sudo zpool import $zfsPool
-            abortIfNonZero $? "command 'sudo zpool import ${zfsPool}'"
+            sudo zpool import "${zfsPoolArg}"
+            abortIfNonZero $? "command 'sudo zpool import ${zfsPoolArg}'"
 
             # Enable zfs snapshot listing.
-            sudo zpool set listsnapshots=on "${zfsPool}"
-            abortIfNonZero $? "command 'sudo zpool set listsnapshots=on ${zfsPool}'"
+            sudo zpool set listsnapshots=on "${zfsPoolArg}"
+            abortIfNonZero $? "command 'sudo zpool set listsnapshots=on ${zfsPoolArg}'"
 
             # Add zfsroot to lxc configuration.
-            test -z "$(sudo grep '^lxc.lxcpath *=' /etc/lxc/lxc.conf 2>/dev/null)" && echo "lxc.lxcpath = /${zfsPool}/lxc" | sudo tee -a /etc/lxc/lxc.conf || sudo sed -i "s/^lxc.lxcpath *=.*/lxc.lxcpath = \/${zfsPool}\/lxc/g" /etc/lxc/lxc.conf
-            test -z "$(sudo grep '^lxc.bdev.zfs.root *=' /etc/lxc/lxc.conf 2>/dev/null)" && echo "lxc.bdev.zfs.root = ${zfsPool}/lxc" | sudo tee -a /etc/lxc/lxc.conf || sudo sed -i "s/^lxc.bdev.zfs.root *=.*/lxc.bdev.zfs.root = ${zfsPool}\/lxc/g" /etc/lxc/lxc.conf
+            test -z "$(sudo grep '^lxc.lxcpath *=' /etc/lxc/lxc.conf 2>/dev/null)" && echo "lxc.lxcpath = /${zfsPoolArg}/lxc" | sudo tee -a /etc/lxc/lxc.conf || sudo sed -i "s/^lxc.lxcpath *=.*/lxc.lxcpath = \/${zfsPoolArg}\/lxc/g" /etc/lxc/lxc.conf
+            test -z "$(sudo grep '^lxc.bdev.zfs.root *=' /etc/lxc/lxc.conf 2>/dev/null)" && echo "lxc.bdev.zfs.root = ${zfsPoolArg}/lxc" | sudo tee -a /etc/lxc/lxc.conf || sudo sed -i "s/^lxc.bdev.zfs.root *=.*/lxc.bdev.zfs.root = ${zfsPoolArg}\/lxc/g" /etc/lxc/lxc.conf
             abortIfNonZero $? 'application of lxc zfsroot setting'
 
             # Remove any fstab entry for the ZFS device (ZFS will auto-mount one pool).
             sudo sed -i "/.*$(echo "${device}" | sed 's/\//\\\//g').*/d" /etc/fstab
 
-            # Chmod 777 /$zfsPool/git
-            sudo chmod 777 /$zfsPool/git
-            abortIfNonZero $? "command 'sudo chmod 777 /${zfsPool}/git'"
+            # Chmod 777 /${zfsPoolArg}/git
+            sudo chmod 777 "/${zfsPoolArg}/git"
+            abortIfNonZero $? "command 'sudo chmod 777 /${zfsPoolArg}/git'"
 
-            # Link /var/lib/lxc to /${zfsPool}/lxc, and then link /mnt/build/lxc to /var/lib/lxc.
+            # Link /var/lib/lxc to /${zfsPoolArg}/lxc, and then link /mnt/build/lxc to /var/lib/lxc.
             test -d '/var/lib/lxc' && sudo mv /var/lib/lxc{,.bak} || :
-            test ! -h '/var/lib/lxc' && sudo ln -s "/${zfsPool}/lxc" /var/lib/lxc || :
-            test ! -h '/mnt/build/lxc' && sudo ln -s "/${zfsPool}/lxc" /mnt/build/lxc || :
+            test ! -h '/var/lib/lxc' && sudo ln -s "/${zfsPoolArg}/lxc" /var/lib/lxc || :
+            test ! -h '/mnt/build/lxc' && sudo ln -s "/${zfsPoolArg}/lxc" /mnt/build/lxc || :
 
             # Also might as well resolve the git linkage while we're here.
-            test ! -h '/mnt/build/git' && sudo ln -s "/${zfsPool}/git" /mnt/build/git || :
-            test ! -h '/git' && sudo ln -s "/${zfsPool}/git" /git || :
+            test ! -h '/mnt/build/git' && sudo ln -s "/${zfsPoolArg}/git" /mnt/build/git || :
+            test ! -h '/git' && sudo ln -s "/${zfsPoolArg}/git" /git || :
 
         else
             echo "error: prepareNode() got unrecognized filesystem=${lxcFs}" 1>&2
@@ -419,9 +422,9 @@ function prepareNode() {
 
     echo 'info: installing automatic zpool importer to system bootscript /etc/rc.local'
     test -e /etc/rc.local || (sudo touch /etc/rc.local && sudo chmod a+x /etc/rc.local)
-    test $(grep '^sudo zpool import '"${zfsPool}"' -f$' /etc/rc.local | wc -l) -eq 0 && sudo sed -i 's/^exit 0$/sudo zpool import '"${zfsPool}"' -f/' /etc/rc.local && \
-        test $(grep '^sudo zpool import '"${zfsPool}"' -f$' /etc/rc.local | wc -l) -eq 0 && echo 'sudo zpool import '"${zfsPool}"' -f' | sudo tee -a /etc/rc.local
-    grep "^sudo zpool import ${zfsPool} -f"'$' /etc/rc.local
+    test $(grep '^sudo zpool import '"${zfsPoolArg}"' -f$' /etc/rc.local | wc -l) -eq 0 && sudo sed -i 's/^exit 0$/sudo zpool import '"${zfsPoolArg}"' -f/' /etc/rc.local && \
+        test $(grep '^sudo zpool import '"${zfsPoolArg}"' -f$' /etc/rc.local | wc -l) -eq 0 && echo 'sudo zpool import '"${zfsPoolArg}"' -f' | sudo tee -a /etc/rc.local
+    grep "^sudo zpool import ${zfsPoolArg} -f"'$' /etc/rc.local
     abortIfNonZero $? 'adding zpool auto-mount to /etc/rc.local' 1>&2
 
     echo 'info: prepareNode() succeeded'

@@ -150,5 +150,5 @@ func (client *Client) Do(args []string) {
 		}
 	}
 
-	fail("Unknown command `%v`", args[1])
+	fail("Unknown command %q", args[1])
 }

@@ -17,6 +17,8 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/jaytaylor/shipbuilder/pkg/domain"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -289,7 +291,7 @@ func (d *Deployment) build() (err error) {
 	var f *os.File
 
 	// Create upstart script.
-	if f, err = os.OpenFile(d.Application.RootFsDir()+"/etc/init/app.conf", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0444); err != nil {
+	if f, err = os.OpenFile(d.Application.RootFsDir()+"/etc/init/app.conf", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(int(0444))); err != nil {
 		return
 	}
 	if err = UPSTART.Execute(f, nil); err != nil {
@@ -302,11 +304,11 @@ func (d *Deployment) build() (err error) {
 	}
 
 	// Create the build script.
-	if f, err = os.OpenFile(d.Application.RootFsDir()+APP_DIR+"/run", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0777); err != nil {
+	if f, err = os.OpenFile(d.Application.RootFsDir()+APP_DIR+"/run", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(int(0777))); err != nil {
 		return
 	}
 
-	var bp Buildpack
+	var bp domain.Buildpack
 	if bp, err = d.Server.BuildpacksProvider.New(d.Application.BuildPack); err != nil {
 		return
 	}
@@ -427,12 +429,12 @@ func (d *Deployment) archive() error {
 		return err
 	}
 
-	// Compress & upload the image to S3.
+	// Compress & persist the container image.
 	go func() {
 		e = Executor{
 			logger: NewLogger(os.Stdout, "[archive] "),
 		}
-		archiveName := "/tmp/" + versionedContainerName + ".tar.gz"
+		archiveName := fmt.Sprintf("/tmp/%v.tar.gz", versionedContainerName)
 		if err := e.BashCmd("tar --create --gzip --preserve-permissions --file " + archiveName + " " + d.Application.RootFsDir()); err != nil {
 			return
 		}
@@ -442,21 +444,20 @@ func (d *Deployment) archive() error {
 			return
 		}
 		defer func(archiveName string, e Executor) {
-			fmt.Fprintf(e.logger, "Closing filehandle and removing archive file \"%v\"\n", archiveName)
+			fmt.Fprintf(e.logger, "Closing filehandle and removing archive file %q\n", archiveName)
 			h.Close()
 			e.BashCmd("rm -f " + archiveName)
 		}(archiveName, e)
+
 		stat, err := h.Stat()
 		if err != nil {
+			log.Errorf("Problem stat'ing archive %q; operation aborted: %s", archiveName, err)
 			return
 		}
-		getS3Bucket().PutReader(
-			"/releases/"+d.Application.Name+"/"+d.Version+".tar.gz",
-			h,
-			stat.Size(),
-			"application/x-tar-gz",
-			"private",
-		)
+		if err := d.Server.ReleasesProvider.Store(d.Application.Name, d.Version, h, stat.Size()); err != nil {
+			log.Errorf("Problem persisting release for app=%v version=%v; operation probably failed: %s", d.Application.Name, d.Version, err)
+			return
+		}
 	}()
 	return nil
 }
@@ -805,23 +806,17 @@ func (d *Deployment) deploy() error {
 
 	if !d.ScalingOnly {
 		// Update releases.
-		releases, err := getReleases(d.Application.Name)
+		releases, err := d.Server.ReleasesProvider.List(d.Application.Name)
 		if err != nil {
 			return err
 		}
-		// Prepend the release (releases are in descending order)
-		releases = append([]Release{{
-			Version:  d.Version,
-			Revision: d.Revision,
-			Date:     time.Now(),
-			Config:   d.Application.Environment,
-		}}, releases...)
-		// Only keep around the latest 15 (older ones are still in S3)
+		// Prepend the release (releases are in descending order).
+		releases = append([]domain.Release{d.release()}, releases...)
+		// Only keep around the latest 15 (older ones are still in S3).
 		if len(releases) > 15 {
 			releases = releases[:15]
 		}
-		err = setReleases(d.Application.Name, releases)
-		if err != nil {
+		if err := d.Server.ReleasesProvider.Set(d.Application.Name, releases); err != nil {
 			return err
 		}
 	} else {
@@ -829,7 +824,10 @@ func (d *Deployment) deploy() error {
 		for _, removeDyno := range removeDynos {
 			fmt.Fprintf(titleLogger, "Shutting down dyno: %v\n", removeDyno.Container)
 			go func(rd Dyno) {
-				rd.Shutdown(&Executor{os.Stdout})
+				e := &Executor{
+					logger: os.Stdout,
+				}
+				rd.Shutdown(e)
 			}(removeDyno)
 		}
 	}
@@ -912,32 +910,42 @@ func (d *Deployment) undoVersionBump() {
 	})
 }
 
-func (server *Deployment) Deploy() error {
+func (d *Deployment) release() domain.Release {
+	r := domain.Release{
+		Version:  d.Version,
+		Revision: d.Revision,
+		Date:     time.Now(),
+		Config:   d.Application.Environment,
+	}
+	return r
+}
+
+func (d *Deployment) Deploy() error {
 	var err error
 
 	// Cleanup any hanging chads upon error.
 	defer func() {
 		if err != nil {
-			server.undoVersionBump()
+			d.undoVersionBump()
 		}
-		server.postDeployHooks(err)
+		d.postDeployHooks(err)
 	}()
 
-	if !server.ScalingOnly {
-		if err = server.createContainer(); err != nil {
+	if !d.ScalingOnly {
+		if err = d.createContainer(); err != nil {
 			return err
 		}
 
-		if err = server.build(); err != nil {
+		if err = d.build(); err != nil {
 			return err
 		}
 
-		if err = server.archive(); err != nil {
+		if err = d.archive(); err != nil {
 			return err
 		}
 	}
 
-	if err = server.deploy(); err != nil {
+	if err = d.deploy(); err != nil {
 		return err
 	}
 
@@ -1000,7 +1008,7 @@ func (server *Server) Redeploy(conn net.Conn, applicationName string) error {
 			StartedTs:   time.Now(),
 		}
 		// Find the release that corresponds with the latest deploy.
-		releases, err := getReleases(applicationName)
+		releases, err := server.ReleasesProvider.List(applicationName)
 		if err != nil {
 			return err
 		}

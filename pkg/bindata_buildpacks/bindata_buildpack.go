@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/jaytaylor/shipbuilder/pkg/bindata_buildpacks/data"
-	"github.com/jaytaylor/shipbuilder/pkg/core"
+	"github.com/jaytaylor/shipbuilder/pkg/domain"
 
 	"github.com/gigawattio/errorlib"
 )
@@ -20,7 +20,7 @@ type BindataBuildpack struct {
 
 // New retrieves raw buildpack data from gobindata compiled assets and
 // constructs a new BindataBuildpack from it.
-func New(name string) (core.Buildpack, error) {
+func New(name string) (domain.Buildpack, error) {
 	errs := []error{}
 
 	containerCustomCommands, err := data.Asset(name + "/container-custom-commands")

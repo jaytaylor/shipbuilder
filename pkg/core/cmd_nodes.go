@@ -5,61 +5,71 @@ import (
 	"io"
 	"net"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func (server *Server) SyncContainer(e Executor, address string, container string, cloneOrCreateArgs ...string) error {
-	e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+address, "sudo lxc-stop -k -n "+container+";sudo lxc-destroy -n "+container)
-	err := e.Run("ssh", append(
+	{
+		cmd := fmt.Sprintf("sudo lxc-ls -1 | grep '^%[1]v$' && ( sudo lxc-stop -k -n %[1]v ; sudo lxc-destroy -n %[1]v )", container)
+		e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+address, cmd)
+	}
+
+	if len(cloneOrCreateArgs) > 0 {
+		cloneOrCreateArgs = append([]string{"||", "sudo"}, cloneOrCreateArgs...)
+	}
+
+	if err := e.Run("ssh", append(
 		[]string{
 			DEFAULT_NODE_USERNAME + "@" + address,
 			"sudo", "test", "-e", LXC_DIR + "/" + container, "&&",
-			"echo", "not creating/cloning image '" + container + "', already exists", "||",
-			"sudo",
+			"echo", "not creating/cloning image '" + container + "', already exists",
 		},
 		cloneOrCreateArgs...,
-	)...)
-	if err != nil {
+	)...); err != nil {
 		return err
 	}
+
+	// if err := e.RsyncTo("root@"+address, "/var/cache/lx*", "/var/cache/"); err != nil {
+	// 	return err
+	// }
+
+	{
+		path := LXC_DIR + "/" + container
+		if err := e.Run("sudo", "zfs", "mount", path); err != nil {
+			return fmt.Errorf("mounting zfs path %q: %s", path, err)
+		}
+		defer func() {
+			if err := e.Run("sudo", "zfs", "umount", path); err != nil {
+				log.Errorf("Problem unmounting path %q: %s", path, err)
+			}
+		}()
+	}
+
 	// Rsync the base container over.
-	err = e.Run("sudo", "rsync",
-		"--recursive",
-		"--links",
-		"--perms",
-		"--times",
-		"--devices",
-		"--specials",
-		"--owner",
-		"--group",
-		"--hard-links",
-		"--acls",
-		"--delete",
-		"--xattrs",
-		"--numeric-ids",
-		"-e", "ssh "+DEFAULT_SSH_PARAMETERS,
-		LXC_DIR+"/"+container+"/rootfs/",
-		"root@"+address+":"+LXC_DIR+"/base/rootfs/",
-	)
-	if err != nil {
+	if err := e.RsyncTo("root@"+address, LXC_DIR+"/"+container+"/rootfs/", LXC_DIR+"/base/rootfs/"); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (server *Server) addNode(addAddress string, logger io.Writer) (string, error) {
-	prefixLogger := NewLogger(logger, "["+addAddress+"] ")
-	e := Executor{prefixLogger}
+	var (
+		prefixLogger = NewLogger(logger, "["+addAddress+"] ")
+		e            = Executor{
+			logger: prefixLogger,
+		}
+	)
+
 	fmt.Fprintf(prefixLogger, "Transmitting base LXC container image to node: %v\n", addAddress)
-	err := server.SyncContainer(e, addAddress, "base", "lxc-create", "-n", "base", "-B", DefaultLXCFS, "-t", "ubuntu")
-	if err != nil {
+	if err := server.SyncContainer(e, addAddress, "base", "lxc-create", "-n", "base", "-B", DefaultLXCFS, "-t", "ubuntu"); err != nil {
 		return addAddress, err
 	}
 	// Add build-packs.
 	for _, buildPack := range server.BuildpacksProvider.All() {
 		nContainer := "base-" + buildPack.Name()
 		fmt.Fprintf(prefixLogger, "Transmitting build-pack '%v' LXC container image to node: %v\n", nContainer, addAddress)
-		err = server.SyncContainer(e, addAddress, nContainer, "lxc-clone", "-s", "-B", DefaultLXCFS, "-o", "base", "-n", nContainer)
-		if err != nil {
+		if err := server.SyncContainer(e, addAddress, nContainer, "lxc-clone", "-s", "-B", DefaultLXCFS, "-o", "base", "-n", nContainer); err != nil {
 			return addAddress, err
 		}
 	}
@@ -194,4 +204,28 @@ func (server *Server) Node_Remove(conn net.Conn, addresses []string) error {
 		cfg.Nodes = nNodes
 		return nil
 	})
+}
+
+func (e Executor) RsyncTo(host string, src string, dst string) error {
+	if err := e.Run("sudo", "rsync",
+		"--recursive",
+		"--links",
+		"--perms",
+		"--times",
+		"--devices",
+		"--specials",
+		"--owner",
+		"--group",
+		"--hard-links",
+		"--acls",
+		"--delete",
+		"--xattrs",
+		"--numeric-ids",
+		"-e", "ssh "+DEFAULT_SSH_PARAMETERS,
+		src,
+		host+":"+dst,
+	); err != nil {
+		return fmt.Errorf("rsyncing %v to %v:%v: %s", src, host, dst, err)
+	}
+	return nil
 }

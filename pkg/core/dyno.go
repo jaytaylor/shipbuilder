@@ -64,7 +64,7 @@ func (dyno *Dyno) Shutdown(e *Executor) error {
 func (dyno *Dyno) AttachAndExecute(exe *Executor, args ...string) error {
 	// If the Dyno isn't running we won't be able to attach to it.
 	if dyno.State != DYNO_STATE_RUNNING {
-		return fmt.Errorf("can't run `%v` when dyno is not running, details: %v", args, dyno.Info())
+		return fmt.Errorf("can't run %q when dyno is not running, details: %v", args, dyno.Info())
 	}
 	args = appender.Strings(
 		[]string{

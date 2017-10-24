@@ -1,12 +1,8 @@
 package core
 
 import (
-	"errors"
 	"fmt"
-	"os"
 	"text/template"
-
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -527,10 +523,10 @@ var (
 )
 
 func (server *Server) initTemplates() error {
-	// Only validate templates if not running in server-mode.
-	if len(os.Args) > 1 && os.Args[1] != "server" {
-		return errors.New("initTemplates should only be invoked when running in server-mode")
-	}
+	// // Only validate templates if not running in server-mode.
+	// if len(os.Args) > 1 && os.Args[1] != "server" {
+	// 	return errors.New("initTemplates should only be invoked when running in server-mode")
+	// }
 
 	var err error
 
@@ -663,7 +659,7 @@ backend load_balancer
 	// }
 
 	if server.BuildpacksProvider == nil || len(server.BuildpacksProvider.Available()) == 0 {
-		log.Fatalf("no build-packs found for provider=%T", server.BuildpacksProvider)
+		return fmt.Errorf("no build-packs found for provider=%T", server.BuildpacksProvider)
 	}
 
 	return nil

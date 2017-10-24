@@ -100,7 +100,7 @@ func (c Command) Parse(args []string) ([]interface{}, error) {
 			continue
 		}
 
-		return final, fmt.Errorf("expected `%v` got `%v`", p.Name, flags)
+		return final, fmt.Errorf("expected %q got %q", p.Name, flags)
 	}
 
 	return final, nil

@@ -24,10 +24,10 @@ import (
 const (
 	APP_DIR                            = "/app"
 	ENV_DIR                            = APP_DIR + "/env"
-	LXC_DIR                            = "/var/lib/lxc"
+	LXC_DIR                            = "/tank/lxc" // "/var/lib/lxc"
 	DIRECTORY                          = "/etc/shipbuilder"
 	BINARY                             = "shipbuilder"
-	EXE                                = DIRECTORY + "/" + BINARY
+	EXE                                = "/usr/bin/" + BINARY
 	CONFIG                             = DIRECTORY + "/config.json"
 	GIT_DIRECTORY                      = "/git"
 	DEFAULT_NODE_USERNAME              = "ubuntu"

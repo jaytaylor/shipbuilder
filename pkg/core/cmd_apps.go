@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/jaytaylor/shipbuilder/pkg/domain"
 )
 
 func (server *Server) validateAppName(applicationName string) error {
@@ -22,32 +25,10 @@ func (server *Server) validateAppName(applicationName string) error {
 	expr := `^[a-z]+([a-z0-9-]*[a-z0-9])?$`
 	matcher := regexp.MustCompile(expr)
 	if !matcher.MatchString(applicationName) {
-		return fmt.Errorf("Application name must match `%v`", expr)
+		return fmt.Errorf("Application name must match %q", expr)
 	}
 	return nil
 }
-
-// func BuildpackNames() []string {
-// 	m := map[string]struct{}{}
-// 	for _, name := range buildpacks.AsssetNames() {
-// 		name = strings.Split(name, "/")[0]
-// 		if _, ok := m[name]; !ok {
-// 			m[name] = struct{}{}
-// 		}
-// 	}
-// 	names := []string{}
-// 	for name, _ := range m {
-// 		names = append(names, name)
-// 	}
-// 	return names
-// }
-
-// func (server *Server) validateBuildPack(buildPack string) error {
-// 	if _, err := buildpacks.Assset(buildPack + "/pre-hook"); err != nil {
-// 		return fmt.Errorf("unsupported buildpack requested: %v, valid choices are: %v", buildPack, strings.Join(server.BuildpacksProvider.Available(), ", "))
-// 	}
-// 	return nil
-// }
 
 func (server *Server) Apps_Create(conn net.Conn, applicationName string, buildPack string) error {
 	return server.WithPersistentConfig(func(cfg *Config) error {
@@ -60,16 +41,14 @@ func (server *Server) Apps_Create(conn net.Conn, applicationName string, buildPa
 		// Existing app.
 		for _, app := range cfg.Applications {
 			if app.Name == applicationName {
-				return fmt.Errorf("application with name `%v` already exists", applicationName)
+				return fmt.Errorf("application with name %q already exists", applicationName)
 			}
 		}
 
-		// if err := server.validateBuildPack(buildPack); err != nil {
-		// 	return err
-		// }
-
 		dimLogger := NewFormatter(NewTimeLogger(NewMessageLogger(conn)), DIM)
-		e := Executor{dimLogger}
+		e := Executor{
+			logger: dimLogger,
+		}
 
 		for _, command := range []string{
 			"git init --bare " + GIT_DIRECTORY + "/" + applicationName,                                               // Create git repo.
@@ -83,17 +62,17 @@ func (server *Server) Apps_Create(conn net.Conn, applicationName string, buildPa
 
 		// Add pre- and post- receive hooks.
 		if err := ioutil.WriteFile(
-			GIT_DIRECTORY+"/"+applicationName+"/hooks/pre-receive",
+			fmt.Sprintf("%[1]v%[2]v%[3]v%[2]vhooks/pre-receive", GIT_DIRECTORY, string(os.PathSeparator), applicationName),
 			[]byte(PRE_RECEIVE),
-			0777,
+			os.FileMode(int(0777)),
 		); err != nil {
 			return err
 		}
 
 		if err := ioutil.WriteFile(
-			GIT_DIRECTORY+"/"+applicationName+"/hooks/post-receive",
+			fmt.Sprintf("%[1]v%[2]v%[3]v%[2]vhooks/post-receive", GIT_DIRECTORY, string(os.PathSeparator), applicationName),
 			[]byte(POST_RECEIVE),
-			0777,
+			os.FileMode(int(0777)),
 		); err != nil {
 			return err
 		}
@@ -107,7 +86,9 @@ func (server *Server) Apps_Create(conn net.Conn, applicationName string, buildPa
 			Processes:   map[string]int{"web": 1},
 			Maintenance: false,
 		})
-		setReleases(applicationName, []Release{})
+		if err := server.ReleasesProvider.Set(applicationName, []domain.Release{}); err != nil {
+			return err
+		}
 		Logf(conn, "Your new application is ready\n")
 		return nil
 	})
@@ -125,7 +106,7 @@ func (server *Server) Apps_Destroy(conn net.Conn, applicationName string) error 
 		return err
 	}
 	if message.Type != ReadLineResponse {
-		return fmt.Errorf("Got unexpected message reponse type `%v`, wanted a `ReadLineResponse`", message.Type)
+		return fmt.Errorf("Got unexpected message reponse type %q, wanted a `ReadLineResponse`", message.Type)
 	}
 	if strings.TrimSpace(message.Body) != applicationName {
 		return fmt.Errorf("Incorrect application name entered. Operation aborted.")
@@ -142,7 +123,7 @@ func (server *Server) Apps_Destroy(conn net.Conn, applicationName string) error 
 		nApps := make([]*Application, 0, len(cfg.Applications))
 		for _, app := range cfg.Applications {
 			if app.Name == applicationName {
-				fmt.Fprintf(titleLogger, "Destroying application `%v`..\n", applicationName)
+				fmt.Fprintf(titleLogger, "Destroying application %q..\n", applicationName)
 			} else {
 				nApps = append(nApps, app)
 			}
@@ -182,9 +163,8 @@ func (server *Server) Apps_Destroy(conn net.Conn, applicationName string) error 
 			}
 		}
 
-		fmt.Fprint(dimLogger, "Deleting archived app releases from S3\n")
-		err = delReleases(applicationName, dimLogger)
-		if err != nil {
+		fmt.Fprint(dimLogger, "Deleting archived app releases\n")
+		if err := server.ReleasesProvider.Delete(applicationName, dimLogger); err != nil {
 			return err
 		}
 

@@ -39,6 +39,8 @@ Any server application can be run on ShipBuilder, but it will need a correspondi
 
 See [SERVER.md](https://github.com/jaytaylor/shipbuilder/blob/master/SERVER.md)
 
+TODO 2017-10-24: Create additional buildpack provider which uses FS with bindata as a fallthrough, to enable real-time overrides without recompile.
+
 ## Client
 
 See [CLIENT.md](https://github.com/jaytaylor/shipbuilder/blob/master/CLIENT.md)

@@ -1,4 +1,4 @@
-package core
+package domain
 
 // Buildpack contains the interface to be implemented by Buildpack providers.
 type Buildpack interface {

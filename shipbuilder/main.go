@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/jaytaylor/shipbuilder/pkg/bindata_buildpacks"
 	"github.com/jaytaylor/shipbuilder/pkg/core"
+	"github.com/jaytaylor/shipbuilder/pkg/domain"
+	"github.com/jaytaylor/shipbuilder/pkg/releases"
 	"github.com/jaytaylor/shipbuilder/pkg/version"
 
 	log "github.com/sirupsen/logrus"
@@ -109,6 +112,18 @@ func main() {
 						Value:       core.DefaultZFSPool,
 						Destination: &core.DefaultZFSPool,
 					},
+					&cli.StringFlag{
+						Name:    "releases-provider",
+						EnvVars: []string{"SB_RELEASES_PROVIDER"},
+						Usage:   "Release persistence backend, must be one of: 'aws', 'fs'",
+						Value:   "aws",
+					},
+					&cli.StringFlag{
+						Name:    "fs-releases-provider-path",
+						Aliases: []string{"fs-path"},
+						EnvVars: []string{"SB_FS_RELEASES_PROVIDER_PATH"},
+						Usage:   "Storage path for FS releases provider",
+					},
 				},
 				Before: func(ctx *cli.Context) error {
 					if ctx.Args().Len() == 0 {
@@ -119,8 +134,14 @@ func main() {
 					return nil
 				},
 				Action: func(ctx *cli.Context) error {
+					releasesProvider, err := releasesProvider(ctx)
+					if err != nil {
+						return err
+					}
+
 					server := &core.Server{
 						BuildpacksProvider: bindata_buildpacks.NewProvider(),
+						ReleasesProvider:   releasesProvider,
 					}
 					if err := server.Start(); err != nil {
 						return err
@@ -188,4 +209,26 @@ func sigWait() error {
 	<-sigCh
 
 	return nil
+}
+
+func releasesProvider(ctx *cli.Context) (provider domain.ReleasesProvider, err error) {
+	requested := ctx.String("releases-provider")
+
+	switch requested {
+	case "aws":
+		provider = releases.NewAWSS3ReleasesProvider(core.DefaultAWSKey, core.DefaultAWSSecret, core.DefaultS3BucketName, core.DefaultAWSRegion)
+		return
+
+	case "fs":
+		storagePath := ctx.String("fs-releases-provider-path")
+		if len(storagePath) == 0 {
+			err = errors.New("missing required parameter: fs-releases-provider-path")
+			return
+		}
+		provider = releases.NewFSReleasesProvider(storagePath)
+		return
+	}
+
+	err = fmt.Errorf("unrecognized releases-provider %q", requested)
+	return
 }

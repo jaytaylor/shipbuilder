@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -12,10 +13,10 @@ func (server *Server) Rollback(conn net.Conn, applicationName, version string) e
 		defer deployLock.finish()
 
 		if app.LastDeploy == "" {
-			return fmt.Errorf("Automatic rollback version detection is impossible because this app has not had any releases")
+			return errors.New("Automatic rollback version detection is impossible because this app has not had any releases")
 		}
 		if app.LastDeploy == "v1" {
-			return fmt.Errorf("Automatic rollback version detection is impossible because this app has only had 1 release")
+			return errors.New("Automatic rollback version detection is impossible because this app has only had 1 release")
 		}
 		if version == "" {
 			// Get release before current.
@@ -50,16 +51,13 @@ func (server *Server) Rollback(conn net.Conn, applicationName, version string) e
 			}
 		}()
 
-		err = deployment.extract(version)
-		if err != nil {
+		if err := deployment.extract(version); err != nil {
 			return err
 		}
-		err = deployment.archive()
-		if err != nil {
+		if err := deployment.archive(); err != nil {
 			return err
 		}
-		err = deployment.deploy()
-		if err != nil {
+		if err := deployment.deploy(); err != nil {
 			return err
 		}
 		return nil
