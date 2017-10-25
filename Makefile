@@ -127,7 +127,7 @@ ifeq ($(UNAME_S),Linux)
 	@#$(EXIT_ON_ERROR) command git || sudo --non-interactive apt-get install --yes git
 	@#$(EXIT_ON_ERROR) command unzip || sudo --non-interactive apt-get install --yes unzip
 	$(EXIT_ON_ERROR) sudo --non-interactive apt-get install --yes bzr gcc gem git rpm ruby-dev rubygems unzip
-	$(EXIT_ON_ERROR) sudo --non-interactive gem install fpm
+	$(EXIT_ON_ERROR) command -v fpm 1>/dev/null 2>/dev/null || sudo --non-interactive gem install fpm
 else
 ifeq ($(UNAME_S),Darwin)
 	$(EXIT_ON_ERROR) command -v fpm 1>/dev/null 2>/dev/null || sudo --non-interactive gem install fpm
