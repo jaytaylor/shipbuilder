@@ -36,6 +36,10 @@ func (server *Server) SyncContainer(e Executor, address string, container string
 
 	{
 		path := LXC_DIR + "/" + container
+		if DefaultLXCFS == "zfs" {
+			// Trim leading slash.
+			path = strings.TrimLeft(path, "/")
+		}
 		if err := e.Run("sudo", "zfs", "mount", path); err != nil {
 			return fmt.Errorf("mounting zfs path %q: %s", path, err)
 		}

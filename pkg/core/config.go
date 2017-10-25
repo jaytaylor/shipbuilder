@@ -512,7 +512,7 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 					return
 				}
 				err = e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+lb,
-					`sudo /bin/bash -c 'if [ "$(sudo service haproxy status)" = "haproxy not running." ]; then sudo service haproxy start; else sudo service haproxy reload; fi'`,
+					`/bin/bash -c 'if [ "$(sudo systemctl status haproxy | grep --only-matching "Active: [^ ]\+" | cut -d " " -f 2)" = "inactive" ]; then sudo systemctl start haproxy ; else sudo systemctl reload haproxy ; fi'`,
 				)
 				if err != nil {
 					c <- err
