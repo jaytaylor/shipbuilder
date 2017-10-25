@@ -102,7 +102,7 @@ func SyncNtpForHost(host string, logger io.Writer) error {
 }
 
 func (server *Server) sysSyncNtp(logger io.Writer) error {
-	// sudo service ntp stop && sudo /usr/sbin/ntpdate 0.pool.ntp.org 1.pool.ntp.org time.apple.com time.windows.com && sudo service ntp start
+	// sudo systemctl stop ntp && sudo /usr/sbin/ntpdate 0.pool.ntp.org 1.pool.ntp.org time.apple.com time.windows.com && sudo systemctl start ntp
 
 	type SyncResult struct {
 		host string

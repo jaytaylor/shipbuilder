@@ -66,7 +66,7 @@ var (
 
 var (
 	ntpServers     = "0.pool.ntp.org 1.pool.ntp.org time.apple.com time.windows.com"
-	ntpSyncCommand = "sudo service ntp stop && sudo /usr/sbin/ntpdate " + ntpServers + " && sudo service ntp start"
+	ntpSyncCommand = "sudo systemctl stop ntp && sudo /usr/sbin/ntpdate " + ntpServers + " && sudo systemctl start ntp"
 )
 
 type Application struct {

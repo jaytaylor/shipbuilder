@@ -67,5 +67,5 @@ sudo mv /etc/ssh{,.bak-$ts}
 sudo mv ~/.ssh/etc /etc/ssh
 sudo chmod 600 /etc/ssh/*key
 sudo chown -R root:root /etc/ssh /root/.ssh
-sudo service ssh restart'
+sudo systemctl restart ssh'
 

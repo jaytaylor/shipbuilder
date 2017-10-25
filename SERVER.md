@@ -10,7 +10,7 @@ Requirements
 Mac OS-X:
 
     brew install daemontools
-    
+
 Linux:
 
     sudo apt-get install daemontools
@@ -55,17 +55,17 @@ Installation
 
 2. Checkout and configure ShipBuilder (via the env/ directory)
 ```
-    git clone https://github.com/Sendhub/shipbuilder.git
-    cd shipbuilder
-    cp -r env.example env
+git clone https://github.com/Sendhub/shipbuilder.git
+cd shipbuilder
+cp -r env.example env
 
-    # Set the shipbuilder server host:        
-    echo ubuntu@sb.example.com > env/SB_SSH_HOST
+# Set the shipbuilder server host:
+echo ubuntu@sb.example.com > env/SB_SSH_HOST
 
-    # Set your AWS credentials:
-    echo 'MY_AWS_KEY' > env/SB_AWS_KEY
-    echo 'MY_AWS_SECRET' > env/SB_AWS_SECRET
-    echo 'MY_S3_BUCKET_NAME' > env/SB_S3_BUCKET
+# Set your AWS credentials:
+echo 'MY_AWS_KEY' > env/SB_AWS_KEY
+echo 'MY_AWS_SECRET' > env/SB_AWS_SECRET
+echo 'MY_S3_BUCKET_NAME' > env/SB_S3_BUCKET
 ```
 
 This directory will need to be rsync'd to the server host under ~/go/src/github.com/jaytaylor/.
@@ -92,7 +92,8 @@ ssh SERVERHOSTNAME bash -c 'cd ~/go/src/github.com/jaytaylor/shipbuilder && ./in
 ```
 
 3. Run Installers:
-```
+
+```bash
     # For shipbuilder server (make sure this device is a persistent volume as this will be the source of truth):
     ./install/shipbuilder.sh -d /dev/xvdb install
 
@@ -105,18 +106,21 @@ ssh SERVERHOSTNAME bash -c 'cd ~/go/src/github.com/jaytaylor/shipbuilder && ./in
 ```
 
 4. Compile ShipBuilder locally:
-```
-    ./build.sh
+
+```bash
+make build
 ```
 
 5. Add the load-balancer:
-```
-    ./shipbuilder lb:add HOST_OR_IP
+
+```bash
+./shipbuilder/shipbuilder-darwin client lb:add HOST_OR_IP
 ```
 
 6. Add the node(s):
-```
-    ./shipbuilder nodes:add HOST_OR_IP1 HOST_OR_IP2..
+
+```bash
+./shipbuilder/shipbuilder-darwin client nodes:add HOST_OR_IP1 HOST_OR_IP2..
 ```
 
 7. Start creating apps!

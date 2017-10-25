@@ -371,19 +371,32 @@ Requirements:
 
 First set up your env:
 
-    echo 'sb.sendhub.com' > env/SB_SSH_HOST
-    echo 'admin:password' > env/SB_HAPROXY_CREDENTIALS
-    echo 'true' > env/SB_HAPROXY_STATS
-    echo "$HOME/.ssh/id_rsa" > env/SB_SSH_KEY
+```bash
+echo 'sb.sendhub.com' > env/SB_SSH_HOST
+echo 'admin:password' > env/SB_HAPROXY_CREDENTIALS
+echo 'true' > env/SB_HAPROXY_STATS
+echo "$HOME/.ssh/id_rsa" > env/SB_SSH_KEY
+```
 
 Build the client:
 
-    ./build.sh
+```bash
+make clean build
+```
+
+The resulting binary will be created under ./shipbuilder, e.g.:
+
+```bash
+./shipbuilder/shipbuilder-darwin
+./shipbuilder/shipbuilder-linux
+```
 
 Deploy to SB_SSH_HOST:
 
-    ./deploy.sh
-
+```bash
+rsync -azve ssh ~/go/src ${SB_SSH_HOST}:~/go/
+ssh ${SB_SSH_HOST} bash -c 'make clean deb && sudo dpkg -i dist/shipbuilder_*.deb && sudo systemctl restart shipbuilder'
+```
 
 Setting a maintenance page URL
 --------------------------------

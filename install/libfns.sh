@@ -455,7 +455,7 @@ net.core.rmem_max = 16777216
 net.core.wmem_max = 16777216' | sudo tee /etc/sysctl.d/60-shipbuilder.conf
     abortIfNonZero $? 'writing out /etc/sysctl.d/60-shipbuilder.conf'
 
-    sudo service procps restart
+    sudo systemctl restart procps
     abortIfNonZero $? 'service procps restart'
 
     echo "info: adding ppa repository for ${version}: ${ppa}"
@@ -552,7 +552,7 @@ function rsyslogLoggingListeners() {
     $ModLoad imtcp
     $InputTCPServerRun 10514' | sudo tee /etc/rsyslog.d/49-haproxy.conf
     echo 'info: restarting rsyslog'
-    sudo service rsyslog restart
+    sudo systemctl restart rsyslog
     if [ -e /etc/rsyslog.d/haproxy.conf ]; then
         echo 'info: detected existing rsyslog haproxy configuration, will disable it'
         sudo mv /etc/rsyslog.d/haproxy.conf /etc/rsyslog.d-haproxy.conf.disabled
