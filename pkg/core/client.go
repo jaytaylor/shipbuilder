@@ -98,6 +98,19 @@ func (*Client) send(msg Message) error {
 	return nil
 }
 
+// RemoteExec takes a Shipbuilder server method name and corresponding args, and
+// invokes it remotely.
+func (client *Client) RemoteExec(methodName string, args ...interface{}) error {
+	bs, err := json.Marshal(append([]interface{}{methodName}, args...))
+	if err != nil {
+		return err
+	}
+	if err := client.send(Message{Call, string(bs)}); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (client *Client) Do(args []string) {
 	var (
 		local     = &Local{}

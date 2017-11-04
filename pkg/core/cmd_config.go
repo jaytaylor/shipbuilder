@@ -38,7 +38,7 @@ func (server *Server) Config_List(conn net.Conn, applicationName string) error {
 	})
 }
 
-func (server *Server) Config_Set(conn net.Conn, applicationName, deferred string, args map[string]string) error {
+func (server *Server) Config_Set(conn net.Conn, applicationName string, deferred bool, args map[string]string) error {
 	titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
 
 	err := server.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
@@ -53,7 +53,7 @@ func (server *Server) Config_Set(conn net.Conn, applicationName, deferred string
 	if err != nil {
 		return err
 	}
-	if deferred != "" {
+	if deferred {
 		fmt.Fprintf(titleLogger, "NOTICE: Redeploy deferred, changes will not be active until next deploy is triggered\n")
 		return nil
 	} else {
@@ -61,7 +61,7 @@ func (server *Server) Config_Set(conn net.Conn, applicationName, deferred string
 	}
 }
 
-func (server *Server) Config_Remove(conn net.Conn, applicationName, deferred string, configNames []string) error {
+func (server *Server) Config_Remove(conn net.Conn, applicationName string, deferred bool, configNames []string) error {
 	titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
 
 	err := server.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
@@ -75,7 +75,7 @@ func (server *Server) Config_Remove(conn net.Conn, applicationName, deferred str
 	if err != nil {
 		return err
 	}
-	if deferred != "" {
+	if deferred {
 		fmt.Fprintf(titleLogger, "NOTICE: Redeploy deferred, changes will not be active until next deploy is triggered\n")
 		return nil
 	} else {
