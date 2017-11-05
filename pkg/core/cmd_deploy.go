@@ -104,7 +104,7 @@ func (d *Deployment) removeSshPrivateKeyFile() error {
 	return nil
 }
 
-func (d *Deployment) createContainer() error {
+func (d *Deployment) createContainer() (err error) {
 	var (
 		dimLogger   = NewFormatter(d.Logger, DIM)
 		titleLogger = NewFormatter(d.Logger, GREEN)
@@ -114,52 +114,71 @@ func (d *Deployment) createContainer() error {
 	)
 
 	// If there's not already a container.
-	if _, err := os.Stat(d.Application.RootFsDir()); err != nil {
+	if _, err = os.Stat(d.Application.RootFsDir()); err != nil {
 		fmt.Fprintf(titleLogger, "Creating container\n")
 		// Clone the base application.
 		if d.err = e.CloneContainer("base-"+d.Application.BuildPack, d.Application.Name); d.err != nil {
-			return d.err
+			err = d.err
+			return
 		}
 	} else {
 		fmt.Fprintf(titleLogger, "App image container already exists\n")
 	}
 
-	if err := e.BashCmd("rm -rf " + d.Application.AppDir() + "/*"); err != nil {
-		return err
+	if err = e.MountContainerFS(d.Application.Name); err != nil {
+		return
 	}
-	if err := e.BashCmd("mkdir -p " + d.Application.SrcDir()); err != nil {
-		return err
+	defer func() {
+		if umountErr := e.UnmountContainerFS(d.Application.Name); umountErr != nil {
+			if err == nil {
+				err = umountErr
+			} else {
+				log.Errorf("Existing error=%s; also got container FS unmount error: %s", err, umountErr)
+			}
+		}
+	}()
+
+	if err = e.BashCmd("rm -rf " + d.Application.AppDir() + "/*"); err != nil {
+		return
+	}
+	if err = e.BashCmd("mkdir -p " + d.Application.SrcDir()); err != nil {
+		return
 	}
 	// Copy the ShipBuilder binary into the container.
 	if d.err = e.BashCmd("cp " + EXE + " " + d.Application.AppDir() + "/" + BINARY); d.err != nil {
-		return d.err
+		err = d.err
+		return
 	}
 	// Export the source to the container.  Use `--depth 1` to omit the history which wasn't going to be used anyways.
 	if d.err = e.BashCmd("git clone --depth 1 " + d.Application.GitDir() + " " + d.Application.SrcDir()); d.err != nil {
-		return d.err
+		err = d.err
+		return
 	}
 
 	// Add the public ssh key for submodule (and later dependency) access.
-	if err := d.applySshPrivateKeyFile(); err != nil {
-		return err
+	if err = d.applySshPrivateKeyFile(); err != nil {
+		return
 	}
 
 	// Checkout the given revision.
 	if d.err = e.BashCmd("cd " + d.Application.SrcDir() + " && git checkout -q -f " + d.Revision); d.err != nil {
-		return d.err
+		err = d.err
+		return
 	}
 
 	// Convert references to submodules to be read-only.
 	{
 		cmdStr := fmt.Sprintf(`test -f '%[1]v/.gitmodules' && echo 'git: converting submodule refs to be read-only' && sed -i 's,git@github.com:,git://github.com/,g' '%[1]v/.gitmodules' || echo 'git: project does not appear to have any submodules'`, d.Application.SrcDir())
 		if d.err = e.BashCmd(cmdStr); d.err != nil {
-			return d.err
+			err = d.err
+			return
 		}
 	}
 
 	// Update the submodules.
 	if d.err = e.BashCmd("cd " + d.Application.SrcDir() + " && git submodule init && git submodule update"); d.err != nil {
-		return d.err
+		err = d.err
+		return
 	}
 
 	// Clear out and remove all git files from the container; they are unnecessary from this point forward.
@@ -283,8 +302,24 @@ func (d *Deployment) build() (err error) {
 		}
 	}()
 
+	// NB: This is part of compatibility for LXC 2.x.
+	if err = e.MountContainerFS(d.Application.Name); err != nil {
+		return
+	}
+	defer func() {
+		// NB: exe.Start/StopContainer() automatically detects and unmounts
+		// the FS as needed.  This is run just in case execution doesn't
+		// make it to the exe.Start/StopContainer block.
+		if err = e.UnmountContainerFS(d.Application.Name); err != nil {
+			return
+		}
+	}()
+
 	// Prepare /app/env now so that the app env vars are available to the pre-hook script.
 	if err = d.prepareEnvironmentVariables(e); err != nil {
+		return
+	}
+	if err = d.validateProcfile(); err != nil {
 		return
 	}
 
@@ -399,6 +434,10 @@ func (d *Deployment) build() (err error) {
 	}
 	if stopErr != nil {
 		err = fmt.Errorf("stopping container: %s", stopErr)
+		return
+	}
+
+	if err = e.MountContainerFS(d.Application.Name); err != nil {
 		return
 	}
 
@@ -764,10 +803,6 @@ func (d *Deployment) validateProcfile() error {
 func (d *Deployment) deploy() error {
 	if len(d.Application.Processes) == 0 {
 		return fmt.Errorf("No processes scaled up, adjust with `ps:scale procType=#` before deploying")
-	}
-
-	if err := d.validateProcfile(); err != nil {
-		return err
 	}
 
 	var (

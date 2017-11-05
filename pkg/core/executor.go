@@ -39,8 +39,23 @@ func (exe *Executor) ContainerExists(name string) bool {
 	return err == nil
 }
 
+func (exe *Executor) ContainerRunning(name string) (bool, error) {
+	cmd := exec.Command("sudo", "lxc-ls", "--running", "--filter=^"+name+"$")
+	out, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("checking if container=%q running: %s", name, err)
+	}
+	if string(out) == name {
+		return true, nil
+	}
+	return false, nil
+}
+
 // Start a local container.
 func (exe *Executor) StartContainer(name string) error {
+	if err := exe.UnmountContainerFS(name); err != nil {
+		return err
+	}
 	if exe.ContainerExists(name) {
 		return exe.Run("sudo", "lxc-start", "-d", "-n", name)
 	}
@@ -70,9 +85,116 @@ func (exe *Executor) DestroyContainer(name string) error {
 	return nil // Don't operate on non-existent containers.
 }
 
-// This is used internally when the filesystem type if zfs.
-// Recursively destroys children of the requested container before destroying.  This should only be invoked by an Executor to destroy containers.
+// Clone a local container.
+func (exe *Executor) CloneContainer(oldName, newName string) error {
+	return exe.Run("sudo", "lxc-clone", "-s", "-B", DefaultLXCFS, "-o", oldName, "-n", newName)
+}
+
+// Run a command in a local container.
+func (exe *Executor) AttachContainer(name string, args ...string) *exec.Cmd {
+	// Add hosts entry for container name to avoid error upon entering shell: "sudo: unable to resolve host `name`".
+	err := exec.Command("sudo", "/bin/bash", "-c", `echo "127.0.0.1`+"\t"+name+`" | sudo tee -a `+LXC_DIR+"/"+name+`/rootfs/etc/hosts`).Run()
+	if err != nil {
+		fmt.Fprintf(exe.logger, "warn: host fix command failed for container '%v': %v\n", name, err)
+	}
+	// Build command to be run, prefixing any .shipbuilder `bin` directories to the environment $PATH.
+	command := `export PATH="$(find /app/.shipbuilder -maxdepth 2 -type d -wholename '*bin'):${PATH}" && /usr/bin/envdir ` + ENV_DIR + " "
+	if len(args) == 0 {
+		command += "/bin/bash"
+	} else {
+		command += strings.Join(args, " ")
+	}
+	prefixedArgs := []string{
+		"lxc-attach", "-n", name, "--",
+		"sudo", "-u", "ubuntu", "-n", "-i", "--",
+		"/bin/bash", "-c", command,
+	}
+	log.Infof("AttachContainer name=%v, completeCommand=sudo %v", name, args)
+	return exec.Command("sudo", prefixedArgs...)
+}
+
+func (exe *Executor) ContainerFSMountpoint(name string) (string, error) {
+	if DefaultLXCFS != "zfs" {
+		return "", opNotSupportedOnFSErr()
+	}
+	var (
+		path = "/" + exe.ZFSContainerName(name)
+		cmd  = exec.Command("sudo", "zfs", "list", "-H", "-o", "mountpoint", path)
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("locating zfs mountpoint for %q: %s (out=%v)", path, err, out)
+	}
+	mountpoint := strings.Trim(string(out), "\r\n")
+	return mountpoint, nil
+}
+
+func (exe *Executor) MountContainerFS(name string) error {
+	if DefaultLXCFS != "zfs" {
+		return opNotSupportedOnFSErr()
+	}
+
+	mounted, err := exe.ContainerFSMounted(name)
+	if err != nil {
+		return err
+	}
+	if !mounted {
+		path := exe.ZFSContainerName(name)
+		if err = exe.Run("sudo", "zfs", "mount", path); err != nil {
+			return fmt.Errorf("mounting zfs path %q: %s", path, err)
+		}
+	}
+	return nil
+}
+
+// UnmountContainerFS check for existing mount and, if found, attempt to
+// unmount it.
+func (exe *Executor) UnmountContainerFS(name string) error {
+	running, err := exe.ContainerRunning(name)
+	if err != nil {
+		return err
+	}
+	if running {
+		return fmt.Errorf("refusing to unmount container filesystem for running container %q", name)
+	}
+	mounted, err := exe.ContainerFSMounted(name)
+	if err != nil {
+		return err
+	}
+	if mounted {
+		exe.Run("sudo", "zfs", "umount", exe.ZFSContainerName(name))
+	}
+	return nil
+}
+
+func (exe *Executor) ContainerFSMounted(name string) (bool, error) {
+	if DefaultLXCFS != "zfs" {
+		return false, opNotSupportedOnFSErr()
+	}
+
+	cmd := exec.Command("sudo", "zfs", "mount")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("checking for existing zfs mount for %q: %s (out=%v)", name, err, out)
+	}
+	want := exe.ZFSContainerName(name)
+	for _, line := range strings.Split(string(out), "\n") {
+		zfsPath := strings.Split(line, " ")[0]
+		if zfsPath == want {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// zfsDestroyContainerAndChildren is used internally when the filesystem type if
+// zfs.  Recursively destroys children of the requested container before
+// destroying.  This should only be invoked by an Executor to destroy containers.
 func (exe *Executor) zfsDestroyContainerAndChildren(name string) error {
+	if DefaultLXCFS != "zfs" {
+		return opNotSupportedOnFSErr()
+	}
+
 	// NB: This is not working yet, and may not be required.
 	/* fmt.Fprintf(exe.logger, "sudo /bin/bash -c \""+`zfs list -t snapshot | grep --only-matching '^`+DefaultZFSPool+`/`+name+`@[^ ]\+' | sed 's/^`+DefaultZFSPool+`\/`+name+`@//'`+"\"\n")
 	childrenBytes, err := exec.Command("sudo", "/bin/bash", "-c", `zfs list -t snapshot | grep --only-matching '^`+DefaultZFSPool+`/`+name+`@[^ ]\+' | sed 's/^`+DefaultZFSPool+`\/`+name+`@//'`).Output()
@@ -105,10 +227,15 @@ func (exe *Executor) zfsDestroyContainerAndChildren(name string) error {
 	return nil
 }
 
-// zfs-fuse sometimes requires several attempts to destroy a container before the operation goes through successfully.
+// zfsRunAndResistDatasetIsBusy zfs-fuse sometimes requires several attempts to
+// destroy a container before the operation goes through successfully.
 // Expected error messages follow the form of:
 //     cannot destroy 'tank/app_vXX': dataset is busy
 func (exe *Executor) zfsRunAndResistDatasetIsBusy(cmd string, args ...string) error {
+	if DefaultLXCFS != "zfs" {
+		return opNotSupportedOnFSErr()
+	}
+
 	var err error = nil
 	for i := 0; i < 30; i++ {
 		err = exe.Run(cmd, args...)
@@ -120,30 +247,11 @@ func (exe *Executor) zfsRunAndResistDatasetIsBusy(cmd string, args ...string) er
 	return err
 }
 
-// Clone a local container.
-func (exe *Executor) CloneContainer(oldName, newName string) error {
-	return exe.Run("sudo", "lxc-clone", "-s", "-B", DefaultLXCFS, "-o", oldName, "-n", newName)
+func (exe *Executor) ZFSContainerName(name string) string {
+	zfsName := strings.TrimLeft(LXC_DIR+"/"+name, "/")
+	return zfsName
 }
 
-// Run a command in a local container.
-func (exe *Executor) AttachContainer(name string, args ...string) *exec.Cmd {
-	// Add hosts entry for container name to avoid error upon entering shell: "sudo: unable to resolve host `name`".
-	err := exec.Command("sudo", "/bin/bash", "-c", `echo "127.0.0.1`+"\t"+name+`" | sudo tee -a `+LXC_DIR+"/"+name+`/rootfs/etc/hosts`).Run()
-	if err != nil {
-		fmt.Fprintf(exe.logger, "warn: host fix command failed for container '%v': %v\n", name, err)
-	}
-	// Build command to be run, prefixing any .shipbuilder `bin` directories to the environment $PATH.
-	command := `export PATH="$(find /app/.shipbuilder -maxdepth 2 -type d -wholename '*bin'):${PATH}" && /usr/bin/envdir ` + ENV_DIR + " "
-	if len(args) == 0 {
-		command += "/bin/bash"
-	} else {
-		command += strings.Join(args, " ")
-	}
-	prefixedArgs := []string{
-		"lxc-attach", "-n", name, "--",
-		"sudo", "-u", "ubuntu", "-n", "-i", "--",
-		"/bin/bash", "-c", command,
-	}
-	log.Infof("AttachContainer name=%v, completeCommand=sudo %v", name, args)
-	return exec.Command("sudo", prefixedArgs...)
+func opNotSupportedOnFSErr() error {
+	return fmt.Errorf("operation not supported for fs-type=%q", DefaultLXCFS)
 }

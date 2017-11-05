@@ -70,6 +70,8 @@ destroyVersions=$(
         uniq
 )
 
+# TODO: Migrate this to ZFS 2.0 / SB LXC ZFS PATH (added 2017-11-04).
+
 # Define function to destroy a container.
 function destroyContainer() {
     name="$1"
@@ -155,6 +157,8 @@ var POSTDEPLOY = `#!/usr/bin/python -u
 
 import os, stat, subprocess, sys, time
 
+defaultLxcFs='` + DefaultLXCFS + `'
+lxcDir='` + LXC_DIR + `'
 container = None
 log = lambda message: sys.stdout.write('[{0}] {1}\n'.format(container, message))
 
@@ -233,7 +237,7 @@ def cloneContainer(app, container, check=True):
     log('cloning container: {0}'.format(container))
     fn = subprocess.check_call if check else subprocess.call
     return fn(
-        ['/usr/bin/lxc-clone', '-s', '-B', '` + DefaultLXCFS + `', '-o', app, '-n', container],
+        ['/usr/bin/lxc-clone', '-s', '-B', defaultLxcFs, '-o', app, '-n', container],
         stdout=sys.stdout,
         stderr=sys.stderr
     )
@@ -276,6 +280,24 @@ def parseMainArgs(argv):
     app, version, process, port = container.split('` + DYNO_DELIMITER + `') # Format is app_version_process_port.
     return (container, app, version, process, port)
 
+def mountContainerFs(container):
+    if defaultLxcFs != 'zfs':
+        return
+    subprocess.check_call(
+        ['sudo', 'zfs', 'mount', lxcDir.strip('/') + '/' + container],
+        stdout=sys.stdout,
+        stderr=sys.stderr
+    )
+
+def unmountContainerFs(container):
+    if defaultLxcFs != 'zfs':
+        return
+    subprocess.check_call(
+        ['sudo', 'zfs', 'umount', lxcDir.strip('/') + '/' + container],
+        stdout=sys.stdout,
+        stderr=sys.stderr
+    )
+
 def main(argv):
     global container
     #print 'main argv={0}'.format(argv)
@@ -294,7 +316,7 @@ def main(argv):
     # This line, if present, would prevent the container from booting.
     #log('scrubbing any "lxc.cap.drop = mac_{0}" lines from container config'.format(container))
     subprocess.check_call(
-        ['sed', '-i', '/lxc.cap.drop = mac_{0}/d'.format(container), '` + LXC_DIR + `/{0}/config'.format(container)],
+        ['sed', '-i', '/lxc.cap.drop = mac_{0}/d'.format(container), lxcDir + '/{0}/config'.format(container)],
         stdout=sys.stdout,
         stderr=sys.stderr
     )
@@ -315,13 +337,15 @@ while read line || [ -n "$line" ]; do
         envdir ` + ENV_DIR + ` /bin/bash -c "export PATH=\"$(find /app/.shipbuilder -type d -wholename '*bin' -maxdepth 2):${{PATH}}\"; ( ${{command}} ) 2>&1 | /app/` + BINARY + ` logger -h{host} -a{app} -p{process}.{port}"
     fi
 done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, app=app)
-    runScriptFileName = '` + LXC_DIR + `/{0}/rootfs/app/run'.format(container)
+    mountContainerFs(container)
+    runScriptFileName = lxcDir + '/{0}/rootfs/app/run'.format(container)
     with open(runScriptFileName, 'w') as fh:
         fh.write(runScript)
     # Chmod to be executable.
     st = os.stat(runScriptFileName)
     os.chmod(runScriptFileName, st.st_mode | stat.S_IEXEC)
 
+    unmountContainerFs(container)
     startContainer(container)
 
     log('waiting for container to boot and report ip-address')

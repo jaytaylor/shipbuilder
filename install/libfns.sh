@@ -309,27 +309,38 @@ function prepareNode() {
             zfsPoolArg="$(echo "${zfsPool}" | sed 's/^\///')"
 
             # Create ZFS pool mount point.
-            test ! -d "/${zfsPoolArg}" && sudo rm -rf "/${zfsPoolArg}" && sudo mkdir "/${zfsPoolArg}" || :
-            abortIfNonZero $? "creating /${zfsPool} mount point"
+            # test ! -d "/${zfsPoolArg}" && sudo rm -rf "/${zfsPoolArg}" && sudo mkdir "/${zfsPoolArg}" || :
+            # abortIfNonZero $? "creating /${zfsPool} mount point"
 
-            # Create ZFS pool and attach to a device.
-            if test -z "$(sudo zfs list -o name,mountpoint | sed '1d' | grep "^${zfsPoolArg}.*\/${zfsPoolArg}"'$')"; then
-                # Format the device with any filesystem (mkfs.ext4 is fast).
-                sudo mkfs.ext4 -q "${device}"
-                abortIfNonZero $? "command 'sudo mkfs.ext4 -q ${device}'"
-
-                sudo zpool destroy "${zfsPoolArg}" 2>/dev/null
-
-                #sudo zpool create -o ashift=12 "${zfsPoolArg}" "${device}"
-                #abortIfNonZero $? "command 'sudo zpool create -o ashift=12 ${zfsPoolArg} ${device}'"
-                sudo zpool create -f "${zfsPoolArg}" "${device}"
-                abortIfNonZero $? "command 'sudo zpool create -f ${zfsPoolArg} ${device}'"
+            if [ -z "$(lxc storage show "${zfsPoolArg}" 2>/dev/null)" ]; then
+                lxc storage create "${zfsPoolArg}" zfs "source=${device}"
+                abortIfNonZero $? "command 'lxc storage create ${zfsPoolArg} zfs source=${device}'"
             fi
 
-            # Create lxc and git volumes.
+#            # Create ZFS pool and attach to a device.
+#            if test -z "$(sudo zfs list -o name,mountpoint | sed '1d' | grep "^${zfsPoolArg}.*\/${zfsPoolArg}"'$')"; then
+#                # Format the device with any filesystem (mkfs.ext4 is fast).
+#                sudo mkfs.ext4 -q "${device}"
+#                abortIfNonZero $? "command 'sudo mkfs.ext4 -q ${device}'"
+#
+#                sudo zpool destroy "${zfsPoolArg}" 2>/dev/null
+#
+#                #sudo zpool create -o ashift=12 "${zfsPoolArg}" "${device}"
+#                #abortIfNonZero $? "command 'sudo zpool create -o ashift=12 ${zfsPoolArg} ${device}'"
+#                sudo zpool create -f "${zfsPoolArg}" "${device}"
+#                abortIfNonZero $? "command 'sudo zpool create -f ${zfsPoolArg} ${device}'"
+#            fi
+
+            # Create lxc and git volumes and set mountpoints.
             for volume in lxc git; do
                 test -z "$(sudo zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" && sudo zfs create -o compression=on "${zfsPoolArg}/${volume}" || :
                 abortIfNonZero $? "command 'sudo zfs create -o compression=on ${zfsPoolArg}/${volume}'"
+
+                zfs set mountpoint="/${zfsPoolArg}/${volume}" "${zfsPoolArg/${volume}"
+                abortIfNonZero $? "setting mountpoint via 'zfs set mountpoint=/${zfsPoolArg}/${volume} ${zfsPoolArg/${volume}'"
+
+                unlink "/${volume}"
+                ln -s "/${zfsPoolArg}/${volume}" "/${volume}"
             done
 
             # Unmount all ZFS volumes.

@@ -39,15 +39,16 @@ func (server *Server) SyncContainer(e Executor, address string, container string
 		if DefaultLXCFS == "zfs" {
 			// Trim leading slash.
 			path = strings.TrimLeft(path, "/")
-		}
-		if err := e.Run("sudo", "zfs", "mount", path); err != nil {
-			return fmt.Errorf("mounting zfs path %q: %s", path, err)
-		}
-		defer func() {
-			if err := e.Run("sudo", "zfs", "umount", path); err != nil {
-				log.Errorf("Problem unmounting path %q: %s", path, err)
+			// NB: This mounting business is a new requirement for the LXC 2.x series.
+			if err := e.Run("sudo", "zfs", "mount", path); err != nil {
+				return fmt.Errorf("mounting zfs path %q: %s", path, err)
 			}
-		}()
+			defer func() {
+				if err := e.Run("sudo", "zfs", "umount", path); err != nil {
+					log.Errorf("Problem unmounting path %q: %s", path, err)
+				}
+			}()
+		}
 	}
 
 	// Rsync the base container over.
