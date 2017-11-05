@@ -205,6 +205,7 @@ func main() {
 					}
 					return nil
 				},
+				Subcommands: buildpackSubcommands(),
 			},
 
 			// &cli.Command{
@@ -942,4 +943,51 @@ func deferredMappedAppCommand(names []string, description string) *cli.Command {
 			return (&core.Client{}).RemoteExec(names[len(names)-1], app, deferred, mapped)
 		},
 	}
+}
+
+func buildpackSubcommands() []*cli.Command {
+	var (
+		cmds     = []*cli.Command{}
+		provider = bindata_buildpacks.NewProvider()
+	)
+
+	for _, bp := range provider.All() {
+		subCmds := []*cli.Command{
+			&cli.Command{
+				Name:    "container-custom-commands",
+				Aliases: []string{"ContainerCustomCommands"},
+				Action: func(ctx *cli.Context) error {
+					fmt.Fprintf(os.Stdout, "%v\n", bp.ContainerCustomCommands())
+					return nil
+				},
+			},
+			&cli.Command{
+				Name:    "container-packages",
+				Aliases: []string{"ContainerPackages"},
+				Action: func(ctx *cli.Context) error {
+					fmt.Fprintf(os.Stdout, "%v\n", strings.Join(bp.ContainerPackages(), "\n"))
+					return nil
+				},
+			},
+			&cli.Command{
+				Name:    "pre-hook",
+				Aliases: []string{"PreHook"},
+				Action: func(ctx *cli.Context) error {
+					fmt.Fprintf(os.Stdout, "%v\n", bp.PreHook())
+					return nil
+				},
+			},
+		}
+		cmd := &cli.Command{
+			Name: bp.Name(),
+			Action: func(ctx *cli.Context) error {
+				fmt.Fprint(os.Stdout, "container-custom-commands\ncontainer-packages\npre-hook\n")
+				return nil
+			},
+			Subcommands: subCmds,
+		}
+		cmds = append(cmds, cmd)
+	}
+
+	return cmds
 }
