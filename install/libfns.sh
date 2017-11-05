@@ -24,7 +24,7 @@ function warnIfNonZero() {
 
 function autoDetectServer() {
     # Attempts to auto-detect the server host by reading the contents of ../env/SB_SSH_HOST.
-    if test -r '../env/SB_SSH_HOST'; then
+    if [ -r '../env/SB_SSH_HOST' ] ; then
         sbHost=$(head -n1 ../env/SB_SSH_HOST)
         test -n "${sbHost}" && echo "info: auto-detected shipbuilder host: ${sbHost}"
     else
@@ -34,7 +34,7 @@ function autoDetectServer() {
 
 function autoDetectFilesystem() {
     # Attempts to auto-detect the target filesystem type by reading the contents of ../env/LXC_FS.
-    if test -r '../env/SB_LXC_FS'; then
+    if [ -r '../env/SB_LXC_FS' ] ; then
         lxcFs=$(head -n1 ../env/SB_LXC_FS)
         test -n "${lxcFs}" && echo "info: auto-detected lxc filesystem: ${lxcFs}"
     else
@@ -45,12 +45,12 @@ function autoDetectFilesystem() {
 function autoDetectZfsPool() {
     # When fs type is 'zfs', attempt to auto-detect the zfs pool name to create by reading the contents of ../env/ZFS_POOL.
     test -z "${lxcFs}" && autoDetectFilesystem # Attempt to ensure that the target filesystem type is available.
-    if test "${lxcFs}" = 'zfs'; then
-        if test -r '../env/SB_ZFS_POOL'; then
+    if [ "${lxcFs}" = 'zfs' ] ; then
+        if [ -r '../env/SB_ZFS_POOL' ] ; then
             zfsPool="$(head -n1 ../env/SB_ZFS_POOL)"
             test -n "${zfsPool}" && echo "info: auto-detected zfs pool: ${zfsPool}"
             # Validate to ensure zfs pool name won't conflict with typical ubuntu root-fs items.
-            for x in bin boot dev etc git home lib lib64 media mnt opt proc root run sbin selinux srv sys tmp usr var vmlinuz zfs-kstat; do
+            for x in bin boot dev etc git home lib lib64 media mnt opt proc root run sbin selinux srv sys tmp usr var vmlinuz zfs-kstat ; do
                 test "${zfsPool}" = "${x}" && echo "error: invalid zfs pool name detected, '${x}' is a forbidden because it may conflict with a system directory" 1>&2 && exit 1
             done
         else
@@ -63,7 +63,7 @@ function verifySshAndSudoForHosts() {
     # @param $1 string. List of space-delimited SSH connection strings.
     local sshHosts="$1"
     echo "info: verifying ssh and sudo access for $(echo "${sshHosts}" | tr ' ' '\n' | grep -v '^ *$' | wc -l | sed 's/^[ \t]*//g') hosts"
-    for sshHost in $(echo "${sshHosts}"); do
+    for sshHost in $(echo "${sshHosts}") ; do
         echo -n "info:     testing host ${sshHost} .. "
         result=$(ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' -o 'ConnectTimeout=15' -q "${sshHost}" 'sudo -n echo "succeeded" 2>/dev/null')
         rc=$?
@@ -85,7 +85,7 @@ function initSbServerKeys() {
         local what=$2
         test $rc -ne 0 && echo "remote: error: ${what} exited with non-zero status ${rc}" && exit $rc || :
     }
-    if ! test -e ~/.ssh/id_rsa.pub; then
+    if ! [ -e ~/.ssh/id_rsa.pub ] ; then
         echo "remote: info: generating a new private/public key-pair for main user"
         rm -f ~/.ssh/id_*
         abortIfNonZero $? "removing old keys failed"
@@ -93,11 +93,11 @@ function initSbServerKeys() {
         abortIfNonZero $? "ssh-keygen command failed"
     fi
 
-    if ! test -e ~/.ssh; then
+    if ! [ -e ~/.ssh ] ; then
         mkdir ~/.ssh
         chmod 700 ~/.ssh
     fi
-    if ! test -e ~/.ssh/authorized_keys || test -z "$(grep "$(cat ~/.ssh/id_rsa.pub)" ~/.ssh/authorized_keys)"; then
+    if ! [ -e ~/.ssh/authorized_keys ] || [ -z "$(grep "$(cat ~/.ssh/id_rsa.pub)" ~/.ssh/authorized_keys)" ] ; then
         echo "remote: info: adding main user to main user authorized_keys"
         cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
         abortIfNonZero $? "appending public-key to authorized_keys command"
@@ -105,11 +105,11 @@ function initSbServerKeys() {
         abortIfNonZero $? "chmod 600 ~/.ssh/authorized_keys command"
     fi
 
-    if ! sudo test -e /root/.ssh; then
+    if ! sudo test -e /root/.ssh ; then
         sudo mkdir /root/.ssh
         sudo chmod 700 ~/.ssh
     fi
-    if ! sudo test -e /root/.ssh/authorized_keys || sudo test -z "$(sudo grep "$(cat ~/.ssh/id_rsa.pub)" /root/.ssh/authorized_keys)"; then
+    if ! sudo test -e /root/.ssh/authorized_keys || sudo test -z "$(sudo grep "$(cat ~/.ssh/id_rsa.pub)" /root/.ssh/authorized_keys)" ; then
         echo "remote: info: adding main user to root user authorized_keys"
         cat ~/.ssh/id_rsa.pub | sudo tee -a /root/.ssh/authorized_keys >/dev/null
         abortIfNonZero $? "appending public-key to authorized_keys command"
@@ -117,9 +117,9 @@ function initSbServerKeys() {
         abortIfNonZero $? "chmod 600 /root/.ssh/authorized_keys command"
     fi
 
-    if ! sudo test -e /root/.ssh/id_rsa.pub; then
+    if ! sudo test -e /root/.ssh/id_rsa.pub ; then
         echo "remote: info: generating a new private/public key-pair for root user"
-        if test -n "$(sudo bash -c "/root/.ssh/id_*")"; then
+        if [ -n "$(sudo bash -c "/root/.ssh/id_*")" ] ; then
             backupDir="sb_backup_$(date +%s)"
             sudo mkdir "/root/.ssh/${backupDir}"
             sudo bash -c "mv /root/.ssh/id_* /root/.ssh/${backupDir}/"
@@ -128,14 +128,14 @@ function initSbServerKeys() {
         sudo ssh-keygen -f /root/.ssh/id_rsa -t rsa -N ""
         abortIfNonZero $? "ssh-keygen command failed"
     fi
-    if sudo test -z "$(sudo grep "$(sudo cat /root/.ssh/id_rsa.pub)" /root/.ssh/authorized_keys)"; then
+    if [ test -z "$(sudo grep "$(sudo cat /root/.ssh/id_rsa.pub)" /root/.ssh/authorized_keys)" ] ; then
         echo "remote: info: adding root to root user authorized_keys"
         sudo cat /root/.ssh/id_rsa.pub | sudo tee -a /root/.ssh/authorized_keys >/dev/null
         abortIfNonZero $? "appending public-key to authorized_keys command"
         sudo chmod 600 /root/.ssh/authorized_keys
         abortIfNonZero $? "chmod 600 /root/.ssh/authorized_keys command"
     fi
-    if test -z "$(grep "$(sudo cat /root/.ssh/id_rsa.pub)" ~/.ssh/authorized_keys)"; then
+    if [ -z "$(grep "$(sudo cat /root/.ssh/id_rsa.pub)" ~/.ssh/authorized_keys)" ] ; then
         echo "remote: info: adding root to main user authorized_keys"
         sudo cat /root/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
         abortIfNonZero $? "appending public-key to authorized_keys command"
@@ -159,12 +159,12 @@ function getSbServerPublicKeys() {
     unprivilegedPubKey=$(echo "${pubKeys}" | grep --before 100 '^\.$' | grep -v '^\.$')
     rootPubKey=$(echo "${pubKeys}" | grep --after 100 '^\.$' | grep -v '^\.$')
 
-    if [ -z "${unprivilegedPubKey}" ]; then
+    if [ -z "${unprivilegedPubKey}" ] ; then
         echo 'error: failed to obtain build-server public-key for unprivileged user' 1>&2
         exit 1
     fi
     echo "info: obtained unprivileged public-key: ${unprivilegedPubKey}"
-    if [ -z "${rootPubKey}" ]; then
+    if [ -z "${rootPubKey}" ] ; then
         echo 'error: failed to obtain build-server public-key for root user' 1>&2
         exit 1
     fi
@@ -176,7 +176,7 @@ function installAccessForSshHost() {
     # @param $1 SSH connection string (e.g. user@host)
     local sshHost=$1
 
-    if [ -z "${unprivilegedPubKey}" ] || [ -z "${rootPubKey}" ]; then
+    if [ -z "${unprivilegedPubKey}" ] || [ -z "${rootPubKey}" ] ; then
         getSbServerPublicKeys
     fi
 
@@ -190,14 +190,14 @@ function installAccessForSshHost() {
         test $rc -ne 0 && echo "remote: error: ${what} exited with non-zero status ${rc}" && exit $rc || :
     }
     echo "remote: checking main user.."
-    if test -z "$(grep "'"${unprivilegedPubKey}"'" ~/.ssh/authorized_keys)" || test -z "$(sudo grep "'"${rootPubKey}"'" ~/.ssh/authorized_keys)"; then
+    if [ -z "$(grep "'"${unprivilegedPubKey}"'" ~/.ssh/authorized_keys)" ] || [ -z "$(sudo grep "'"${rootPubKey}"'" ~/.ssh/authorized_keys)" ] ; then
         echo -e "'"${unprivilegedPubKey}\n${rootPubKey}"'" >> ~/.ssh/authorized_keys
         abortIfNonZero $? "appending public-keys to authorized_keys command"
         chmod 600 ~/.ssh/authorized_keys
         abortIfNonZero $? "chmod 600 ~/.ssh/authorized_keys command"
     fi
     echo "remote: checking root user.."
-    if sudo test -z "$(sudo grep "'"${unprivilegedPubKey}"'" /root/.ssh/authorized_keys)" || sudo test -z "$(sudo grep "'"${rootPubKey}"'" /root/.ssh/authorized_keys)"; then
+    if sudo test -z "$(sudo grep "'"${unprivilegedPubKey}"'" /root/.ssh/authorized_keys)" || sudo test -z "$(sudo grep "'"${rootPubKey}"'" /root/.ssh/authorized_keys)" ; then
         echo -e "'"${unprivilegedPubKey}\n${rootPubKey}"'" | sudo tee -a /root/.ssh/authorized_keys >/dev/null
         abortIfNonZero $? "appending public-keys to authorized_keys command"
         sudo chmod 600 /root/.ssh/authorized_keys
@@ -262,7 +262,7 @@ function prepareNode() {
         sudo umount "${swapDevice}" 1>&2 2>/dev/null
     fi
 
-    if ! [ -d '/mnt/build' ]; then
+    if ! [ -d '/mnt/build' ] ; then
         echo 'info: creating /mnt/build mount point'
         sudo mkdir -p /mnt/build
         abortIfNonZero $? "creating /mnt/build"
@@ -277,7 +277,7 @@ function prepareNode() {
     sudo umount "${device}" 1>&2 2>/dev/null
 
     echo "info: existing fs type on ${device} is ${fs}"
-    if [ "${fs}" = "${lxcFs}" ]; then
+    if [ "${fs}" = "${lxcFs}" ] ; then
         echo "info: ${device} is already formatted with ${lxcFs}"
 
     else
@@ -285,12 +285,12 @@ function prepareNode() {
         sudo sed -i '/.*[ \t]\/mnt[ \t].*/d' /etc/fstab
 
         echo "info: formatting ${device} with ${lxcFs}"
-        if test "${lxcFs}" = 'btrfs'; then
+        if [ "${lxcFs}" = 'btrfs' ] ; then
             sudo mkfs.btrfs $device
             abortIfNonZero $? "mkfs.btrfs ${device}"
 
             echo "info: updating /etc/fstab to map /mnt/build to the ${lxcFs} device"
-            if [ -z "$(grep "$(echo $device | sed 's:/:\\/:g')" /etc/fstab)" ]; then
+            if [ -z "$(grep "$(echo $device | sed 's:/:\\/:g')" /etc/fstab)" ] ; then
                 echo "info: adding new fstab entry for ${device}"
                 echo "${device} /mnt/build auto defaults 0 0" | sudo tee -a /etc/fstab >/dev/null
                 abortIfNonZero $? "fstab add"
@@ -304,7 +304,7 @@ function prepareNode() {
             sudo mount $device
             abortIfNonZero $? "mounting ${device}"
 
-        elif test "${lxcFs}" = 'zfs'; then
+        elif [ "${lxcFs}" = 'zfs' ] ; then
             # Strip leading '/' from $zfsPool, this is actually a compatibility update for 2017.
             zfsPoolArg="$(echo "${zfsPool}" | sed 's/^\///')"
 
@@ -318,7 +318,7 @@ function prepareNode() {
             fi
 
 #            # Create ZFS pool and attach to a device.
-#            if test -z "$(sudo zfs list -o name,mountpoint | sed '1d' | grep "^${zfsPoolArg}.*\/${zfsPoolArg}"'$')"; then
+#            if test -z "$(sudo zfs list -o name,mountpoint | sed '1d' | grep "^${zfsPoolArg}.*\/${zfsPoolArg}"'$')" ; then
 #                # Format the device with any filesystem (mkfs.ext4 is fast).
 #                sudo mkfs.ext4 -q "${device}"
 #                abortIfNonZero $? "command 'sudo mkfs.ext4 -q ${device}'"
@@ -371,14 +371,14 @@ function prepareNode() {
             sudo chmod 777 "/${zfsPoolArg}/git"
             abortIfNonZero $? "command 'sudo chmod 777 /${zfsPoolArg}/git'"
 
-            # Link /var/lib/lxc to /${zfsPoolArg}/lxc, and then link /mnt/build/lxc to /var/lib/lxc.
-            test -d '/var/lib/lxc' && sudo mv /var/lib/lxc{,.bak} || :
-            test ! -h '/var/lib/lxc' && sudo ln -s "/${zfsPoolArg}/lxc" /var/lib/lxc || :
-            test ! -h '/mnt/build/lxc' && sudo ln -s "/${zfsPoolArg}/lxc" /mnt/build/lxc || :
+            # # Link /var/lib/lxc to /${zfsPoolArg}/lxc, and then link /mnt/build/lxc to /var/lib/lxc.
+            # test -d '/var/lib/lxc' && sudo mv /var/lib/lxc{,.bak} || :
+            # test ! -h '/var/lib/lxc' && sudo ln -s "/${zfsPoolArg}/lxc" /var/lib/lxc || :
+            # test ! -h '/mnt/build/lxc' && sudo ln -s "/${zfsPoolArg}/lxc" /mnt/build/lxc || :
 
-            # Also might as well resolve the git linkage while we're here.
-            test ! -h '/mnt/build/git' && sudo ln -s "/${zfsPoolArg}/git" /mnt/build/git || :
-            test ! -h '/git' && sudo ln -s "/${zfsPoolArg}/git" /git || :
+            # # Also might as well resolve the git linkage while we're here.
+            # test ! -h '/mnt/build/git' && sudo ln -s "/${zfsPoolArg}/git" /mnt/build/git || :
+            # test ! -h '/git' && sudo ln -s "/${zfsPoolArg}/git" /git || :
 
         else
             echo "error: prepareNode() got unrecognized filesystem=${lxcFs}" 1>&2
@@ -386,7 +386,7 @@ function prepareNode() {
         fi
     fi
 
-    if [ -d /var/lib/lxc ] && ! [ -e /mnt/build/lxc ]; then
+    if [ -d /var/lib/lxc ] && ! [ -e /mnt/build/lxc ] ; then
         echo 'info: creating and linking /mnt/build/lxc folder'
         sudo mv /{var/lib,mnt/build}/lxc
         abortIfNonZero $? "lxc directory migration"
@@ -394,19 +394,19 @@ function prepareNode() {
         abortIfNonZero $? "lxc directory symlink"
     fi
 
-    if ! [ -d /mnt/build/lxc ]; then
+    if ! [ -d /mnt/build/lxc ] ; then
         echo 'info: attempting to create missing /mnt/build/lxc'
         sudo mkdir /mnt/build/lxc
         abortIfNonZero $? "lxc directory creation"
     fi
 
-    if ! [ -e /var/lib/lxc ]; then
+    if ! [ -e /var/lib/lxc ] ; then
         echo 'info: attemtping to symlink missing /var/lib/lxc to /mnt/build/lxc'
         sudo ln -s /mnt/build/lxc /var/lib/lxc
         abortIfNonZero $? "lxc directory symlink 2nd attempt"
     fi
 
-    if ! test -z "${swapDevice}" && test -e "${swapDevice}"; then
+    if ! [ -z "${swapDevice}" ] && [ -e "${swapDevice}" ] ; then
         echo "info: activating swap device or partition: ${swapDevice}"
         # Ensure the swap device target us unmounted.
         sudo umount "${swapDevice}" 1>/dev/null 2>/dev/null || :
@@ -424,7 +424,7 @@ function prepareNode() {
 
     # Install updated kernel if running Ubuntu 12.x series so lxc-attach will work.
     majorVersion=$(lsb_release --release | sed 's/^[^0-9]*\([0-9]*\)\..*$/\1/')
-    if test ${majorVersion} -eq 12; then
+    if [ ${majorVersion} -eq 12 ] ; then
         echo 'info: installing 3.8 or newer kernel, a system restart will be required to complete installation'
         sudo apt-get install -y linux-generic-lts-raring-eol-upgrade
         abortIfNonZero $? 'installing linux-generic-lts-raring-eol-upgrade'
@@ -447,11 +447,11 @@ function prepareLoadBalancer() {
 
     version=$(lsb_release -a 2>/dev/null | grep "Release" | grep -o "[0-9\.]\+$")
 
-    if [ "${version}" = "16.04" ]; then
+    if [ "${version}" = "16.04" ] ; then
         ppa='ppa:vbernat/haproxy-1.7'
-    elif [ "${version}" = "14.04" ] || [ "${version}" = "13.10" ] || [ "${version}" = "12.04" ]; then
+    elif [ "${version}" = "14.04" ] || [ "${version}" = "13.10" ] || [ "${version}" = "12.04" ] ; then
         ppa='ppa:vbernat/haproxy-1.5'
-    elif [ "${version}" = "13.04" ]; then
+    elif [ "${version}" = "13.04" ] ; then
         ppa='ppa:nilya/haproxy-1.5'
     else
         echo "error: unrecognized version of ubuntu: ${version}" 1>&2 && exit 1
@@ -485,8 +485,8 @@ net.core.wmem_max = 16777216' | sudo tee /etc/sysctl.d/60-shipbuilder.conf
     sudo apt-get install -y ${optional}
     abortIfNonZero $? "apt-get install ${optional}"
 
-    if [ -r "${certFile}" ]; then
-        if ! [ -d "/etc/haproxy/certs.d" ]; then
+    if [ -r "${certFile}" ] ; then
+        if ! [ -d "/etc/haproxy/certs.d" ] ; then
             sudo mkdir /etc/haproxy/certs.d 2>/dev/null
             abortIfNonZero $? "creating /etc/haproxy/certs.d directory"
         fi
@@ -512,8 +512,7 @@ net.core.wmem_max = 16777216' | sudo tee /etc/sysctl.d/60-shipbuilder.conf
 }
 
 function installGo() {
-    if [ -z "$(command -v go)" ]; then
-        local goVersion='1.9.1'
+    if [ -z "$(command -v go)" ] ; then
         echo "info: installing go v${goVersion}"
         local downloadUrl="https://storage.googleapis.com/golang/go${goVersion}.linux-amd64.tar.gz"
         echo "info: downloading go binary distribution from url=${downloadUrl}"
@@ -564,7 +563,7 @@ function rsyslogLoggingListeners() {
     $InputTCPServerRun 10514' | sudo tee /etc/rsyslog.d/49-haproxy.conf
     echo 'info: restarting rsyslog'
     sudo systemctl restart rsyslog
-    if [ -e /etc/rsyslog.d/haproxy.conf ]; then
+    if [ -e /etc/rsyslog.d/haproxy.conf ] ; then
         echo 'info: detected existing rsyslog haproxy configuration, will disable it'
         sudo mv /etc/rsyslog.d/haproxy.conf /etc/rsyslog.d-haproxy.conf.disabled
     fi
@@ -582,7 +581,7 @@ function getContainerIp() {
     while [ ${i} -lt ${allowedAttempts} ]; do
         maybeIp="$(sudo lxc-info -n ${container} | grep '^IP:' | sed 's/^.* \+//')"
         # Verify that after a few seconds the ip hasn't changed.
-        if [ -n "${maybeIp}" ]; then
+        if [ -n "${maybeIp}" ] ; then
             sleep 5
             ip="$(sudo lxc-info -n ${container} | grep '^IP:' | sed 's/^.* \+//')"
             if [ "${ip}" = "${maybeIp}" ]; then
@@ -596,7 +595,7 @@ function getContainerIp() {
         i=$(($i+1))
         sleep 1
     done
-    if [ -n "${ip}" ]; then
+    if [ -n "${ip}" ] ; then
         echo "info: found ip=${ip} for ${container} container"
     else
         echo "error: obtaining ip-address for container=${container} failed after ${allowedAttempts} attempts" 1>&2
@@ -690,17 +689,17 @@ function lxcDestroyContainer() {
 
     sudo lxc-info -n "${container}" 1>/dev/null 2>/dev/null # Test whether or not the container already exists.
     existsRc=$?
-    if test ${existsRc} -eq 0; then
+    if [ ${existsRc} -eq 0 ] ; then
         sudo lxc-stop -k -n "${container}"
         local attempts=10
-        while test ${attempts} -gt 0; do
+        while test ${attempts} -gt 0 ; do
             sudo lxc-destroy -n "${container}"
             test $? -eq 0 && break
             attempts=$((${attempts}-1))
         done
         sudo lxc-info -n "${container}" 1>/dev/null 2>/dev/null # Test whether or not the container already exists.
         existsRc=$?
-        if test ${existsRc} -eq 0; then
+        if [ ${existsRc} -eq 0 ] then
             echo "info: lxcDestroyContainer() failed to destroy container=${container}"
             result=1
         else
@@ -738,14 +737,14 @@ function lxcConfigBuildPack() {
 
     # Test if the container was left in a running state, and if so, destroy it (since failed runs can leave things partially done).
     alreadyRunning=$(test $(sudo lxc-ls -1 --running | grep "^${container}\$" | wc -l) -gt 0 && echo 1 || echo 0) # Test whether or not the container already exists and is running.
-    if test ${alreadyRunning} -eq 1; then
+    if [ ${alreadyRunning} -eq 1 ] ; then
         lxcDestroyContainer destroyedRc "${container}" "${lxcFs}"
         test ${destroyedRc} -ne 0 && echo "error: failed to destroy container=${container}" 1>&2 && exit 1
     fi
 
     sudo lxc-info -n "${container}" 1>/dev/null 2>/dev/null # Test whether or not the container already exists.
     rc=$?
-    if test "${skipIfExists}" = '1' && test ${rc} -eq 0; then
+    if [ "${skipIfExists}" = '1' ] && [ ${rc} -eq 0 ] ; then
         echo "info: lxcConfigBuildPack() skipping container=${container} because it already exists and the skip flag was passed"
     else
         test -z "${lxcFs}" && echo 'error: lxcConfigBuildPack() missing required parameter: $lxcFs' 1>&2 && exit 1
@@ -775,15 +774,15 @@ function lxcConfigBuildPack() {
         fi
 
         # Run custom container commands.
-        if [ -n "${customCommandsFile}" ]; then
+        if [ -n "${customCommandsFile}" ] ; then
             echo "info: running customCommandsFile: ${customCommandsFile}"
             #ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "${customCommands}"
             rsync -azve 'ssh -o "StrictHostKeyChecking=no" -o "BatchMode=yes"' "${customCommandsFile}" "ubuntu@${ip}:/tmp/custom.sh"
             abortIfNonZero ${rc} "[${container}] rsyncing customCommandsFile=${customCommandsFile} to ubuntu@${ip}:/tmp/custom.sh failed"
-            sudo lxc-attach -n "${container}" -- sudo /bin/bash /tmp/custom.sh
+            sudo lxc exec -T "${container}" -- sudo /bin/bash /tmp/custom.sh
             rc=$?
             # Cleanup temp custom commands script.
-            #sudo lxc-attach -n "${container}" -- sudo rm -f /tmp/custom.sh
+            #sudo lxc exec -T "${container}" -- sudo rm -f /tmp/custom.sh
             abortIfNonZero ${rc} "[${container}] container customCommandsFile=${customCommandsFile}"
         fi
 
@@ -801,7 +800,7 @@ function lxcConfigBuildPacks() {
 
     test -z "${lxcFs}" && echo 'error: lxcConfigBuildPacks() missing required parameter: $lxcFs' 1>&2 && exit 1 || :
 
-    for buildPack in $(ls -1 "${SB_REPO_PATH}/build-packs"); do
+    for buildPack in $(ls -1 "${SB_REPO_PATH}/build-packs") ; do
         echo "info: initializing build-pack: ${buildPack}"
         # NB: "tr -d" is very important here to prevent invalid package name being installed (last package will have a trailing newline).
         lxcConfigBuildPack "${buildPack}" "${skipIfExists}" "${lxcFs}"
