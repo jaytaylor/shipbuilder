@@ -43,6 +43,10 @@ TODO 2017-10-24: Create additional buildpack provider which uses FS with bindata
 
 TODO: `lxd init` ??
 
+Note: it's now recommended to ensure $sbHost is set to a domain name.. example: install/node.sh 2nd ssh cmd.
+
+TOOD: PORT ALLOCATION BUG - could be caused by the tmp.sh during deploy; when there's an error it blindly tries incrementing the port...
+
 ## Client
 
 See [CLIENT.md](https://github.com/jaytaylor/shipbuilder/blob/master/CLIENT.md)

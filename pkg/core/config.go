@@ -24,7 +24,8 @@ import (
 const (
 	APP_DIR                            = "/app"
 	ENV_DIR                            = APP_DIR + "/env"
-	LXC_DIR                            = "/tank/lxc" // "/var/lib/lxc"
+	LXC_DIR                            = "/var/lib/lxd/storage-pools/tank/containers" // "/tank/lxc" // "/var/lib/lxc"
+	ZFS_CONTAINER_MOUNT                = "tank/containers"
 	DIRECTORY                          = "/etc/shipbuilder"
 	BINARY                             = "shipbuilder"
 	EXE                                = "/usr/bin/" + BINARY

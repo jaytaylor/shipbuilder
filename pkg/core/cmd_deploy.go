@@ -129,11 +129,28 @@ func (d *Deployment) createContainer() (err error) {
 		return
 	}
 	defer func() {
-		if umountErr := e.UnmountContainerFS(d.Application.Name); umountErr != nil {
-			if err == nil {
-				err = umountErr
-			} else {
-				log.Errorf("Existing error=%s; also got container FS unmount error: %s", err, umountErr)
+		// Housekeeping.
+		running, checkErr := e.ContainerRunning(d.Application.Name)
+		if checkErr != nil {
+			log.Errorf("unexected error checking if container %q is running: %s", d.Application.Name, err)
+			return
+		}
+		if running {
+			if stopErr := e.StopContainer(d.Application.Name); stopErr != nil {
+				if err == nil {
+					err = stopErr
+					return
+				}
+				log.Errorf("Stopping container %q: %s (existing err: %s)", d.Application.Name, stopErr, err)
+			}
+
+		} else {
+			if unmountErr := e.UnmountContainerFS(d.Application.Name); unmountErr != nil {
+				if err == nil {
+					err = unmountErr
+					return
+				}
+				log.Errorf("Unmounting container FS for %q: %s (existing err: %s)", d.Application.Name, unmountErr, err)
 			}
 		}
 	}()
@@ -188,6 +205,10 @@ func (d *Deployment) createContainer() (err error) {
 		if ignorableErr := e.BashCmd(cmdStr); ignorableErr != nil {
 			fmt.Fprintf(dimLogger, ".git* cleanup failed: %v\n", ignorableErr)
 		}
+	}
+
+	if err = d.validateProcfile(); err != nil {
+		return
 	}
 
 	return nil
@@ -291,6 +312,10 @@ func (d *Deployment) build() (err error) {
 		log.Debugf("Error stopping container for app=%v: %s (this can likely be ignored)", d.Application.Name, stopErr)
 	}
 
+	if err = e.MountContainerFS(d.Application.Name); err != nil {
+		return
+	}
+
 	// Defer removal of the ssh private key file.
 	defer func() {
 		if rmErr := d.removeSshPrivateKeyFile(); rmErr != nil {
@@ -302,24 +327,8 @@ func (d *Deployment) build() (err error) {
 		}
 	}()
 
-	// NB: This is part of compatibility for LXC 2.x.
-	if err = e.MountContainerFS(d.Application.Name); err != nil {
-		return
-	}
-	defer func() {
-		// NB: exe.Start/StopContainer() automatically detects and unmounts
-		// the FS as needed.  This is run just in case execution doesn't
-		// make it to the exe.Start/StopContainer block.
-		if err = e.UnmountContainerFS(d.Application.Name); err != nil {
-			return
-		}
-	}()
-
 	// Prepare /app/env now so that the app env vars are available to the pre-hook script.
 	if err = d.prepareEnvironmentVariables(e); err != nil {
-		return
-	}
-	if err = d.validateProcfile(); err != nil {
 		return
 	}
 
@@ -414,6 +423,10 @@ func (d *Deployment) build() (err error) {
 		errCh <- waitErr
 	}()
 
+	if err = e.UnmountContainerFS(d.Application.Name); err != nil {
+		return
+	}
+
 	if err = e.StartContainer(d.Application.Name); err != nil {
 		cancelCh <- struct{}{}
 		err = fmt.Errorf("starting container: %s", err)
@@ -440,7 +453,6 @@ func (d *Deployment) build() (err error) {
 	if err = e.MountContainerFS(d.Application.Name); err != nil {
 		return
 	}
-
 	if err = d.prepareShellEnvironment(e); err != nil {
 		return
 	}
@@ -448,6 +460,9 @@ func (d *Deployment) build() (err error) {
 		return
 	}
 	if err = d.prepareDisabledServices(e); err != nil {
+		return
+	}
+	if err = e.UnmountContainerFS(d.Application.Name); err != nil {
 		return
 	}
 
@@ -569,7 +584,7 @@ func (d *Deployment) syncNode(node *Node) error {
 	// TODO: Maybe add fail check to clone operation.
 	err := e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+node.Host,
 		"sudo", "/bin/bash", "-c",
-		`"test ! -d '`+LXC_DIR+`/`+d.Application.Name+`' && lxc-clone -B `+DefaultLXCFS+` -s -o base-`+d.Application.BuildPack+` -n `+d.Application.Name+` || echo 'app image already exists'"`,
+		`"test ! -d '`+LXC_DIR+`/`+d.Application.Name+`' && lxc copy base-`+d.Application.BuildPack+` `+d.Application.Name+` || echo 'app image already exists'"`,
 	)
 	if err != nil {
 		fmt.Fprintf(logger, "error cloning base container: %v\n", err)

@@ -40,24 +40,31 @@ func (exe *Executor) ContainerExists(name string) bool {
 }
 
 func (exe *Executor) ContainerRunning(name string) (bool, error) {
-	cmd := exec.Command("sudo", "lxc-ls", "--running", "--filter=^"+name+"$")
+	cmd := exec.Command("bash", "-c", fmt.Sprintf(`set -o errexit ; set -o pipefail ; lxc list --format=json | jq -c '.[] | select(.status == "Running") | select(.name == %q) | .'`, name))
 	out, err := cmd.Output()
 	if err != nil {
 		return false, fmt.Errorf("checking if container=%q running: %s", name, err)
 	}
-	if string(out) == name {
-		return true, nil
+
+	if len(strings.Trim(string(out), "\r\n")) == 0 {
+		return false, nil
 	}
-	return false, nil
+	return true, nil
 }
 
 // Start a local container.
 func (exe *Executor) StartContainer(name string) error {
-	if err := exe.UnmountContainerFS(name); err != nil {
-		return err
-	}
 	if exe.ContainerExists(name) {
-		return exe.Run("sudo", "lxc-start", "-d", "-n", name)
+		if err := exe.UnmountContainerFS(name); err != nil {
+			return err
+		}
+		running, err := exe.ContainerRunning(name)
+		if err != nil {
+			return fmt.Errorf("checking if container %q running: %s", name, err)
+		}
+		if !running {
+			return exe.Run("sudo", "lxc", "start", name)
+		}
 	}
 	return nil // Don't operate on non-existent containers.
 }
@@ -65,7 +72,13 @@ func (exe *Executor) StartContainer(name string) error {
 // Stop a local container.
 func (exe *Executor) StopContainer(name string) error {
 	if exe.ContainerExists(name) {
-		return exe.Run("sudo", "lxc-stop", "-k", "-n", name)
+		running, err := exe.ContainerRunning(name)
+		if err != nil {
+			return fmt.Errorf("checking if container %q running: %s", name, err)
+		}
+		if running {
+			return exe.Run("sudo", "lxc", "stop", "--force", name)
+		}
 	}
 	return nil // Don't operate on non-existent containers.
 }
@@ -79,7 +92,7 @@ func (exe *Executor) DestroyContainer(name string) error {
 		if DefaultLXCFS == "zfs" {
 			return exe.zfsDestroyContainerAndChildren(name)
 		} else {
-			return exe.Run("sudo", "lxc-destroy", "-n", name)
+			return exe.Run("sudo", "lxc", "delete", "--force", name)
 		}
 	}
 	return nil // Don't operate on non-existent containers.
@@ -87,7 +100,7 @@ func (exe *Executor) DestroyContainer(name string) error {
 
 // Clone a local container.
 func (exe *Executor) CloneContainer(oldName, newName string) error {
-	return exe.Run("sudo", "lxc-clone", "-s", "-B", DefaultLXCFS, "-o", oldName, "-n", newName)
+	return exe.Run("sudo", "lxc", "copy", oldName, newName)
 }
 
 // Run a command in a local container.
@@ -105,7 +118,7 @@ func (exe *Executor) AttachContainer(name string, args ...string) *exec.Cmd {
 		command += strings.Join(args, " ")
 	}
 	prefixedArgs := []string{
-		"lxc-attach", "-n", name, "--",
+		"lxc", "exec", name, "--",
 		"sudo", "-u", "ubuntu", "-n", "-i", "--",
 		"/bin/bash", "-c", command,
 	}
@@ -162,7 +175,7 @@ func (exe *Executor) UnmountContainerFS(name string) error {
 		return err
 	}
 	if mounted {
-		exe.Run("sudo", "zfs", "umount", exe.ZFSContainerName(name))
+		exe.zfsRunAndResistDatasetIsBusy("sudo", "zfs", "umount", exe.ZFSContainerName(name))
 	}
 	return nil
 }
@@ -210,7 +223,7 @@ func (exe *Executor) zfsDestroyContainerAndChildren(name string) error {
 			exe.StopContainer(child)
 			exe.zfsDestroyContainerAndChildren(child)
 			exe.zfsRunAndResistDatasetIsBusy("sudo", "zfs", "destroy", "-R", DefaultZFSPool+"/"+name+"@"+child)
-			err = exe.zfsRunAndResistDatasetIsBusy("sudo", "lxc-destroy", "-n", child)
+			err = exe.zfsRunAndResistDatasetIsBusy("sudo", "lxc", "delete", "--force", child)
 			//err := exe.zfsDestroyContainerAndChildren(child)
 			if err != nil {
 				return err
@@ -218,9 +231,8 @@ func (exe *Executor) zfsDestroyContainerAndChildren(name string) error {
 		}
 		//exe.Run("sudo", "zfs", "destroy", DefaultZFSPool+"/"+name+"@"+child)
 	}*/
-	exe.zfsRunAndResistDatasetIsBusy("sudo", "zfs", "destroy", "-R", DefaultZFSPool+"/"+name)
-	err := exe.zfsRunAndResistDatasetIsBusy("sudo", "lxc-destroy", "-n", name)
-	if err != nil {
+	//exe.zfsRunAndResistDatasetIsBusy("sudo", "zfs", "destroy", "-R", DefaultZFSPool+"/"+name)
+	if err := exe.zfsRunAndResistDatasetIsBusy("sudo", "lxc", "delete", name); err != nil {
 		return err
 	}
 
@@ -239,7 +251,7 @@ func (exe *Executor) zfsRunAndResistDatasetIsBusy(cmd string, args ...string) er
 	var err error = nil
 	for i := 0; i < 30; i++ {
 		err = exe.Run(cmd, args...)
-		if err == nil || !strings.Contains(err.Error(), "dataset is busy") {
+		if err == nil || (!strings.Contains(err.Error(), "dataset is busy") && !strings.Contains(err.Error(), "target is busy")) {
 			break
 		}
 		time.Sleep(250 * time.Millisecond)
@@ -248,7 +260,7 @@ func (exe *Executor) zfsRunAndResistDatasetIsBusy(cmd string, args ...string) er
 }
 
 func (exe *Executor) ZFSContainerName(name string) string {
-	zfsName := strings.TrimLeft(LXC_DIR+"/"+name, "/")
+	zfsName := strings.TrimLeft(ZFS_CONTAINER_MOUNT+"/"+name, "/")
 	return zfsName
 }
 

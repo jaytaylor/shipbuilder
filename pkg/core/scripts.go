@@ -45,29 +45,30 @@ done`
 	ZFS_MAINTENANCE = `#!/usr/bin/env bash
 
 # Cleanup old versions on the shipbuilder build box (only old versions, not the newest/latest version).
-lxcLs="$(sudo -n lxc-ls --fancy)"
 preserveVersionsRe=$(
-    echo "${lxcLs}" | \
-        grep --only-matching '^[^ ]\+_v[0-9]\+ *STOPPED' | \
-        sed 's/^\([^ ]\+\)\(_v\)\([0-9]\+\)\(.*\) .*/\1 \3 \1\2\3/' | \
-        sort -t' ' -k 1,2 -g | \
-        awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' | \
-        sed 's/\([0-9]\+,\)*\([0-9]\+\)$/\2/' | \
-        awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s_v%s\n", $1, arr[i] }' | \
-        uniq | \
-        tr '\n' ' ' | \
-        sed 's/ /\\|/g' | sed 's/\\|$//'
+    lxc list --format=json \
+    | jq -r '.[] | select(.status == "Stopped") | .name' \
+    | grep --only-matching '^[^ ]\+-v[0-9]\+.*$' \
+    | sed 's/^\([^ ]\+\)\(-v\)\([0-9]\+\)\(.*\)$/\1 \3 \1\2\3\4/' \
+    | sort -t' ' -k 1,2 -g \
+    | awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' \
+    | sed 's/\([0-9]\+,\)*\([0-9]\+\)$/\2/' \
+    | awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s-v%s\n", $1, arr[i] }' \
+    | uniq \
+    | tr '\n' ' ' \
+    | sed 's/ /\\|/g' | sed 's/\\|$//' \
 )
 destroyVersions=$(
-    echo "${lxcLs}" | \
-        grep --only-matching '^[^ ]\+_v[0-9]\+ *STOPPED' | \
-        sed 's/^\([^ ]\+\)\(_v\)\([0-9]\+\)\(.*\) .*/\1 \3 \1\2\3/' | \
-        sort -t' ' -k 1,2 -g | \
-        awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' | \
-        grep '^[^ ]\+ [0-9]\+,' | \
-        sed 's/,[0-9]\+$//' | \
-        awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s_v%s\n", $1, arr[i] }' | \
-        uniq
+    lxc list --format=json \
+    | jq -r '.[] | select(.status == "Stopped") | .name' \
+    | grep --only-matching '^[^ ]\+-v[0-9]\+.*$' \
+    | sed 's/^\([^ ]\+\)\(-v\)\([0-9]\+\)\(.*\)$/\1 \3 \1\2\3\4/' \
+    | sort -t' ' -k 1,2 -g \
+    | awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' \
+    | grep '^[^ ]\+ [0-9]\+,' \
+    | sed 's/,[0-9]\+$//' \
+    | awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s-v%s\n", $1, arr[i] }' \
+    | uniq
 )
 
 # TODO: Migrate this to ZFS 2.0 / SB LXC ZFS PATH (added 2017-11-04).
@@ -77,77 +78,85 @@ function destroyContainer() {
     name="$1"
     echo "Destroying stopped container name=${name}"
 
-    sudo -n zfs destroy tank/${name} 1>/dev/null 2>/dev/null || \
-        sudo -n zfs destroy tank/${name} 1>/dev/null 2>/dev/null || \
-        sudo -n zfs destroy tank/${name}
+    #sudo -n zfs destroy tank/${name} 1>/dev/null 2>/dev/null || \
+    #    sudo -n zfs destroy tank/${name} 1>/dev/null 2>/dev/null || \
+    #    sudo -n zfs destroy tank/${name}
 
-    sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+')@${name} 1>/dev/null 2>/dev/null || \
-        sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+')@${name} 1>/dev/null 2>/dev/null || \
-        sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+')@${name}
+    #sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+')@${name} 1>/dev/null 2>/dev/null || \
+    #    sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+')@${name} 1>/dev/null 2>/dev/null || \
+    #    sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+')@${name}
 
-    sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+_v[0-9]\+')@${name} 1>/dev/null 2>/dev/null || \
-        sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+_v[0-9]\+')@${name} 1>/dev/null 2>/dev/null || \
-        sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+_v[0-9]\+')@${name}
+    #sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+-v[0-9]\+')@${name} 1>/dev/null 2>/dev/null || \
+    #    sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+-v[0-9]\+')@${name} 1>/dev/null 2>/dev/null || \
+    #    sudo -n zfs destroy tank/$(echo ${name} | grep --only-matching '^[^_]\+-v[0-9]\+')@${name}
 
-    test $(find /var/lib/lxc/${name}/rootfs/ -maxdepth 1 | wc -l) -eq 1 && sudo -n rm -rf "/var/lib/lxc/${name}" #|| echo "FAILED TO DESTROY container=${name}"
+    #test $(find /var/lib/lxc/${name}/rootfs/ -maxdepth 1 | wc -l) -eq 1 && sudo -n rm -rf "/var/lib/lxc/${name}" #|| echo "FAILED TO DESTROY container=${name}"
+
+    lxc delete --force "${name}"
 }
 # Export the fn so it can be used in a xargs .. bash -c '<here>'
 export -f destroyContainer
 
-# Function to destroy all non-container zfs volumes.
-function destroyNonContainerVolumes() {
-    zfsContainerPattern='^tank\/\([a-zA-Z0-9-]\+@\)\?[a-zA-Z0-9-]\+_\(v[0-9]\+\(_.\+_[0-9]\+\)\?\|console_[a-zA-Z0-9]\+\)$'
+## Function to destroy all non-container zfs volumes.
+#function destroyNonContainerVolumes() {
+#    zfsContainerPattern='^tank\/\([a-zA-Z0-9-]\+@\)\?[a-zA-Z0-9-]\+_\(v[0-9]\+\(_.\+_[0-9]\+\)\?\|console_[a-zA-Z0-9]\+\)$'
 
-    # Notice the spaces around the edges so we can match [:SPACE:][precise-container-name][:SPACE:]
-    containers=" $(echo "${lxcLs}" | sed '1,2d' | sed 's/ \+/ /g' | cut -d' ' -f1 | tr '\n' ' ') "
-    candidateZfsVolumes="$(sudo -n zfs list | sed '1d' | cut -d' ' -f1 | grep "${zfsContainerPattern}" | sed 's/^\([^\/]\+\/\+\)\?\([^@]\+@\)\?//' | sort | uniq)"
-    for searchContainerName in $candidateZfsVolumes; do
-        if [ -z "${searchContainerName}" ] || [ -n "$(echo "${searchContainerName}" | grep '^\(tank\/\)\?\(git\|lxc\)$')" ]; then
-            echo "skipping bare tank, git, or lxc: ${searchContainerName}"
-            continue
-        fi
-        if [ -n "$(echo " ${containers} " | grep " ${searchContainerName} ")" ]; then
-            echo "skipping container=${searchContainerName} because it is an lxc container"
-        elif ! test -d "/var/lib/lxc/${searchContainerName}" ; then
-            destroyContainer "${searchContainerName}"
-        fi
-    done
-}
+#    # Notice the spaces around the edges so we can match [:SPACE:][precise-container-name][:SPACE:]
+#    containers=" $(echo "${lxcLs}" | sed '1,2d' | sed 's/ \+/ /g' | cut -d' ' -f1 | tr '\n' ' ') "
+#    candidateZfsVolumes="$(sudo -n zfs list | sed '1d' | cut -d' ' -f1 | grep "${zfsContainerPattern}" | sed 's/^\([^\/]\+\/\+\)\?\([^@]\+@\)\?//' | sort | uniq)"
+#    for searchContainerName in $candidateZfsVolumes; do
+#        if [ -z "${searchContainerName}" ] || [ -n "$(echo "${searchContainerName}" | grep '^\(tank\/\)\?\(git\|lxc\)$')" ]; then
+#            echo "skipping bare tank, git, or lxc: ${searchContainerName}"
+#            continue
+#        fi
+#        if [ -n "$(echo " ${containers} " | grep " ${searchContainerName} ")" ]; then
+#            echo "skipping container=${searchContainerName} because it is an lxc container"
+#        elif ! test -d "/var/lib/lxc/${searchContainerName}" ; then
+#            destroyContainer "${searchContainerName}"
+#        fi
+#    done
+#}
 
-# Cleanup any straggler containers first so that versioned app containers can be successfully removed next (note: candidates must be in a stopped state).
-function destroyStragglerContainers() {
-    echo "${lxcLs}" | \
-        grep '^[a-zA-Z0-9-]\+_\(v[0-9]\+\(_.\+_[0-9]\+\)\?\|console_[a-zA-Z0-9]\+\).*STOPPED' | \
-        cut -d' ' -f1 | \
-        grep -v "^\(${preserveVersionsRe}\)$" | \
-        xargs -n1 -IX bash -c 'destroyContainer X'
-}
+## Cleanup any straggler containers first so that versioned app containers can be successfully removed next (note: candidates must be in a stopped state).
+#function destroyStragglerContainers() {
+#    echo "${lxcLs}" | \
+#        grep '^[a-zA-Z0-9-]\+_\(v[0-9]\+\(_.\+_[0-9]\+\)\?\|console_[a-zA-Z0-9]\+\).*STOPPED' | \
+#        cut -d' ' -f1 | \
+#        grep -v "^\(${preserveVersionsRe}\)$" | \
+#        xargs -n1 -IX bash -c 'destroyContainer X'
+#}
 
 # Destroy old app versions.
 function destroyOldAppVersions() {
-    echo "${destroyVersions}" | \
-        xargs -n1 -IX bash -c 'destroyContainer X'
+    for container in $(lxc list --format=csv | cut -d ',' -f 1) ; do
+        for destroyVersion in ${destroyVersions} ; do
+            if [[ "$container" =~ ^$destroyVersion ]] ; then
+                destroyContainer "${container}"
+                break
+            fi
+        done
+    done
 }
 
-destroyNonContainerVolumes
+#destroyNonContainerVolumes
 
-destroyStragglerContainers
+#destroyStragglerContainers
 
 destroyOldAppVersions
 
 destroyNonContainerVolumes
 
-# Cleanup any empty container directories.
-for dir in $(find /var/lib/lxc/ -maxdepth 1 -type d | grep '[a-zA-Z0-9-]\+_\(v[0-9]\+\(_.\+_[0-9]\+\)\?\|console_[a-zA-Z0-9]\+\)'); do
-    if test "${dir}" = '.' || test -z "$(echo "${dir}" | sed 's/\/var\/lib\/lxc\///')"; then
-        continue
-    fi
-    count=$(find "${dir}/rootfs/" | head -n 3 | wc -l)
-    if test $count -eq 1; then
-        echo $dir $count
-        sudo rm -rf $dir
-    fi
-done
+## Cleanup any empty container directories.
+#for dir in $(find /var/lib/lxc/ -maxdepth 1 -type d | grep '[a-zA-Z0-9-]\+_\(v[0-9]\+\(_.\+_[0-9]\+\)\?\|console_[a-zA-Z0-9]\+\)'); do
+#    if test "${dir}" = '.' || test -z "$(echo "${dir}" | sed 's/\/var\/lib\/lxc\///')"; then
+#        continue
+#    fi
+#    count=$(find "${dir}/rootfs/" | head -n 3 | wc -l)
+#    if test $count -eq 1; then
+#        echo $dir $count
+#        sudo rm -rf $dir
+#    fi
+#done
 
 exit $?`
 )
@@ -237,7 +246,7 @@ def cloneContainer(app, container, check=True):
     log('cloning container: {0}'.format(container))
     fn = subprocess.check_call if check else subprocess.call
     return fn(
-        ['/usr/bin/lxc-clone', '-s', '-B', defaultLxcFs, '-o', app, '-n', container],
+        ['/usr/bin/lxc', 'copy', app, container],
         stdout=sys.stdout,
         stderr=sys.stderr
     )
@@ -246,7 +255,7 @@ def startContainer(container, check=True):
     log('starting container: {}'.format(container))
     fn = subprocess.check_call if check else subprocess.call
     return fn(
-        ['/usr/bin/lxc-start', '--daemon', '-n', container],
+        ['/usr/bin/lxc', 'start', container],
         stdout=sys.stdout,
         stderr=sys.stderr
     )
@@ -264,7 +273,7 @@ def showHelpAndExit(argv):
                "port-forward": "10001"
            }
 
-       $ {} myApp_v1337_web_10001
+       $ {} myApp-v1337-web-10001
 '''.format(argv[0])
     print message
     sys.exit(0)
@@ -277,7 +286,7 @@ def validateMainArgs(argv):
 def parseMainArgs(argv):
     validateMainArgs(argv)
     container = argv[1]
-    app, version, process, port = container.split('` + DYNO_DELIMITER + `') # Format is app_version_process_port.
+    app, version, process, port = container.rsplit('` + DYNO_DELIMITER + `', 3) # Format is app-version-process-port.
     return (container, app, version, process, port)
 
 def mountContainerFs(container):
@@ -307,8 +316,8 @@ def main(argv):
     container, app, version, process, port = parseMainArgs(argv)
 
     # For safety, even though it's unlikely, try to kill/shutdown any existing container with the same name.
-    subprocess.call(['/usr/bin/lxc-stop -k -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)
-    subprocess.call(['/usr/bin/lxc-destroy -n {0} 1>&2 2>/dev/null'.format(container)], shell=True)
+    subprocess.call(['/usr/bin/lxc stop --force {0} 1>&2 2>/dev/null'.format(container)], shell=True)
+    subprocess.call(['/usr/bin/lxc delete --force {0} 1>&2 2>/dev/null'.format(container)], shell=True)
 
     # Clone the specified container.
     cloneContainer(app, container)
@@ -485,7 +494,7 @@ def showHelpAndExit(argv):
                "port-forward": "10001"
            }
 
-       $ {} myApp_v1337_web_10001
+       $ {} myApp-v1337-web-10001
 '''.format(argv[0])
     print message
     sys.exit(0)
@@ -498,7 +507,7 @@ def validateMainArgs(argv):
 def parseMainArgs(argv):
     validateMainArgs(argv)
     container = argv[1]
-    app, version, process, port = container.split('` + DYNO_DELIMITER + `') # Format is app_version_process_port.
+    app, version, process, port = container.rsplit('` + DYNO_DELIMITER + `', 3) # Format is app-version-process-port.
     return (container, app, version, process, port)
 
 def main(argv):
@@ -519,7 +528,7 @@ def main(argv):
     try:
         # Stop and destroy the container.
         log('stopping container: {}'.format(container))
-        subprocess.check_call(['/usr/bin/lxc-stop', '-k', '-n', container], stdout=sys.stdout, stderr=sys.stderr)
+        subprocess.check_call(['/usr/bin/lxc', 'stop', '--force', container], stdout=sys.stdout, stderr=sys.stderr)
     except Exception, e:
         if not destroyOnly:
             raise e # Otherwise ignore.
@@ -530,7 +539,7 @@ def main(argv):
         except subprocess.CalledProcessError, e:
             print 'warn: zfs destroy command failed: {0}'.format(e)
 
-    retriableCommand('/usr/bin/lxc-destroy', '-n', container)
+    retriableCommand('/usr/bin/lxc', 'delete', '--force', container)
 
     for chain in ('PREROUTING', 'OUTPUT'):
         rules = ipsForRulesMatchingPort(chain, port)

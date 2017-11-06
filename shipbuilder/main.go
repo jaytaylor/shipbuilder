@@ -621,17 +621,23 @@ func main() {
 				[]string{"lb", "lb:list", "LoadBalancer_List"},
 				"Show server load-balancers",
 			),
-			argsOrFlagAppCommand(
+			command(
 				[]string{"lb:add", "LoadBalancer_Add"},
 				"Add one or more load-balancers to the server",
-				[]string{"hostname"},
-				"Specify flag multiple times for multiple load-balancer hostnames",
+				flagSpec{
+					names: []string{"hostname"},
+					usage: "Specify flag multiple times for multiple load-balancer hostnames",
+					typ:   "slice",
+				},
 			),
-			argsOrFlagAppCommand(
+			command(
 				[]string{"lb:remove", "LoadBalancer_Remove"},
 				"Remove one or more load-balancers from the server",
-				[]string{"hostname"},
-				"Specify flag multiple times for multiple load-balancer hostnames",
+				flagSpec{
+					names: []string{"hostname"},
+					usage: "Specify flag multiple times for multiple load-balancer hostnames",
+					typ:   "slice",
+				},
 			),
 
 			////////////////////////////////////////////////////////////////////
@@ -640,17 +646,23 @@ func main() {
 				[]string{"nodes", "nodes:list", "slaves:list", "Nodes_List"},
 				"Show server slave nodes",
 			),
-			argsOrFlagAppCommand(
-				[]string{"nodes:add", "slaves:add", "slave:add", "Nodes_Add"},
+			command(
+				[]string{"nodes:add", "slaves:add", "slave:add", "Node_Add"},
 				"Add one or more slave nodes to the server",
-				[]string{"hostname"},
-				"Specify flag multiple times for multiple slave node hostnames",
+				flagSpec{
+					names: []string{"hostname"},
+					usage: "Specify flag multiple times for multiple slave node hostnames",
+					typ:   "slice",
+				},
 			),
-			argsOrFlagAppCommand(
-				[]string{"nodes:remove", "slaves:remove", "slave:remove", "Nodes_Remove"},
+			command(
+				[]string{"nodes:remove", "slaves:remove", "slave:remove", "Node_Remove"},
 				"Remove one or more slave nodes from the server",
-				[]string{"hostname"},
-				"Specify flag multiple times for multiple slave node hostnames",
+				flagSpec{
+					names: []string{"hostname"},
+					usage: "Specify flag multiple times for multiple slave node hostnames",
+					typ:   "slice",
+				},
 			),
 
 			////////////////////////////////////////////////////////////////////
@@ -772,6 +784,62 @@ type flagSpec struct {
 	names    []string // NB: pos[0] = name, pos[1:] = aliases.
 	usage    string
 	required bool
+	typ      string // NB: one of "", or "slice", "" signifies a string flag.
+}
+
+func (spec flagSpec) flag() cli.Flag {
+	switch spec.typ {
+	case "":
+		return &cli.StringFlag{
+			Name:    spec.names[0],
+			Aliases: spec.names[1:],
+			Usage:   spec.usage,
+		}
+
+	case "slice":
+		return &cli.StringSliceFlag{
+			Name:    spec.names[0],
+			Aliases: spec.names[1:],
+			Usage:   spec.usage,
+		}
+
+	default:
+		panic(fmt.Sprintf("unrecognized spec.typ: %v", spec.typ))
+	}
+}
+
+func (spec flagSpec) val(ctx *cli.Context, argsConsumed *int) (interface{}, error) {
+	switch spec.typ {
+	case "":
+		val := ctx.String(spec.names[0])
+		if spec.required && len(val) == 0 {
+			if ctx.Args().Len() > *argsConsumed {
+				val = ctx.Args().Slice()[*argsConsumed]
+				*argsConsumed++
+			}
+			if len(val) == 0 {
+				return nil, fmt.Errorf("%v flag is required", spec.names[0])
+			}
+		}
+		return val, nil
+
+	case "slice":
+		val := ctx.StringSlice(spec.names[0])
+		if spec.required && len(val) == 0 {
+			if ctx.Args().Len() > *argsConsumed {
+				val = ctx.Args().Slice()[*argsConsumed:]
+				*argsConsumed += len(val)
+			}
+			if len(val) == 0 {
+				return nil, fmt.Errorf("%v flag is required", spec.names[0])
+			}
+		}
+		return val, nil
+
+	default:
+		return nil, fmt.Errorf("unrecognized spec.typ: %v", spec.typ)
+	}
+
 }
 
 // command generates a cli.Command with 0 or more string flags.
@@ -798,11 +866,7 @@ func command(names []string, description string, flagSpecs ...flagSpec) *cli.Com
 		if spec.required {
 			numRequired++
 		}
-		cliFlags = append(cliFlags, &cli.StringFlag{
-			Name:    spec.names[0],
-			Aliases: spec.names[1:],
-			Usage:   spec.usage,
-		})
+		cliFlags = append(cliFlags, spec.flag())
 	}
 
 	return &cli.Command{
@@ -817,15 +881,10 @@ func command(names []string, description string, flagSpecs ...flagSpec) *cli.Com
 				argsConsumed = 0
 			)
 			for _, spec := range flagSpecs {
-				val := ctx.String(spec.names[0])
-				if spec.required && len(val) == 0 {
-					if ctx.Args().Len() > argsConsumed {
-						val = ctx.Args().Slice()[argsConsumed]
-						argsConsumed++
-					}
-					if len(val) == 0 {
-						errs = append(errs, fmt.Errorf("%v flag is required", spec.names[0]))
-					}
+				val, err := spec.val(ctx, &argsConsumed)
+				if err != nil {
+					errs = append(errs, err)
+					continue
 				}
 				funcArgs = append(funcArgs, val)
 			}

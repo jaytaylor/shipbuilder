@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	DYNO_DELIMITER     = "_"
+	DYNO_DELIMITER     = "-"
 	DYNO_STATE_RUNNING = "running"
 	DYNO_STATE_STOPPED = "stopped"
 )
@@ -70,8 +70,8 @@ func (dyno *Dyno) AttachAndExecute(exe *Executor, args ...string) error {
 		[]string{
 			DEFAULT_NODE_USERNAME + "@" + dyno.Host,
 			"sudo",
-			"lxc-attach",
-			"-n",
+			"lxc",
+			"exec",
 			dyno.Container,
 			"--",
 		},
@@ -154,7 +154,7 @@ func (dpt *DynoPortTracker) Release(host string, port int) {
 	}
 }
 
-// NB: Container name format is: appName_version_process_port
+// NB: Container name format is: appName-version-process-port
 func ContainerToDyno(host string, container string) (Dyno, error) {
 	tokens := strings.Split(container, DYNO_DELIMITER)
 	if len(tokens) != 5 {
