@@ -113,6 +113,12 @@ if [ "${action}" = "list-devices" ]; then
 elif [ "${action}" = "build-deploy" ]; then
     deployShipBuilder
 
+elif [ "${action}" = "buildpacks" ] || [ "${action}" = "build-packs" ]; then
+    rsyncLibfns
+
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "source /tmp/libfns.sh && prepareServerPart2 ${skipIfExists} ${lxcFs}"
+    abortIfNonZero $? 'buildpacks: remote prepareServerPart2() invocation'
+
 elif [ "${action}" = "install" ]; then
     if [ -n "${buildPackToInstall}" ]; then
         # Install a single build-pack.
@@ -130,12 +136,16 @@ elif [ "${action}" = "install" ]; then
         test -z "${device}" && echo 'error: missing required parameter: -d [device]' 1>&2 && exit 1
         test -z "${lxcFs}" && echo 'error: missing required parameter: -f [lxc-filesystem]' 1>&2 && exit 1
 
-        installAccessForSshHost $sbHost
+        installAccessForSshHost "${sbHost}"
         abortIfNonZero $? 'installAccessForSshHost() failed'
 
         rsyncLibfns
+
         ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "source /tmp/libfns.sh && prepareServerPart1 ${sbHost} ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
         abortIfNonZero $? 'remote prepareServerPart1() invocation'
+
+        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "set -o errexit ; sudo lxc config set core.https_address '[::]:8443'"
+        abortIfNonZero $? 'activating lxc image server'
 
         deployShipBuilder
 

@@ -4,6 +4,13 @@ cd "$(dirname "$0")"
 
 source libfns.sh
 
+device=
+lxcFs=
+nodeHost=
+denyRestart=
+sbHost=
+swapDevice=
+
 while getopts "d:f:H:hnS:s:" OPTION; do
     case $OPTION in
         h)
@@ -82,6 +89,9 @@ elif [ "${action}" = "install" ]; then
 
     ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $nodeHost "source /tmp/libfns.sh && prepareNode ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
     abortIfNonZero $? 'remote prepareNode() invocation'
+
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $nodeHost "sudo lxc remote add sb-server ${sbHost} --accept-certificate --public"
+    abortIfNonZero $? 'adding sb-server lxc image server to slave node'
 
     if test -z "${denyRestart}"; then
         echo 'info: checking if system restart is necessary'
