@@ -33,6 +33,32 @@ func main() {
 		Version:     version.Version,
 		Description: "Welcome to Shipbuilder!",
 		Usage:       "Shipbuilder client",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "quiet",
+				Aliases: []string{"q"},
+				EnvVars: []string{"SB_QUIET_LOGGING"},
+				Usage:   "Turn down logging to warnings and errors only",
+			},
+			&cli.BoolFlag{
+				Name:    "silent",
+				Aliases: []string{"s"},
+				EnvVars: []string{"SB_SILENT_LOGGING"},
+				Usage:   "Turn down logging to errors only",
+			},
+			&cli.BoolFlag{
+				Name:    "verbose",
+				Aliases: []string{"vv", "debug", "d"},
+				EnvVars: []string{"SB_VERBOSE_LOGGING", "SB_DEBUG_LOGGING"},
+				Usage:   "Enable verbose debug logging messages",
+			},
+		},
+		Before: func(ctx *cli.Context) error {
+			if err := initLogging(ctx); err != nil {
+				return err
+			}
+			return nil
+		},
 		Action: func(ctx *cli.Context) error {
 			client := &core.Client{}
 			client.Do(os.Args) // ctx.Args().Slice())
@@ -643,7 +669,7 @@ func main() {
 			////////////////////////////////////////////////////////////////////
 			// nodes:*
 			command(
-				[]string{"nodes", "nodes:list", "slaves:list", "Nodes_List"},
+				[]string{"nodes", "nodes:list", "slaves:list", "Node_List"},
 				"Show server slave nodes",
 			),
 			command(
@@ -891,6 +917,7 @@ func command(names []string, description string, flagSpecs ...flagSpec) *cli.Com
 			if err := errorlib.Merge(errs); err != nil {
 				return err
 			}
+			log.WithField("remote-func", names[len(names)-1]).WithField("args", funcArgs).Debug("invoking remote-exec")
 			return (&core.Client{}).RemoteExec(names[len(names)-1], funcArgs...)
 		},
 	}
@@ -1049,4 +1076,26 @@ func buildpackSubcommands() []*cli.Command {
 	}
 
 	return cmds
+}
+
+func initLogging(ctx *cli.Context) error {
+	var (
+		silent  = ctx.Bool("silent")
+		quiet   = ctx.Bool("quiet")
+		verbose = ctx.Bool("verbose")
+	)
+	if (silent && quiet) || (silent && verbose) || (quiet && verbose) {
+		return errors.New("only one of silent, quiet, or verbose log output flags may be specified at a time")
+	}
+	if silent {
+		log.SetLevel(log.ErrorLevel)
+	}
+	if quiet {
+		log.SetLevel(log.WarnLevel)
+	}
+	if verbose {
+		log.SetLevel(log.DebugLevel)
+		log.Debug("Verbose debug logging enabled")
+	}
+	return nil
 }
