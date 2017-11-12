@@ -1,14 +1,18 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
+)
+
+var (
+	ErrContainerNotFound = errors.New("container not found")
 )
 
 type Executor struct {
@@ -20,28 +24,41 @@ func (exe *Executor) Run(name string, args ...string) error {
 		// Automatically inject ssh parameters.
 		args = append(defaultSshParametersList, args...)
 	}
+	log.Debugf("Running command: " + name + " " + fmt.Sprint(args))
 	io.WriteString(exe.logger, "$ "+name+" "+strings.Join(args, " ")+"\n")
-	cmd := exec.Command(name, args...)
+	cmd := logcmd(exec.Command(name, args...))
 	cmd.Stdout = exe.logger
 	cmd.Stderr = exe.logger
 	err := cmd.Run()
+	log.Debug("Done with " + name)
 	return err
 }
 
 // Run a pre-quoted bash command.
 func (exe *Executor) BashCmd(cmd string) error {
-	return exe.Run("sudo", "/bin/bash", "-c", cmd)
+	return exe.Run("sudo", "/bin/bash", "-c", "set -o errexit ; set -o pipefail ; set -o nounset ; "+cmd)
+}
+
+// Run a bash command with fmt args.
+func (exe *Executor) BashCmdf(format string, args ...interface{}) error {
+	return exe.BashCmd(fmt.Sprintf(format, args...))
 }
 
 // Check if a container exists locally.
-func (exe *Executor) ContainerExists(name string) bool {
-	_, err := os.Stat(LXC_DIR + "/" + name)
-	return err == nil
+func (exe *Executor) ContainerExists(name string) (bool, error) {
+	out, err := exe.lxcListJqCmd(fmt.Sprintf(`.[] | select(.name == %q) | .`, name)).Output()
+	if err != nil {
+		return false, fmt.Errorf("checking if container=%q exists: %s", name, err)
+	}
+
+	if len(strings.Trim(string(out), "\r\n")) == 0 {
+		return false, nil
+	}
+	return true, nil
 }
 
 func (exe *Executor) ContainerRunning(name string) (bool, error) {
-	cmd := exec.Command("bash", "-c", fmt.Sprintf(`set -o errexit ; set -o pipefail ; lxc list --format=json | jq -c '.[] | select(.status == "Running") | select(.name == %q) | .'`, name))
-	out, err := cmd.Output()
+	out, err := exe.lxcListJqCmd(fmt.Sprintf(`.[] | select(.status == "Running") | select(.name == %q) | .`, name)).Output()
 	if err != nil {
 		return false, fmt.Errorf("checking if container=%q running: %s", name, err)
 	}
@@ -52,12 +69,20 @@ func (exe *Executor) ContainerRunning(name string) (bool, error) {
 	return true, nil
 }
 
+// lxcListJqCmd forms a command which filters `lxc list` JSON output against
+// the provided JQ query.
+func (exe *Executor) lxcListJqCmd(query string) *exec.Cmd {
+	cmd := logcmd(exec.Command("sudo", "/bin/bash", "-c", fmt.Sprintf(`set -o errexit ; set -o pipefail ; lxc list --format=json | jq -c '%v'`, query)))
+	return cmd
+}
+
 // Start a local container.
 func (exe *Executor) StartContainer(name string) error {
-	if exe.ContainerExists(name) {
-		if err := exe.UnmountContainerFS(name); err != nil {
-			return err
-		}
+	exists, err := exe.ContainerExists(name)
+	if err != nil {
+		return err
+	}
+	if exists {
 		running, err := exe.ContainerRunning(name)
 		if err != nil {
 			return fmt.Errorf("checking if container %q running: %s", name, err)
@@ -66,12 +91,16 @@ func (exe *Executor) StartContainer(name string) error {
 			return exe.Run("sudo", "lxc", "start", name)
 		}
 	}
-	return nil // Don't operate on non-existent containers.
+	return ErrContainerNotFound // Don't operate on non-existent containers.
 }
 
 // Stop a local container.
 func (exe *Executor) StopContainer(name string) error {
-	if exe.ContainerExists(name) {
+	exists, err := exe.ContainerExists(name)
+	if err != nil {
+		return err
+	}
+	if exists {
 		running, err := exe.ContainerRunning(name)
 		if err != nil {
 			return fmt.Errorf("checking if container %q running: %s", name, err)
@@ -80,13 +109,28 @@ func (exe *Executor) StopContainer(name string) error {
 			return exe.Run("sudo", "lxc", "stop", "--force", name)
 		}
 	}
-	return nil // Don't operate on non-existent containers.
+	return ErrContainerNotFound // Don't operate on non-existent containers.
+}
+
+func (exe *Executor) RestartContainer(name string) error {
+	exists, err := exe.ContainerExists(name)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return exe.Run("sudo", "lxc", "restart", "--force", name)
+	}
+	return ErrContainerNotFound // Don't operate on non-existent containers.
 }
 
 // Destroy a local container.
 // NB: If using zfs, any child snapshot containers will be recursively destroyed to be able to destroy the requested container.
 func (exe *Executor) DestroyContainer(name string) error {
-	if exe.ContainerExists(name) {
+	exists, err := exe.ContainerExists(name)
+	if err != nil {
+		return err
+	}
+	if exists {
 		exe.StopContainer(name)
 		// zfs-fuse sometimes takes a few tries to destroy a container.
 		if DefaultLXCFS == "zfs" {
@@ -106,7 +150,7 @@ func (exe *Executor) CloneContainer(oldName, newName string) error {
 // Run a command in a local container.
 func (exe *Executor) AttachContainer(name string, args ...string) *exec.Cmd {
 	// Add hosts entry for container name to avoid error upon entering shell: "sudo: unable to resolve host `name`".
-	err := exec.Command("sudo", "/bin/bash", "-c", `echo "127.0.0.1`+"\t"+name+`" | sudo tee -a `+LXC_DIR+"/"+name+`/rootfs/etc/hosts`).Run()
+	err := logcmd(exec.Command("sudo", "/bin/bash", "-c", `echo "127.0.0.1`+"\t"+name+`" | sudo tee -a `+LXC_DIR+"/"+name+`/rootfs/etc/hosts`)).Run()
 	if err != nil {
 		fmt.Fprintf(exe.logger, "warn: host fix command failed for container '%v': %v\n", name, err)
 	}
@@ -123,7 +167,7 @@ func (exe *Executor) AttachContainer(name string, args ...string) *exec.Cmd {
 		"/bin/bash", "-c", command,
 	}
 	log.Infof("AttachContainer name=%v, completeCommand=sudo %v", name, args)
-	return exec.Command("sudo", prefixedArgs...)
+	return logcmd(exec.Command("sudo", prefixedArgs...))
 }
 
 func (exe *Executor) ContainerFSMountpoint(name string) (string, error) {
@@ -132,7 +176,7 @@ func (exe *Executor) ContainerFSMountpoint(name string) (string, error) {
 	}
 	var (
 		path = "/" + exe.ZFSContainerName(name)
-		cmd  = exec.Command("sudo", "zfs", "list", "-H", "-o", "mountpoint", path)
+		cmd  = logcmd(exec.Command("sudo", "zfs", "list", "-H", "-o", "mountpoint", path))
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -185,7 +229,7 @@ func (exe *Executor) ContainerFSMounted(name string) (bool, error) {
 		return false, opNotSupportedOnFSErr()
 	}
 
-	cmd := exec.Command("sudo", "zfs", "mount")
+	cmd := logcmd(exec.Command("sudo", "zfs", "mount"))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return false, fmt.Errorf("checking for existing zfs mount for %q: %s (out=%v)", name, err, out)
@@ -210,7 +254,7 @@ func (exe *Executor) zfsDestroyContainerAndChildren(name string) error {
 
 	// NB: This is not working yet, and may not be required.
 	/* fmt.Fprintf(exe.logger, "sudo /bin/bash -c \""+`zfs list -t snapshot | grep --only-matching '^`+DefaultZFSPool+`/`+name+`@[^ ]\+' | sed 's/^`+DefaultZFSPool+`\/`+name+`@//'`+"\"\n")
-	childrenBytes, err := exec.Command("sudo", "/bin/bash", "-c", `zfs list -t snapshot | grep --only-matching '^`+DefaultZFSPool+`/`+name+`@[^ ]\+' | sed 's/^`+DefaultZFSPool+`\/`+name+`@//'`).Output()
+	childrenBytes, err := logcmd(exec.Command("sudo", "/bin/bash", "-c", `zfs list -t snapshot | grep --only-matching '^`+DefaultZFSPool+`/`+name+`@[^ ]\+' | sed 's/^`+DefaultZFSPool+`\/`+name+`@//'`)).Output()
 	if err != nil {
 		// Allude to one possible cause and rememdy for the failure.
 		return fmt.Errorf("zfs snapshot listing failed- check that 'listsnapshots' is enabled for "+DefaultZFSPool+" ('zpool set listsnapshots=on "+DefaultZFSPool+"'), error=%v", err)
@@ -232,7 +276,7 @@ func (exe *Executor) zfsDestroyContainerAndChildren(name string) error {
 		//exe.Run("sudo", "zfs", "destroy", DefaultZFSPool+"/"+name+"@"+child)
 	}*/
 	//exe.zfsRunAndResistDatasetIsBusy("sudo", "zfs", "destroy", "-R", DefaultZFSPool+"/"+name)
-	if err := exe.zfsRunAndResistDatasetIsBusy("sudo", "lxc", "delete", name); err != nil {
+	if err := exe.zfsRunAndResistDatasetIsBusy("sudo", "lxc", "delete", "--force", name); err != nil {
 		return err
 	}
 
@@ -266,4 +310,9 @@ func (exe *Executor) ZFSContainerName(name string) string {
 
 func opNotSupportedOnFSErr() error {
 	return fmt.Errorf("operation not supported for fs-type=%q", DefaultLXCFS)
+}
+
+func logcmd(cmd *exec.Cmd) *exec.Cmd {
+	log.WithField("args", cmd.Args).WithField("dir", cmd.Dir).WithField("path", cmd.Path).Debug("Command")
+	return cmd
 }

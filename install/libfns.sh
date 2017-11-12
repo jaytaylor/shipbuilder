@@ -733,8 +733,16 @@ function lxcConfigContainer() {
     ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo apt-get install -y ${packages}"
     abortIfNonZero $? "container=${container} apt-get install -y ${packages}"
 
+    echo "info: removing $(shipbuilder containers list-purge-packages | tr $'\n' ' ') packages"
+    sudo lxc exec -T "${container}" -- apt-get purge -y $(shipbuilder containers list-purge-packages | tr $'\n' ' ')
+    abortIfNonZero $? "container=${container} apt-get purge -y $(shipbuilder containers list-purge-packages | tr $'\n' ' ')"
+
+    echo "info: disabling unnecessary system services - $(shipbuilder containers list-disable-services | tr $'\n' ' ')"
+    shipbuilder containers list-disable-services | sudo lxc exec -T "${container}" -- bash -c "xargs -n1 -IX /bin/bash -c 'systemctl is-enabled X 1>/dev/null && ( systemctl stop X ; systemctl disable X )'"
+    abortIfNonZero $? "container=${container} disabling unnecessary system services - $(shipbuilder containers list-disable-services | tr $'\n' ' ')"
+
     echo "info: stopping container=${container}"
-    sudo lxc stop --force "${container}" || :
+    sudo lxc stop --force "${container}"
 
     echo "info: configuration succeeded for container=${container}"
 }

@@ -218,6 +218,32 @@ func main() {
 				},
 			},
 
+			&cli.Command{
+				Name:        "container",
+				Aliases:     []string{"containers"},
+				Description: "Provides access to server's desired container configuration",
+				Subcommands: []*cli.Command{
+					&cli.Command{
+						Name:        "list-disable-services",
+						Aliases:     []string{"show-disable-services"},
+						Description: "Print out list of ubuntu 16.04 system services to disable in app containers",
+						Action: func(ctx *cli.Context) error {
+							fmt.Fprintf(os.Stdout, "%v\n", strings.Join(core.DisableServices, "\n"))
+							return nil
+						},
+					},
+					&cli.Command{
+						Name:        "list-purge-packages",
+						Aliases:     []string{"show-purge-packages"},
+						Description: "Print out list of packages to purge from ubuntu 16.04 app containers",
+						Action: func(ctx *cli.Context) error {
+							fmt.Fprintf(os.Stdout, "%v\n", strings.Join(core.PurgePackages, "\n"))
+							return nil
+						},
+					},
+				},
+			},
+
 			////////////////////////////////////////////////////////////////////
 			// Client commands
 
@@ -265,6 +291,7 @@ func main() {
 					required: true,
 				},
 			),
+			// TODO: Add --force flag for `destroy'.
 			appCommand(
 				[]string{"destroy", "apps:destroy", "delete", "Apps_Destroy"},
 				"Destroy an app",

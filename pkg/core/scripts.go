@@ -6,14 +6,36 @@ import (
 )
 
 const (
-	PRE_RECEIVE = `#!/bin/bash
+	PRE_RECEIVE = `#!/usr/bin/env bash
+
+set -x
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+whoami
+#ls -lah /git/test
+#find /git/test
+#rm -rf /tmp/test && cp -a /git/test /tmp/
+echo '==========================================='
+#find /tmp/test
+
 while read oldrev newrev refname; do
-  ` + EXE + ` pre-receive ` + "`pwd`" + ` $oldrev $newrev $refname || exit 1
+    echo $newrev > $refname
+    ` + EXE + ` pre-receive "$(pwd)" "${oldrev}" "${newrev}" "${refname}" # || exit 0
 done`
 
-	POST_RECEIVE = `#!/bin/bash
+	POST_RECEIVE = `#!/usr/bin/env bash
+
+set -x
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
 while read oldrev newrev refname; do
-  ` + EXE + ` post-receive ` + "`pwd`" + ` $oldrev $newrev $refname || exit 1
+    ` + EXE + ` post-receive "$(pwd)" "${oldrev}" "${newrev}" "${refname}"
 done`
 
 	LOGIN_SHELL = `#!/usr/bin/env bash
@@ -334,7 +356,7 @@ def main(argv):
     # NB: The curly braces are kinda crazy here, to get a single '{' or '}' with python.format(), use double curly
     # braces.
     host = '''` + DefaultSSHHost + `'''
-    runScript = '''#!/bin/bash
+    runScript = '''#!/usr/bin/env bash
 ip addr show eth0 | grep 'inet.*eth0' | awk '{{print $2}}' > /app/ip
 rm -rf /tmp/log
 cd /app/src
@@ -697,3 +719,76 @@ backend load_balancer
 
 	return nil
 }
+
+var (
+	// containerCodeTpl is invoked after `git clone` has been run in the container.
+	containerCodeTpl = template.Must(template.New("container-code").Parse(`#!/usr/bin/env bash
+set -x
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+cd /app/src
+git checkout -q -f {{ .Revision }}
+
+# Convert references to submodules to be read-only.
+if [[ -f '.gitmodules' ]] ; then 
+    echo 'git: converting submodule refs to be read-only'
+    sed -i 's,git@github.com:,git://github.com/,g' .gitmodules
+
+    # Update the submodules.
+    git submodule init
+    git submodule update
+else
+    echo 'git: project does not appear to have any submodules'
+fi
+
+# Clear out and remove all git files from the container; they are unnecessary
+# from this point forward.
+find . -regex '^.*\.git\(ignore\|modules\|attributes\)?$' -exec rm -rf {} \; 1>/dev/null 2>/dev/null || :
+#systemctl status networking
+#ifconfig
+#curl -v www.google.com || :
+`))
+
+	// preStartTpl is invoked by systemd before the app service is started.
+	preStartTpl = template.Must(template.New("container-code").Parse(`#!/usr/bin/env bash
+set -x
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+touch /app/ip /app/out /app/env/PORT
+chown ` + DEFAULT_NODE_USERNAME + `:` + DEFAULT_NODE_USERNAME + ` /app/ip /app/env/PORT
+test "$(stat -c %U /app/src)" = '` + DEFAULT_NODE_USERNAME + `' || chown -R ` + DEFAULT_NODE_USERNAME + `:` + DEFAULT_NODE_USERNAME + ` /app/src
+`))
+
+	systemdAppTpl = template.Must(template.New("systemdApp").Parse(`[Unit]
+Description=app
+After=network.target
+# ConditionPathExists=!/etc/ssh/sshd_not_to_be_run
+
+[Service]
+Type=simple
+##EnvironmentFile=-/etc/default/ssh
+#PermissionsStartOnly=true
+##WorkingDir=/app
+##ExecStartPre=mkdir -p /app/env
+##ExecStartPre=touch /app/ip /app/env/PORT
+##ExecStartPre=chown ubuntu:ubuntu /app/ip /app/env/PORT /app/src
+##ExecStartPre=sh -c 'test $(stat -c %U /app/src) = "root" && chown -R ubuntu:ubuntu /app || true'
+#ExecStartPre=/bin/bash /pre.sh
+ExecStartPre=!/app/preStart.sh
+ExecStart=/usr/bin/envdir /app/env /app/run
+User=` + DEFAULT_NODE_USERNAME + `
+#ExecReload=/bin/kill -HUP $MAINPID
+#KillMode=process
+Restart=on-failure
+#RestartPreventExitStatus=255
+
+[Install]
+WantedBy=multi-user.target
+#Alias=app.service`))
+)

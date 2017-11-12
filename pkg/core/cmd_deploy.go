@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -17,10 +18,22 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/gigawattio/oslib"
 	"github.com/jaytaylor/shipbuilder/pkg/domain"
 
 	log "github.com/sirupsen/logrus"
 )
+
+type DeploymentOptions struct {
+	StartedTs   time.Time
+	Server      *Server
+	Logger      io.Writer
+	Application *Application
+	Config      *Config
+	Revision    string
+	Version     string
+	ScalingOnly bool // Flag to indicate whether this is a new release or a scaling activity.
+}
 
 type Deployment struct {
 	StartedTs   time.Time
@@ -31,7 +44,28 @@ type Deployment struct {
 	Revision    string
 	Version     string
 	ScalingOnly bool // Flag to indicate whether this is a new release or a scaling activity.
+	exe         *Executor
 	err         error
+}
+
+func NewDeployment(options DeploymentOptions) *Deployment {
+	var (
+		dimLogger = NewFormatter(options.Logger, DIM)
+		d         = &Deployment{
+			StartedTs:   options.StartedTs,
+			Server:      options.Server,
+			Logger:      options.Logger,
+			Application: options.Application,
+			Config:      options.Config,
+			Revision:    options.Revision,
+			Version:     options.Version,
+			ScalingOnly: options.ScalingOnly,
+			exe: &Executor{
+				logger: dimLogger,
+			},
+		}
+	)
+	return d
 }
 
 type DeployLock struct {
@@ -105,19 +139,13 @@ func (d *Deployment) removeSshPrivateKeyFile() error {
 }
 
 func (d *Deployment) createContainer() (err error) {
-	var (
-		dimLogger   = NewFormatter(d.Logger, DIM)
-		titleLogger = NewFormatter(d.Logger, GREEN)
-		e           = Executor{
-			logger: dimLogger,
-		}
-	)
+	titleLogger := NewFormatter(d.Logger, GREEN)
 
 	// If there's not already a container.
 	if _, err = os.Stat(d.Application.RootFsDir()); err != nil {
 		fmt.Fprintf(titleLogger, "Creating container\n")
 		// Clone the base application.
-		if d.err = e.CloneContainer("base-"+d.Application.BuildPack, d.Application.Name); d.err != nil {
+		if d.err = d.initContainer(); d.err != nil {
 			err = d.err
 			return
 		}
@@ -125,18 +153,18 @@ func (d *Deployment) createContainer() (err error) {
 		fmt.Fprintf(titleLogger, "App image container already exists\n")
 	}
 
-	if err = e.MountContainerFS(d.Application.Name); err != nil {
+	if err = d.exe.MountContainerFS(d.Application.Name); err != nil {
 		return
 	}
 	defer func() {
 		// Housekeeping.
-		running, checkErr := e.ContainerRunning(d.Application.Name)
+		running, checkErr := d.exe.ContainerRunning(d.Application.Name)
 		if checkErr != nil {
 			log.Errorf("unexected error checking if container %q is running: %s", d.Application.Name, err)
 			return
 		}
 		if running {
-			if stopErr := e.StopContainer(d.Application.Name); stopErr != nil {
+			if stopErr := d.exe.StopContainer(d.Application.Name); stopErr != nil {
 				if err == nil {
 					err = stopErr
 					return
@@ -144,154 +172,486 @@ func (d *Deployment) createContainer() (err error) {
 				log.Errorf("Stopping container %q: %s (existing err: %s)", d.Application.Name, stopErr, err)
 			}
 
-		} else {
-			if unmountErr := e.UnmountContainerFS(d.Application.Name); unmountErr != nil {
-				if err == nil {
-					err = unmountErr
-					return
-				}
-				log.Errorf("Unmounting container FS for %q: %s (existing err: %s)", d.Application.Name, unmountErr, err)
+		}
+	}()
+
+	/*
+		if d.err = d.exe.BashCmdf("rm -rf %[1]v/* && mkdir -p %[1]v", d.Application.AppDir()); d.err != nil {
+			err = d.err
+			return
+		}
+		// if d.err = d.exe.BashCmdf("sudo lxc exec %v -- rm -rf %v/*", d.Application.Name, d.Application.AppDir()); d.err != nil {
+		// 	err = d.err
+		// 	return
+		// }
+		// if d.err = d.exe.BashCmdf("sudo lxc exec %v -- mkdir -p %v", d.Application.SrcDir()); d.err != nil {
+		// 	err = d.err
+		// 	return
+		// }
+
+		if d.err = d.b64FileIntoContainer(EXE, oslib.OsPath(string(os.PathSeparator)+"app", BINARY), "755"); d.err != nil {
+			err = d.err
+			return
+		}
+
+		if d.err = d.gitClone(); d.err != nil {
+			err = d.err
+			return
+		}
+
+		// // TEMPORARILY DISABLED
+		// // TODO: RESTORE THIS FUNCTIONALITY!
+		// // Add the public ssh key for submodule (and later dependency) access.
+		// if d.err = d.applySshPrivateKeyFile(); d.err != nil {
+		// 	err = d.err
+		// 	return
+		// }
+
+		if d.err = d.containerCodeInit(); d.err != nil {
+			err = d.err
+			return
+		}
+
+		if d.err = d.sendPreStartScript(); d.err != nil {
+			err = d.err
+			return
+		}*/
+
+	// {
+	// 	path := oslib.OsPath(string(os.PathSeparator)+"tmp", "init-"+d.Application.Name+".sh")
+	// 	var initFile *os.File
+	// 	if initFile, err = os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(int(0755))); err != nil {
+	// 		err = fmt.Errorf("opening app code init file %q: %s", path)
+	// 		return
+	// 	}
+	// 	containerCodeTpl.Execute(wr, data)
+
+	// 	var (
+	// 		cmd = exec.Command("sudo", "lxc", "exec", d.Application.Name, "--",
+	// 			fmt.Sprintf("/bin/bash -c 'set -o errexit ; tee %[1]v && chmod 555 %[1]v'", oslib.OsPath(string(os.PathSeparator)+"app", "init.sh")),
+	// 		)
+	// 		// r, w   = io.Pipe()
+	// 		outBuf = &bytes.Buffer{}
+	// 		errBuf = &bytes.Buffer{}
+	// 	)
+	// 	if d.err = containerCodeTpl.Execute(w, d); d.err != nil {
+	// 		err = d.err
+	// 		return
+	// 	}
+	// 	cmd.Stdin = r
+	// 	cmd.Stdout = outBuf
+	// 	cmd.Stderr = errBuf
+	// 	if d.err = cmd.Run(); d.err != nil {
+	// 		log.WithField("app", d.Application.Name).Errorf("re")
+	// 		err = d.err
+	// 		return
+	// 	}
+	// }
+
+	// // Checkout the given revision.
+	// if d.err = d.exe.BashCmdf("sudo lxc exec %v -- /bin/bash -c 'cd %v && git checkout -q -f %v", d.Application.Name, d.Application.SrcDir(), d.Revision); d.err != nil {
+	// 	err = d.err
+	// 	return
+	// }
+
+	// // Convert references to submodules to be read-only.
+	// {
+	// 	cmdStr := fmt.Sprintf(`test -f '%[1]v/.gitmodules' && echo 'git: converting submodule refs to be read-only' && sed -i 's,git@github.com:,git://github.com/,g' '%[1]v/.gitmodules' || echo 'git: project does not appear to have any submodules'`, d.Application.SrcDir())
+	// 	if d.err = d.exe.BashCmd(cmdStr); d.err != nil {
+	// 		err = d.err
+	// 		return
+	// 	}
+	// }
+
+	// // Update the submodules.
+	// if d.err = d.exe.BashCmd("cd " + d.Application.SrcDir() + " && git submodule init && git submodule update"); d.err != nil {
+	// 	err = d.err
+	// 	return
+	// }
+
+	// // Clear out and remove all git files from the container; they are unnecessary
+	// // from this point forward.
+	// // NB: If this command fails, don't abort anything, just log the error.
+	// {
+	// 	cmdStr := fmt.Sprintf(`find %v . -regex '^.*\.git\(ignore\|modules\|attributes\)?$' -exec rm -rf {} \; 1>/dev/null 2>/dev/null`, d.Application.SrcDir())
+	// 	if ignorableErr := d.exe.BashCmd(cmdStr); ignorableErr != nil {
+	// 		fmt.Fprintf(dimLogger, ".git* cleanup failed: %v\n", ignorableErr)
+	// 	}
+	// }
+
+	return nil
+}
+
+func (d *Deployment) initContainer() error {
+	if err := d.exe.CloneContainer("base-"+d.Application.BuildPack, d.Application.Name); err != nil {
+		return err
+	}
+	// Create path mapping as per
+	// https://stgraber.org/2017/06/15/custom-user-mappings-in-lxd-containers/.
+	// if err := d.addDevice("git", d.Application.GitDir(), string(os.PathSeparator)+"git"); err != nil {
+	// 	return err
+	// }
+	// // TODO: Make into "IF LINE DOESNT EXIST, INSERT IT"
+	// if err := d.exe.BashCmdf(`printf "lxd:$(id -u %[1]v):1\nroot:$(id -u %[1]v):1\n" | sudo tee -a /etc/subuid`, DEFAULT_NODE_USERNAME); err != nil {
+	// 	return err
+	// }
+	// // && printf "lxd:$(id -g ubuntu):1\nroot:$(id -g):1\n" | sudo tee -a /etc/subgid, ...)
+	return nil
+}
+
+func (d *Deployment) hasDevice(name string) (bool, error) {
+	// TODO: This is a quick hack, do a proper check for error vs existence / non-existence.
+	if err := d.exe.BashCmdf(`test -n "$(lxc config device list %v | grep '^%v$')"`, d.Application.Name, name); err != nil {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (d *Deployment) addDevice(name string, hostPath string, containerPath string) error {
+	hasDevice, err := d.hasDevice(name)
+	if err != nil {
+		return err
+	}
+	if !hasDevice {
+		if err := d.exe.BashCmdf("lxc config device add %v %v disk source=%v path=%v", d.Application.Name, name, hostPath, containerPath); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *Deployment) removeDevice(name string) error {
+	hasDevice, err := d.hasDevice(name)
+	if err != nil {
+		return err
+	}
+	if hasDevice {
+		if err := d.exe.BashCmdf("lxc config device remove %v %v", d.Application.Name, name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *Deployment) gitClone() (err error) {
+	// LXD compat: map /git/repo to /git in the container.
+	if err = d.addDevice("git", d.Application.GitDir(), oslib.OsPath(string(os.PathSeparator)+"git")); err != nil {
+		return
+	}
+	defer func() {
+		if rmErr := d.removeDevice("git"); rmErr != nil {
+			if err == nil {
+				err = rmErr
+				return
+			} else {
+				log.WithField("app", d.Application.Name).WithField("device", "git").Errorf("Failed to remove lxc device: %s (pre-existing err=%s)", rmErr, err)
 			}
 		}
 	}()
 
-	if err = e.BashCmd("rm -rf " + d.Application.AppDir() + "/*"); err != nil {
+	// Export the source to the container.  Use `--depth 1` to omit the history
+	// which wasn't going to be used anyways.
+	// if err = d.exe.BashCmd("git clone --depth 1 --branch master file://" + d.Application.GitDir() + " " + d.Application.SrcDir()); err != nil {
+	// if err = d.exe.BashCmd("git clone file://" + d.Application.GitDir() + " " + d.Application.SrcDir()); err != nil {
+	// if err = d.exe.BashCmdf("git --git-dir=%q --work-tree=%q checkout -f", d.Application.GitDir(), d.Application.SrcDir()); err != nil {
+	if err = d.lxcExecf("git clone --depth 1 file:///git /app/src"); err != nil {
 		return
 	}
-	if err = e.BashCmd("mkdir -p " + d.Application.SrcDir()); err != nil {
+	return
+}
+
+// containerCodeInit performs git post-clone operations inside the container.
+func (d *Deployment) containerCodeInit() (err error) {
+	if err = d.renderTemplateIntoContainer(containerCodeTpl, oslib.OsPath(string(os.PathSeparator)+"app", "init.sh"), "755"); err != nil {
 		return
 	}
-	// Copy the ShipBuilder binary into the container.
-	if d.err = e.BashCmd("cp " + EXE + " " + d.Application.AppDir() + "/" + BINARY); d.err != nil {
-		err = d.err
+	if err = d.lxcExec("/app/init.sh"); err != nil {
 		return
 	}
-	// Export the source to the container.  Use `--depth 1` to omit the history which wasn't going to be used anyways.
-	if d.err = e.BashCmd("git clone --depth 1 " + d.Application.GitDir() + " " + d.Application.SrcDir()); d.err != nil {
-		err = d.err
+	return
+}
+
+// sendPreStartScript renders and copies over the systemd pre-start script into
+// the container.
+func (d *Deployment) sendPreStartScript() (err error) {
+	if err = d.renderTemplateIntoContainer(preStartTpl, oslib.OsPath(string(os.PathSeparator)+"app", "preStart.sh"), "755"); err != nil {
+		return
+	}
+	return
+}
+
+func (d *Deployment) renderTemplateIntoContainer(tpl *template.Template, dst string, permissions string) (err error) {
+	var (
+		filePath = oslib.OsPath(string(os.PathSeparator)+"tmp", tpl.Name()+"-"+d.Application.Name)
+		file     *os.File
+	)
+
+	if file, err = os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(int(0755))); err != nil {
+		err = fmt.Errorf("opening file %q for writing: %s", filePath)
+		return
+	}
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			if err == nil {
+				err = closeErr
+			} else {
+				log.WithField("app", d.Application.Name).Errorf("closing file %q: %s (pre-existing error=%s", filePath, closeErr, err)
+			}
+		}
+		if rmErr := os.Remove(filePath); rmErr != nil {
+			if err == nil {
+				err = rmErr
+			} else {
+				log.WithField("app", d.Application.Name).Errorf("removing file %q: %s (pre-existing error=%s", filePath, rmErr, err)
+			}
+		}
+	}()
+
+	if err = tpl.Execute(file, d); err != nil {
+		return
+	}
+	if err = d.b64FileIntoContainer(filePath, dst, permissions); err != nil {
+		return
+	}
+	return
+}
+
+// b64FileIntoContainer copies a file into the app container via b64 encoding it.
+func (d *Deployment) b64FileIntoContainer(src string, dst string, permissions string) error {
+	log.WithField("app", d.Application.Name).WithField("src", src).WithField("dst", dst).WithField("permissions", permissions).Debugf("Sending file into container via base64 encoding")
+
+	cmd := exec.Command("sudo",
+		"/bin/bash", "-c",
+		fmt.Sprintf(
+			`set -o errexit ; set -o pipefail ; base64 < %[1]v | lxc exec -T %[2]v -- /bin/bash -c 'set -o errexit ; set -o pipefail ; base64 -d > %[3]v && chmod %[4]v %[3]v'`,
+			src,
+			d.Application.Name,
+			dst,
+			permissions,
+		),
+	)
+
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("sending %v -> %v via b64 into container: %s (out=%v)", src, dst, err, string(out))
+	}
+	return nil
+
+	// NB: This way of doing it makes things hang, isn't yet working right.
+	// // Copy the ShipBuilder binary into the container.
+	// var (
+	// 	cmd = exec.Command("sudo", "lxc", "exec", d.Application.Name, "--",
+	// 		fmt.Sprintf("/bin/bash -c 'set -o errexit ; base64 -d > %[1]v && chmod %[2]v %[1]v'", oslib.OsPath(string(os.PathSeparator)+"app", BINARY), permissions),
+	// 	)
+	// 	r, w = io.Pipe()
+	// 	enc  = base64.NewEncoder(base64.StdEncoding, w)
+	// 	file *os.File
+	// 	out  []byte
+	// )
+
+	// cmd.Stdin = r
+
+	// defer enc.Close()
+
+	// if file, err = os.Open(EXE); d.err != nil {
+	// 	err = fmt.Errorf("opening file %q: %s", EXE, d.err)
+	// 	return
+	// }
+	// defer func() {
+	// 	if closeErr := file.Close(); closeErr != nil {
+	// 		if err == nil {
+	// 			err = closeErr
+	// 		} else {
+	// 			log.WithField("app", d.Application.Name).Errorf("closing file %q: %s (pre-existing error=%s", EXE, closeErr, err)
+	// 		}
+	// 	}
+	// }()
+
+	// if _, err = io.Copy(enc, file); err != nil {
+	// 	return
+	// }
+
+	// if out, err = cmd.CombinedOutput(); err != nil {
+	// 	err = fmt.Errorf("sending SB binary: %s (out=%v)", err, string(out))
+	// 	return
+	// }
+	// return
+
+	// // if d.err = d.exe.BashCmdf("sudo lxc exec %v cp " + EXE + " " + d.Application.AppDir() + "/" + BINARY); d.err != nil {
+	// // 	err = d.err
+	// // 	return
+	// // }
+}
+
+func (d *Deployment) prepareEnvironmentVariables() (err error) {
+	if len(d.Application.Environment) == 0 {
+		log.WithField("app", d.Application.Name).Debug("App has no environment variables set, skipping preparation")
 		return
 	}
 
-	// Add the public ssh key for submodule (and later dependency) access.
-	if err = d.applySshPrivateKeyFile(); err != nil {
-		return
-	}
+	// Write out the environmental variables and transfer into container.
+	var (
+		tempDirBytes []byte
+		tempDir      string
+	)
 
-	// Checkout the given revision.
-	if d.err = e.BashCmd("cd " + d.Application.SrcDir() + " && git checkout -q -f " + d.Revision); d.err != nil {
-		err = d.err
-		return
+	if tempDirBytes, err = exec.Command("mktemp", "--directory").CombinedOutput(); err != nil {
+		return fmt.Errorf("creating temp directory for env setup: %s", err)
 	}
+	tempDir = string(bytes.Trim(tempDirBytes, "\r\n"))
+	defer func() {
+		if rmErr := os.RemoveAll(tempDir); rmErr != nil {
+			if err == nil {
+				err = fmt.Errorf("removing tmp dir %q: %s", tempDir, err)
+			} else {
+				log.WithField("app", d.Application.Name).Errorf("Problem removing tmp dir %q: %s (pre-existing err=%s)", tempDir, rmErr, err)
+			}
+		}
+	}()
 
-	// Convert references to submodules to be read-only.
-	{
-		cmdStr := fmt.Sprintf(`test -f '%[1]v/.gitmodules' && echo 'git: converting submodule refs to be read-only' && sed -i 's,git@github.com:,git://github.com/,g' '%[1]v/.gitmodules' || echo 'git: project does not appear to have any submodules'`, d.Application.SrcDir())
-		if d.err = e.BashCmd(cmdStr); d.err != nil {
-			err = d.err
+	for key, value := range d.Application.Environment {
+		path := oslib.OsPath(tempDir, key)
+		if err = ioutil.WriteFile(path, []byte(value), os.FileMode(int(0444))); err != nil {
+			err = fmt.Errorf("writing path %q: %s", path, err)
 			return
 		}
 	}
 
-	// Update the submodules.
-	if d.err = e.BashCmd("cd " + d.Application.SrcDir() + " && git submodule init && git submodule update"); d.err != nil {
-		err = d.err
+	// Create env tar.
+	if err = d.exe.BashCmdf("cd %[1]v && tar -czvf env.tar.gz *", tempDir); err != nil {
+		err = fmt.Errorf("creating env tar: %s", err)
 		return
 	}
 
-	// Clear out and remove all git files from the container; they are unnecessary from this point forward.
-	// NB: If this command fails, don't abort anything, just log the error.
-	{
-		cmdStr := fmt.Sprintf(`find %v . -regex '^.*\.git\(ignore\|modules\|attributes\)?$' -exec rm -rf {} \; 1>/dev/null 2>/dev/null`, d.Application.SrcDir())
-		if ignorableErr := e.BashCmd(cmdStr); ignorableErr != nil {
-			fmt.Fprintf(dimLogger, ".git* cleanup failed: %v\n", ignorableErr)
-		}
-	}
-
-	if err = d.validateProcfile(); err != nil {
+	// Send to container.
+	if err = d.b64FileIntoContainer(oslib.OsPath(tempDir, "env.tar.gz"), "/tmp/env.tar.gz", "444"); err != nil {
+		err = fmt.Errorf("sending env tar to container: %s", err)
 		return
 	}
 
-	return nil
+	if err = d.lxcExec(`bash -c 'set -o errexit ; tar --directory /app/env -xzvf /tmp/env.tar.gz && rm -f /tmp/env.tar.gz'`); err != nil {
+		err = fmt.Errorf("extracting env tar: %s", err)
+		return
+	}
+
+	return
+
+	// if err := d.exe.BashCmd("rm -rf " + oslib.OsPath(d.Application.AppDir(), "env")); err != nil {
+	// 	return err
+	// }
+	// if err := d.exe.BashCmd("mkdir -p " + oslib.OsPath(d.Application.AppDir(), "env")); err != nil {
+	// 	return err
+	// }
+	// for key, value := range d.Application.Environment {
+	// 	if err := ioutil.WriteFile(oslib.OsPath(d.Application.AppDir(), "env", key), []byte(value), os.FileMode(int(0444))); err != nil {
+	// 		return err
+	// 	}
+	// }
+	// return nil
 }
 
-func (d *Deployment) prepareEnvironmentVariables(e *Executor) error {
-	// Write out the environmental variables.
-	if err := e.BashCmd("rm -rf " + d.Application.AppDir() + "/env"); err != nil {
+func (d *Deployment) prepareShellEnvironment() error {
+	// Update the container's /etc/passwd file to use the `envdirbash` script and
+	// /app/src as the user's home directory.
+	if err := d.lxcExecf("usermod -d /app/src %v", DEFAULT_NODE_USERNAME); err != nil {
 		return err
 	}
-	if err := e.BashCmd("mkdir -p " + d.Application.AppDir() + "/env"); err != nil {
-		return err
-	}
-	for key, value := range d.Application.Environment {
-		if err := ioutil.WriteFile(d.Application.AppDir()+"/env/"+key, []byte(value), os.FileMode(int(0444))); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+	// TODO: TRACK DOWN THE ENVDIR THING - IT DOESN'T APPEAR TO HAVE EVER EXISTED???
 
-func (d *Deployment) prepareShellEnvironment(e *Executor) error {
-	// Update the container's /etc/passwd file to use the `envdirbash` script and /app/src as the user's home directory.
-	escapedAppSrc := strings.Replace(d.Application.LocalSrcDir(), "/", `\/`, -1)
-	err := e.Run("sudo",
-		"sed", "-i",
-		`s/^\(`+DEFAULT_NODE_USERNAME+`:.*:\):\/home\/`+DEFAULT_NODE_USERNAME+`:\/bin\/bash$/\1:`+escapedAppSrc+`:\/bin\/bash/g`,
-		d.Application.RootFsDir()+"/etc/passwd",
-	)
-	if err != nil {
-		return err
-	}
+	// escapedAppSrc := strings.Replace(d.Application.LocalSrcDir(), "/", `\/`, -1)
+	// err := d.exe.Run("sudo",
+	// 	"lxc", "exec", d.Application.Name, "--",
+	// 	"sed", "-i",
+	// 	fmt.Sprintf(`s/^\(%[1]v:.*:\):\/home\/%[1]v:\/bin\/bash$/\1:%[2]v:\/bin\/bash/g`, DEFAULT_NODE_USERNAME, escapedAppSrc),
+	// 	"/etc/passwd",
+	// )
+	// if err != nil {
+	// 	return err
+	// }
+
 	// Move /home/<user>/.ssh to the new home directory in /app/src
-	{
-		cmdStr := fmt.Sprintf("cp -a /home/%v/.[a-zA-Z0-9]* %v/", DEFAULT_NODE_USERNAME, d.Application.SrcDir())
-		if err := e.BashCmd(cmdStr); err != nil {
-			return err
-		}
+	if err := d.lxcExecf("cp -a /home/%v/.[a-zA-Z0-9]* /app/src/", DEFAULT_NODE_USERNAME); err != nil {
+		return err
 	}
 	return nil
 }
 
-func (d *Deployment) prepareAppFilePermissions(e *Executor) error {
-	// Chown the app src & output to default user by grepping the uid+gid from /etc/passwd in the container.
-	return e.BashCmd(
-		"touch " + d.Application.AppDir() + "/out && " +
-			"chown $(cat " + d.Application.RootFsDir() + "/etc/passwd | grep '^" + DEFAULT_NODE_USERNAME + ":' | cut -d':' -f3,4) " +
-			d.Application.AppDir() + " && " +
-			"chown -R $(cat " + d.Application.RootFsDir() + "/etc/passwd | grep '^" + DEFAULT_NODE_USERNAME + ":' | cut -d':' -f3,4) " +
-			d.Application.AppDir() + "/{out,src}",
-	)
+func (d *Deployment) prepareAppFilePermissions() error {
+	// Chown the app env, src, and output to default node user.
+	return d.lxcExecf(`bash -c "touch /app/out && chown $(id -u %[1]v):$(id -g %[1]v) /app && chown -R $(id -u %[1]v):$(id -g %[1]v) /app/{env,out,src}"`, DEFAULT_NODE_USERNAME)
+	// return d.exe.BashCmd(
+	// 	"touch " + d.Application.AppDir() + "/out && " +
+	// 		"chown $(cat " + d.Application.RootFsDir() + "/etc/passwd | grep '^" + DEFAULT_NODE_USERNAME + ":' | cut -d':' -f3,4) " +
+	// 		d.Application.AppDir() + " && " +
+	// 		"chown -R $(cat " + d.Application.RootFsDir() + "/etc/passwd | grep '^" + DEFAULT_NODE_USERNAME + ":' | cut -d':' -f3,4) " +
+	// 		d.Application.AppDir() + "/{out,src}",
+	// )
+}
+
+// PurgePackages is the list of packages to be purged from app containers.
+var PurgePackages = []string{
+	"dbus",
+}
+
+// DisableServices is the list of unnecessary system services to disable in app containers.
+var DisableServices = []string{
+	"accounts-daemon",
+	"atd",
+	"autovt@",
+	"cloud-config",
+	"cloud-final",
+	"cloud-init",
+	"cloud-init-local",
+	"cron",
+	"friendly-recovery",
+	"getty@",
+	"iscsi",
+	"iscsid",
+	"lvm2-monitor",
+	"lxcfs",
+	"lxd-containers",
+	"open-iscsi",
+	"open-vm-tools",
+	"pollinate",
+	"rsyslog",
+	"snapd",
+	"snapd.autoimport",
+	"snapd.core-fixup",
+	"snapd.system-shutdown",
+	"ssh",
+	"systemd-timesyncd",
+	"udev",
+	"ufw",
+	"unattended-upgrades",
+	"ureadahead",
 }
 
 // Disable unnecessary services in container.
-func (d *Deployment) prepareDisabledServices(e *Executor) error {
-	// Disable `ondemand` power-saving service by unlinking it from /etc/rc*.d.
-	if err := e.BashCmd(`find ` + d.Application.RootFsDir() + `/etc/rc*.d/ -wholename '*/S*ondemand' -exec unlink {} \;`); err != nil {
+func (d *Deployment) prepareDisabledServices() error {
+	// Disable `ondemand` cpu scalaing power-saving service.
+	if err := d.lxcExec("update-rc.d ondemand disable"); err != nil {
 		return err
 	}
-	// Disable `ntpdate` client from being triggered when networking comes up.
-	if err := e.BashCmd(`chmod a-x ` + d.Application.RootFsDir() + `/etc/network/if-up.d/ntpdate`); err != nil {
-		return err
-	}
-	// Disable auto-start for unnecessary services in /etc/init/*.conf, such as: SSH, rsyslog, cron, tty1-6, and udev.
-	services := []string{
-		"ssh",
-		"rsyslog",
-		"cron",
-		"tty1",
-		"tty2",
-		"tty3",
-		"tty4",
-		"tty5",
-		"tty6",
-		"udev",
-	}
-	for _, service := range services {
-		if err := e.BashCmd("echo 'manual' > " + d.Application.RootFsDir() + "/etc/init/" + service + ".override"); err != nil {
+	// NB: No longer needed in ubuntu 16.04.
+	// // Disable `ntpdate` client from being triggered when networking comes up.
+	// if err := d.lxcExec("chmod a-x /etc/network/if-up.d/ntpdate", d.Application.Name); err != nil {
+	// 	return err
+	// }
+
+	// TODO: COME BACK TO THIS LATER, IT BREAKS B/C NETWORKING SERVICE NOT YET STARTED.
+	// if len(PurgePackages) > 0 {
+	// 	if err := d.lxcExecf("apt-get purge -y --no-upgrade %v", strings.Join(PurgePackages, " ")); err != nil {
+	// 		return err
+	// 	}
+	// }
+
+	if len(DisableServices) > 0 {
+		// Disable auto-start for unnecessary services, such as:
+		// SSH, rsyslog, cron, tty1-6, and udev.
+
+		// NB: The ` || :' is because sometimes this exits with unhappy exit status code even when nothing is wrong.
+		if err := d.lxcExecf(`/bin/bash -c "echo '%v' | xargs -n1 -IX /bin/bash -c 'systemctl is-enabled X 1>/dev/null && ( systemctl stop X ; systemctl disable X )' || :"`, strings.Join(DisableServices, "\n")); err != nil {
 			return err
 		}
-	}
-	if err := e.BashCmd(`sed -i 's/^NTPSERVERS=".*"$/NTPSERVERS=""/' /etc/default/ntpdate`); err != nil {
-		return err
 	}
 	return nil
 }
@@ -300,88 +660,193 @@ func (d *Deployment) build() (err error) {
 	var (
 		dimLogger   = NewFormatter(d.Logger, DIM)
 		titleLogger = NewFormatter(d.Logger, GREEN)
-		e           = &Executor{
-			logger: dimLogger,
-		}
 	)
 
 	fmt.Fprint(titleLogger, "Building image\n")
 
 	// To be sure we are starting with a container in the stopped state.
-	if stopErr := e.StopContainer(d.Application.Name); stopErr != nil {
-		log.Debugf("Error stopping container for app=%v: %s (this can likely be ignored)", d.Application.Name, stopErr)
+	if stopErr := d.exe.StopContainer(d.Application.Name); stopErr != nil {
+		log.WithField("app", d.Application.Name).WithField("err", stopErr).Errorf("Problem stopping container (this can likely be ignored)")
 	}
 
-	if err = e.MountContainerFS(d.Application.Name); err != nil {
+	if d.err = d.exe.MountContainerFS(d.Application.Name); d.err != nil {
+		err = d.err
 		return
 	}
 
-	// Defer removal of the ssh private key file.
-	defer func() {
-		if rmErr := d.removeSshPrivateKeyFile(); rmErr != nil {
-			if err == nil {
-				err = rmErr
-			} else {
-				log.Warnf("found pre-existing err=%q and encountered a problem removing ssh private key for app=%q: %s", err, d.Application.Name, rmErr)
-			}
-		}
-	}()
+	if d.err = d.exe.StartContainer(d.Application.Name); d.err != nil {
+		err = d.err
+		return
+	}
 
-	// Prepare /app/env now so that the app env vars are available to the pre-hook script.
-	if err = d.prepareEnvironmentVariables(e); err != nil {
+	// if d.err = d.exe.BashCmdf("rm -rf %[1]v/* && mkdir -p %[1]v", d.Application.AppDir()); d.err != nil {
+	// 	err = d.err
+	// 	return
+	// }
+	if d.err = d.lxcExec("bash -c 'rm -rf /app/src /app/env && mkdir -p /app /app/env'"); d.err != nil {
+		err = d.err
+		return
+	}
+
+	log.Debugf("SENDING SB BIN...")
+	if d.err = d.b64FileIntoContainer(EXE, oslib.OsPath(string(os.PathSeparator)+"app", BINARY), "755"); d.err != nil {
+		err = d.err
+		return
+	}
+
+	if d.err = d.gitClone(); d.err != nil {
+		err = d.err
+		return
+	}
+
+	// // TEMPORARILY DISABLED
+	// // TODO: RESTORE THIS FUNCTIONALITY!
+	// // Add the public ssh key for submodule (and later dependency) access.
+	// if d.err = d.applySshPrivateKeyFile(); d.err != nil {
+	// 	err = d.err
+	// 	return
+	// }
+
+	if d.err = d.containerCodeInit(); d.err != nil {
+		err = d.err
+		return
+	}
+
+	if d.err = d.validateProcfile(); d.err != nil {
+		err = d.err
+		return
+	}
+
+	// // TEMPORARILY DISABLED
+	// // TODO: RESTORE THIS FUNCTIONALITY!
+	// // Defer removal of the ssh private key file.
+	// defer func() {
+	// 	if rmErr := d.removeSshPrivateKeyFile(); rmErr != nil {
+	// 		if err == nil {
+	// 			err = rmErr
+	// 		} else {
+	// 			log.Warnf("found pre-existing err=%q and encountered a problem removing ssh private key for app=%q: %s", err, d.Application.Name, rmErr)
+	// 		}
+	// 	}
+	// }()
+
+	prepErr := func() error {
+		if err := d.prepareShellEnvironment(); err != nil {
+			return err
+		}
+		if err := d.prepareAppFilePermissions(); err != nil {
+			return err
+		}
+		if err := d.prepareDisabledServices(); err != nil {
+			return err
+		}
+		return nil
+	}()
+	if prepErr != nil {
+		err = prepErr
+		d.err = err
+		if err := d.exe.StopContainer(d.Application.Name); err != nil {
+			log.WithField("app", d.Application.Name).Errorf("Unexpected error stopping container after prep failure: %s", err)
+		}
+		return
+	}
+
+	// Prepare /app/env now so that the app env vars are available to the pre-hook
+	// script.
+	if err = d.prepareEnvironmentVariables(); err != nil {
 		return
 	}
 
 	var f *os.File
 
-	// Create upstart script.
-	if f, err = os.OpenFile(d.Application.RootFsDir()+"/etc/init/app.conf", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(int(0444))); err != nil {
-		return
-	}
-	if err = UPSTART.Execute(f, nil); err != nil {
-		err = fmt.Errorf("applying upstart template: %s", err)
-		return
-	}
-	if err = f.Close(); err != nil {
-		err = fmt.Errorf("closing file=%q: %s", f.Name(), err)
+	// Create app system service.
+	if d.err = d.renderTemplateIntoContainer(systemdAppTpl, oslib.OsPath(string(os.PathSeparator)+"etc", "systemd", "system", "app.service"), "644"); d.err != nil {
+		d.err = fmt.Errorf("rendering app.service systemd template into container: %s", d.err)
+		err = d.err
 		return
 	}
 
-	// Create the build script.
-	if f, err = os.OpenFile(d.Application.RootFsDir()+APP_DIR+"/run", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(int(0777))); err != nil {
+	// Enable app system service.
+	if d.err = d.lxcExec("systemctl enable app"); d.err != nil {
+		d.err = fmt.Errorf("enabling app system service: %s", err)
+		err = d.err
 		return
 	}
+
+	if d.err = d.sendPreStartScript(); d.err != nil {
+		err = d.err
+		return
+	}
+
+	// // if f, err = os.OpenFile(oslib.OsPath(d.Application.RootFsDir(), "/etc/init/app.conf"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(int(0444))); err != nil {
+	// // 	return
+	// // }
+	// // if err = UPSTART.Execute(f, nil); err != nil {
+	// // 	err = fmt.Errorf("applying upstart template: %s", err)
+	// // 	return
+	// // }
+	// // if err = f.Close(); err != nil {
+	// // 	err = fmt.Errorf("closing file=%q: %s", f.Name(), err)
+	// // 	return
+	// // }
+
+	// // Create the build script.
+	// if f, d.err = os.OpenFile(oslib.OsPath(d.Application.RootFsDir(), APP_DIR, "run"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(int(0777))); d.err != nil {
+	// 	err = d.err
+	// 	return
+	// }
 
 	var bp domain.Buildpack
-	if bp, err = d.Server.BuildpacksProvider.New(d.Application.BuildPack); err != nil {
+	if bp, d.err = d.Server.BuildpacksProvider.New(d.Application.BuildPack); d.err != nil {
+		err = d.err
 		return
 	}
 
 	var tpl *template.Template
-	if tpl, err = template.New(d.Application.BuildPack).Parse(bp.PreHook()); err != nil {
-		err = fmt.Errorf("compiling pre-hook template: %s", err)
+	if tpl, d.err = template.New(d.Application.BuildPack).Parse(bp.PreHook()); d.err != nil {
+		d.err = fmt.Errorf("compiling pre-hook template: %s", d.err)
+		err = d.err
 		return
 	}
 
-	if err = tpl.Execute(f, nil); err != nil {
-		err = fmt.Errorf("applying build-pack template: %s", err)
+	// if d.err = tpl.Execute(f, nil); d.err != nil {
+	// 	d.err = fmt.Errorf("applying build-pack template: %s", d.err)
+	// 	err = d.err
+	// 	return
+	// }
+
+	if d.err = d.renderTemplateIntoContainer(tpl, oslib.OsPath(string(os.PathSeparator)+"app", "run"), "777"); d.err != nil {
+		d.err = fmt.Errorf("rendering /app/run template: %s", d.err)
+		err = d.err
 		return
 	}
-	if err = f.Close(); err != nil {
-		err = fmt.Errorf("closing file=%q: %s", f.Name(), err)
+	// if d.err = f.Close(); d.err != nil {
+	// 	d.err = fmt.Errorf("closing file %q: %s", f.Name(), d.err)
+	// 	err = d.err
+	// 	return
+	// }
+
+	// Resart container to trigger the build.
+	if d.err = d.exe.RestartContainer(d.Application.Name); d.err != nil {
+		err = d.err
 		return
 	}
 
-	// Create a file to store container launch output in.
-	if f, err = os.Create(d.Application.AppDir() + "/out"); err != nil {
+	// Connect to build output file.
+	outFilePath := oslib.OsPath(d.Application.AppDir(), "out")
+	if f, d.err = os.OpenFile(outFilePath, os.O_RDONLY, os.FileMode(0)); d.err != nil {
+		err = d.err
 		return
 	}
 	defer func() {
 		if closeErr := f.Close(); closeErr != nil {
 			if err == nil {
 				err = fmt.Errorf("closing file=%q: %s", f.Name(), closeErr)
+				if d.err == nil {
+					d.err = err
+				}
 			} else {
-				log.Warnf("found pre-existing err=%q and encountered a problem closing file=%q: %s", err, f.Name(), closeErr)
+				log.Errorf("Found pre-existing err=%q and encountered a problem closing file=%q: %s", err, f.Name(), closeErr)
 			}
 		}
 	}()
@@ -399,14 +864,14 @@ func (d *Deployment) build() (err error) {
 		for {
 			select {
 			case <-cancelCh:
-				log.Debugf("Received cancel request, pre-hook waiter bailing out for app=%v", d.Application.Name)
+				log.WithField("app", d.Application.Name).Debug("Received cancel request, pre-hook waiter bailing out")
 				return
 			default:
 			}
 
 			n, readErr := f.Read(buf)
 			if readErr != nil {
-				log.Debugf("Unexpected read error while running pre-hook: %s", readErr)
+				log.WithField("file", outFilePath).Debugf("Unexpected read error while running pre-hook read: %s", readErr)
 			}
 			if n > 0 {
 				dimLogger.Write(buf[:n])
@@ -423,25 +888,42 @@ func (d *Deployment) build() (err error) {
 		errCh <- waitErr
 	}()
 
-	if err = e.UnmountContainerFS(d.Application.Name); err != nil {
-		return
-	}
-
-	if err = e.StartContainer(d.Application.Name); err != nil {
-		cancelCh <- struct{}{}
-		err = fmt.Errorf("starting container: %s", err)
-		return
-	}
+	// if err = d.exe.StartContainer(d.Application.Name); err != nil {
+	// 	cancelCh <- struct{}{}
+	// 	err = fmt.Errorf("starting container: %s", err)
+	// 	return
+	// }
 
 	fmt.Fprintf(titleLogger, "Waiting for container pre-hook\n")
 
 	select {
 	case err = <-errCh:
+		// if err == nil {
+		// 	prepErr := func() error {
+		// 		if err := d.prepareShellEnvironment(); err != nil {
+		// 			return err
+		// 		}
+		// 		if err := d.prepareAppFilePermissions(); err != nil {
+		// 			return err
+		// 		}
+		// 		if err := d.prepareDisabledServices(); err != nil {
+		// 			return err
+		// 		}
+		// 		return nil
+		// 	}()
+		// 	if prepErr != nil {
+		// 		err = prepErr
+		// 		d.exe.StopContainer(d.Application.Name)
+		// 		return
+		// 	}
+		// }
+
 	case <-time.After(waitDuration):
 		err = fmt.Errorf("timed out after %v", waitDuration)
 		cancelCh <- struct{}{}
 	}
-	stopErr := e.StopContainer(d.Application.Name)
+
+	stopErr := d.exe.StopContainer(d.Application.Name)
 	if err != nil {
 		return
 	}
@@ -450,42 +932,33 @@ func (d *Deployment) build() (err error) {
 		return
 	}
 
-	if err = e.MountContainerFS(d.Application.Name); err != nil {
-		return
-	}
-	if err = d.prepareShellEnvironment(e); err != nil {
-		return
-	}
-	if err = d.prepareAppFilePermissions(e); err != nil {
-		return
-	}
-	if err = d.prepareDisabledServices(e); err != nil {
-		return
-	}
-	if err = e.UnmountContainerFS(d.Application.Name); err != nil {
-		return
-	}
-
 	return
+}
+
+func (d *Deployment) lxcExec(cmd string) error {
+	if err := d.exe.BashCmdf("lxc exec -T %v -- %v", d.Application.Name, cmd); err != nil {
+		return err
+	}
+	return nil
+}
+func (d *Deployment) lxcExecf(format string, args ...interface{}) error {
+	if err := d.exe.BashCmdf("lxc exec -T %v -- %v", d.Application.Name, fmt.Sprintf(format, args...)); err != nil {
+		return err
+	}
+	return nil
 }
 
 // TODO: check for ignored errors.
 func (d *Deployment) archive() error {
-	var (
-		dimLogger = NewFormatter(d.Logger, DIM)
-		e         = Executor{
-			logger: dimLogger,
-		}
-		versionedContainerName = d.Application.Name + DYNO_DELIMITER + d.Version
-	)
+	versionedContainerName := d.Application.Name + DYNO_DELIMITER + d.Version
 
-	if err := e.CloneContainer(d.Application.Name, versionedContainerName); err != nil {
+	if err := d.exe.CloneContainer(d.Application.Name, versionedContainerName); err != nil {
 		return err
 	}
 
 	// Compress & persist the container image.
 	go func() {
-		e = Executor{
+		e := Executor{
 			logger: NewLogger(os.Stdout, "[archive] "),
 		}
 		archiveName := fmt.Sprintf("/tmp/%v.tar.gz", versionedContainerName)
@@ -518,25 +991,26 @@ func (d *Deployment) archive() error {
 
 // TODO: check for ignored errors.
 func (d *Deployment) extract(version string) error {
-	e := Executor{
-		logger: d.Logger,
-	}
-
-	if err := d.Application.CreateBaseContainerIfMissing(&e); err != nil {
+	if err := d.Application.CreateBaseContainerIfMissing(d.exe); err != nil {
 		return err
 	}
 
 	// Detect if the container is already present locally.
 	versionedAppContainer := d.Application.Name + DYNO_DELIMITER + version
-	if e.ContainerExists(versionedAppContainer) {
+	exists, err := d.exe.ContainerExists(versionedAppContainer)
+	if err != nil {
+		return err
+	}
+	if exists {
 		fmt.Fprintf(d.Logger, "Syncing local copy of %v\n", version)
 		// Rsync to versioned container to base app container.
 		rsyncCommand := "rsync --recursive --links --hard-links --devices --specials --acls --owner --group --perms --times --delete --xattrs --numeric-ids "
-		return e.BashCmd(rsyncCommand + LXC_DIR + "/" + versionedAppContainer + "/rootfs/ " + d.Application.RootFsDir())
+		return d.exe.BashCmd(rsyncCommand + LXC_DIR + "/" + versionedAppContainer + "/rootfs/ " + d.Application.RootFsDir())
 	}
 
-	// The requested app version doesn't exist locally, attempt to download it from S3.
-	if err := extractAppFromS3(&e, d.Application, version); err != nil {
+	// The requested app version doesn't exist locally, attempt to download it from
+	// S3.
+	if err := extractAppFromS3(d.exe, d.Application, version); err != nil {
 		return err
 	}
 	return nil
@@ -574,15 +1048,10 @@ func extractAppFromS3(e *Executor, app *Application, version string) error {
 }
 
 func (d *Deployment) syncNode(node *Node) error {
-	var (
-		logger = NewLogger(d.Logger, "["+node.Host+"] ")
-		e      = Executor{
-			logger: logger,
-		}
-	)
+	logger := NewLogger(d.Logger, "["+node.Host+"] ")
 
 	// TODO: Maybe add fail check to clone operation.
-	err := e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+node.Host,
+	err := d.exe.Run("ssh", DEFAULT_NODE_USERNAME+"@"+node.Host,
 		"sudo", "/bin/bash", "-c",
 		`"test ! -d '`+LXC_DIR+`/`+d.Application.Name+`' && lxc copy base-`+d.Application.BuildPack+` `+d.Application.Name+` || echo 'app image already exists'"`,
 	)
@@ -592,7 +1061,7 @@ func (d *Deployment) syncNode(node *Node) error {
 	}
 	// Rsync the application container over.
 	//rsync --recursive --links --hard-links --devices --specials --owner --group --perms --times --acls --delete --xattrs --numeric-ids
-	err = e.Run("sudo", "rsync",
+	err = d.exe.Run("sudo", "rsync",
 		"--recursive",
 		"--links",
 		"--hard-links",
@@ -613,7 +1082,7 @@ func (d *Deployment) syncNode(node *Node) error {
 	if err != nil {
 		return err
 	}
-	err = e.Run("rsync",
+	err = d.exe.Run("rsync",
 		"-azve", "ssh "+DEFAULT_SSH_PARAMETERS,
 		"/tmp/postdeploy.py", "/tmp/shutdown_container.py",
 		"root@"+node.Host+":/tmp/",
@@ -670,9 +1139,11 @@ func writeDeployScripts() error {
 
 func (d *Deployment) calculateDynosToDestroy() ([]Dyno, bool, error) {
 	var (
-		// Track whether or not new dynos will be allocated.  If no new allocations are necessary, no rsync'ing will be necessary.
+		// Track whether or not new dynos will be allocated.  If no new allocations
+		// are necessary, no rsync'ing will be necessary.
 		allocatingNewDynos = false
-		// Build list of running dynos to be deactivated in the LB config upon successful deployment.
+		// Build list of running dynos to be deactivated in the LB config upon
+		// successful deployment.
 		removeDynos = []Dyno{}
 	)
 	for process, numDynos := range d.Application.Processes {
@@ -793,6 +1264,10 @@ func (d *Deployment) startDynos(availableNodes []*Node, titleLogger io.Writer) (
 // Validate application's Procfile.
 // TODO: check for ignored errors.
 func (d *Deployment) validateProcfile() error {
+	// if err := d.lxcExec(`bash -c 'test -f /app/src/Procfile'`); err != nil {
+	// 	// log.WithField("app", d.Application.Name).Error("Procfile not found: %s", err)
+	// 	return fmt.Errorf(err.Error() + ", does this application have a \"Procfile\"?")
+	// }
 	f, err := os.Open(d.Application.SrcDir() + "/Procfile")
 	if err != nil {
 		return fmt.Errorf(err.Error() + ", does this application have a \"Procfile\"?")
@@ -942,10 +1417,7 @@ func (d *Deployment) postDeployHooks(err error) {
 }
 
 func (d *Deployment) undoVersionBump() {
-	e := Executor{
-		logger: d.Logger,
-	}
-	e.DestroyContainer(d.Application.Name + DYNO_DELIMITER + d.Version)
+	d.exe.DestroyContainer(d.Application.Name + DYNO_DELIMITER + d.Version)
 	d.Server.WithPersistentApplication(d.Application.Name, func(app *Application, cfg *Config) error {
 		// If the version hasn't been messed with since we incremented it, go ahead and decrement it because
 		// this deploy has failed.
@@ -1015,7 +1487,7 @@ func (server *Server) Deploy(conn net.Conn, applicationName, revision string) er
 		if err != nil {
 			return err
 		}
-		deployment := &Deployment{
+		deployment := NewDeployment(DeploymentOptions{
 			Server:      server,
 			Logger:      logger,
 			Config:      cfg,
@@ -1023,9 +1495,8 @@ func (server *Server) Deploy(conn net.Conn, applicationName, revision string) er
 			Revision:    revision,
 			Version:     app.LastDeploy,
 			StartedTs:   time.Now(),
-		}
-		err = deployment.Deploy()
-		if err != nil {
+		})
+		if err = deployment.Deploy(); err != nil {
 			return err
 		}
 		return nil
@@ -1049,14 +1520,14 @@ func (server *Server) Redeploy(conn net.Conn, applicationName string) error {
 		if err != nil {
 			return err
 		}
-		deployment := &Deployment{
+		deployment := NewDeployment(DeploymentOptions{
 			Server:      server,
 			Logger:      logger,
 			Config:      cfg,
 			Application: app,
 			Version:     app.LastDeploy,
 			StartedTs:   time.Now(),
-		}
+		})
 		// Find the release that corresponds with the latest deploy.
 		releases, err := server.ReleasesProvider.List(applicationName)
 		if err != nil {
@@ -1137,7 +1608,7 @@ func (server *Server) Rescale(conn net.Conn, applicationName string, args map[st
 
 		// Temporarily replace Processes with the diff.
 		app.Processes = changes
-		deployment := &Deployment{
+		deployment := NewDeployment(DeploymentOptions{
 			Server:      server,
 			Logger:      logger,
 			Config:      cfg,
@@ -1145,7 +1616,7 @@ func (server *Server) Rescale(conn net.Conn, applicationName string, args map[st
 			Version:     app.LastDeploy,
 			StartedTs:   time.Now(),
 			ScalingOnly: true,
-		}
+		})
 		return deployment.Deploy()
 	})
 }

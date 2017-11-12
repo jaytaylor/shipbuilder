@@ -121,15 +121,18 @@ elif [ "${action}" = "buildpacks" ] || [ "${action}" = "build-packs" ]; then
 
 elif [ "${action}" = "install" ]; then
     if [ -n "${buildPackToInstall}" ]; then
+        deployShipBuilder
+
         # Install a single build-pack.
         if ! [ -d "../build-packs/${buildPackToInstall}" ]; then
             knownBuildPacks="$(find ../build-packs -depth 1 -type d | cut -d'/' -f3 | tr '\n' ' ' | sed 's/ /, /g' | sed 's/, $//')"
             echo "error: unable to locate any build-pack named '${buildPackToInstall}', choices are: ${knownBuildPacks}" 1>&2
             exit 1
         fi
-        deployShipBuilder
+
         rsyncLibfns
         ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "source /tmp/libfns.sh && installSingleBuildPack ${buildPackToInstall} ${skipIfExists} ${lxcFs}"
+        abortIfNonZero $? 'remote installSingleBuildPack() invocation'
 
     else
         # Perform a full ShipBuilder install.
@@ -139,15 +142,14 @@ elif [ "${action}" = "install" ]; then
         installAccessForSshHost "${sbHost}"
         abortIfNonZero $? 'installAccessForSshHost() failed'
 
-        rsyncLibfns
+        deployShipBuilder
 
+        rsyncLibfns
         ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "source /tmp/libfns.sh && prepareServerPart1 ${sbHost} ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
         abortIfNonZero $? 'remote prepareServerPart1() invocation'
 
         ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "set -o errexit ; sudo lxc config set core.https_address '[::]:8443'"
         abortIfNonZero $? 'activating lxc image server'
-
-        deployShipBuilder
 
         ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "source /tmp/libfns.sh && prepareServerPart2 ${skipIfExists} ${lxcFs}"
         abortIfNonZero $? 'remote prepareServerPart2() invocation'

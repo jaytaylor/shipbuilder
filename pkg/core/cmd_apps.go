@@ -51,11 +51,11 @@ func (server *Server) Apps_Create(conn net.Conn, applicationName string, buildPa
 		}
 
 		for _, command := range []string{
-			"git init --bare " + GIT_DIRECTORY + "/" + applicationName,                                               // Create git repo.
-			"cd " + GIT_DIRECTORY + "/" + applicationName + " && git symbolic-ref HEAD refs/heads/not-a-real-branch", // Make master deletable.
+			"git init --bare " + GIT_DIRECTORY + "/" + applicationName, // Create git repo.
+			// "cd " + GIT_DIRECTORY + "/" + applicationName + " && git symbolic-ref HEAD refs/heads/not-a-real-branch", // Make master deletable.
 			"chmod -R 777 " + GIT_DIRECTORY + "/" + applicationName,
 		} {
-			if err := e.Run("sudo", "/bin/bash", "-c", command); err != nil {
+			if err := e.BashCmd(command); err != nil {
 				return err
 			}
 		}

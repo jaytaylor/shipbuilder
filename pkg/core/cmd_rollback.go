@@ -35,14 +35,14 @@ func (server *Server) Rollback(conn net.Conn, applicationName, version string) e
 			return err
 		}
 
-		deployment := &Deployment{
+		deployment := NewDeployment(DeploymentOptions{
 			Server:      server,
 			Logger:      logger,
 			Config:      cfg,
 			Application: app,
 			Version:     app.LastDeploy,
 			StartedTs:   time.Now(),
-		}
+		})
 
 		// Cleanup any hanging chads upon error.
 		defer func() {

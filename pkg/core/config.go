@@ -24,7 +24,7 @@ import (
 const (
 	APP_DIR                            = "/app"
 	ENV_DIR                            = APP_DIR + "/env"
-	LXC_DIR                            = "/var/lib/lxd/storage-pools/tank/containers" // "/tank/lxc" // "/var/lib/lxc"
+	LXC_DIR                            = "/var/lib/lxd/containers" // "/var/lib/lxd/storage-pools/tank/containers" // "/tank/lxc" // "/var/lib/lxc"
 	ZFS_CONTAINER_MOUNT                = "tank/containers"
 	DIRECTORY                          = "/etc/shipbuilder"
 	BINARY                             = "shipbuilder"
@@ -223,7 +223,11 @@ func (app *Application) CalcPreviousVersion() (string, error) {
 	return "v" + strconv.Itoa(v-1), nil
 }
 func (app *Application) CreateBaseContainerIfMissing(e *Executor) error {
-	if !e.ContainerExists(app.Name) {
+	exists, err := e.ContainerExists(app.Name)
+	if err != nil {
+		return err
+	}
+	if !exists {
 		return e.CloneContainer(app.BaseContainerName(), app.Name)
 	}
 	return nil

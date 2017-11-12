@@ -29,8 +29,8 @@ func fail(format string, args ...interface{}) {
 	os.Exit(1)
 }
 
-func (*Client) send(msg Message) error {
-	//fmt.Printf("CLIENT DEBUG: msg=%v\n", msg)
+func (*Client) send(msg Message, disableTunnel bool) error {
+	log.WithField("msg", fmt.Sprintf("%+v", msg)).Debug("CLIENT DEBUG")
 	// Open a tunnel if necessary
 	/*if terminal.IsTerminal(STDOUT_FD) {
 		fmt.Print("HEY DUDE, I CAN TELL THIS IS RUNNING IN A TERMINAL\n")
@@ -38,7 +38,7 @@ func (*Client) send(msg Message) error {
 		fmt.Print("HEY DUDE, I COULD TELL DIZ AIN'T NO TERMNAL\n")
 	}*/
 
-	if !strings.Contains(strings.ToLower(DefaultSSHHost), "localhost") && !strings.Contains(strings.ToLower(DefaultSSHHost), "127.0.0.1") {
+	if !disableTunnel && !strings.Contains(strings.ToLower(DefaultSSHHost), "localhost") && !strings.Contains(strings.ToLower(DefaultSSHHost), "127.0.0.1") {
 		bs, err := exec.Command("hostname").Output()
 		if err != nil || !bytes.HasPrefix(bs, []byte("ip-")) {
 			t, err := OpenTunnel()
@@ -105,7 +105,8 @@ func (client *Client) RemoteExec(methodName string, args ...interface{}) error {
 	if err != nil {
 		return err
 	}
-	if err := client.send(Message{Call, string(bs)}); err != nil {
+	disableTunnel := methodName == "PreReceive" || methodName == "PostReceive"
+	if err := client.send(Message{Call, string(bs)}, disableTunnel); err != nil {
 		return err
 	}
 	return nil
@@ -154,7 +155,9 @@ func (client *Client) Do(args []string) {
 			}*/
 
 			bs, _ := json.Marshal(append([]interface{}{cmd.ServerName}, parsed...))
-			err = client.send(Message{Call, string(bs)})
+			disableTunnel := cmd.ServerName == "PreReceive" || cmd.ServerName == "PostReceive"
+			// fmt.Println(string(bs))
+			err = client.send(Message{Call, string(bs)}, disableTunnel)
 			if err != nil {
 				fail("%v", err)
 				return

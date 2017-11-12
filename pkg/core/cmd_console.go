@@ -25,7 +25,11 @@ func (server *Server) Console(conn net.Conn, applicationName string, args []stri
 
 		// If the primary application container is missing for some reason, attempt to create it by
 		// pulling the most recent release from S3.
-		if !e.ContainerExists(applicationName) {
+		exists, err := e.ContainerExists(applicationName)
+		if err != nil {
+			return err
+		}
+		if !exists {
 			err = app.CreateBaseContainerIfMissing(&e)
 			if err != nil {
 				return err
@@ -38,20 +42,20 @@ func (server *Server) Console(conn net.Conn, applicationName string, args []stri
 
 		containerName := applicationName + DYNO_DELIMITER + "console" + DYNO_DELIMITER + RandomAlphaNumericString(8)
 
-		if e.ContainerExists(containerName) {
-			err = e.DestroyContainer(containerName)
-			if err != nil {
+		if exists, err = e.ContainerExists(containerName); err != nil {
+			return err
+		}
+		if exists {
+			if err = e.DestroyContainer(containerName); err != nil {
 				return err
 			}
 		}
 
-		err = e.CloneContainer(applicationName, containerName)
-		if err != nil {
+		if err = e.CloneContainer(applicationName, containerName); err != nil {
 			return err
 		}
 
-		err = e.StartContainer(containerName)
-		if err != nil {
+		if err = e.StartContainer(containerName); err != nil {
 			return err
 		}
 		defer func() {
