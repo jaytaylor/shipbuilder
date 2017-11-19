@@ -297,7 +297,7 @@ def showHelpAndExit(argv):
 
        $ {} myApp-v1337-web-10001
 '''.format(argv[0])
-    print message
+    print(message)
     sys.exit(0)
 
 def validateMainArgs(argv):
@@ -331,7 +331,7 @@ def unmountContainerFs(container):
 
 def main(argv):
     global container
-    #print 'main argv={0}'.format(argv)
+    #print('main argv={0}'.format(argv))
     if len(argv) > 1 and argv[1] in ('-h', '--help', 'help'):
         showHelpAndExit(argv)
 
@@ -518,7 +518,7 @@ def showHelpAndExit(argv):
 
        $ {} myApp-v1337-web-10001
 '''.format(argv[0])
-    print message
+    print(message)
     sys.exit(0)
 
 def validateMainArgs(argv):
@@ -534,7 +534,7 @@ def parseMainArgs(argv):
 
 def main(argv):
     global container
-    #print 'main argv={0}'.format(argv)
+    #print('main argv={0}'.format(argv))
     if len(argv) > 1 and argv[1] in ('-h', '--help', 'help'):
         showHelpAndExit(argv)
 
@@ -559,7 +559,7 @@ def main(argv):
         try:
             retriableCommand('/sbin/zfs', 'destroy', '-r', DefaultZFSPool + '/' + container)
         except subprocess.CalledProcessError, e:
-            print 'warn: zfs destroy command failed: {0}'.format(e)
+            print('warn: zfs destroy command failed: {0}'.format(e))
 
     retriableCommand('/usr/bin/lxc', 'delete', '--force', container)
 
