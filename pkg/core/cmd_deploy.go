@@ -1102,16 +1102,21 @@ func (d *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) (Dy
 		}
 		done = make(chan struct{})
 		err  error
+		mu   sync.Mutex
 	)
 	go func() {
 		fmt.Fprint(logger, "Starting dyno")
+		mu.Lock()
 		err = e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+dyno.Host, "sudo", "/tmp/postdeploy.py", dyno.Container)
+		mu.Unlock()
 		done <- struct{}{}
 	}()
 	select {
 	case <-done: // implicitly break.
 	case <-time.After(DYNO_START_TIMEOUT_SECONDS * time.Second):
+		mu.Lock()
 		err = fmt.Errorf("Timed out for dyno host %v", dyno.Host)
+		mu.Unlock()
 	}
 	return dyno, err
 }

@@ -17,6 +17,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	MinDynoPort = 10000
+	MaxDynoPort = 60000
+)
+
 var (
 	globalLock sync.Mutex
 	appLocks   = map[string]bool{}
@@ -26,6 +31,7 @@ type Server struct {
 	LogServer                 *logserver.Server
 	BuildpacksProvider        domain.BuildpacksProvider
 	ReleasesProvider          domain.ReleasesProvider
+	GlobalPortTracker         *GlobalPortTracker
 	currentLoadBalancerConfig string
 }
 
@@ -239,6 +245,11 @@ func (server *Server) Start() error {
 
 	if err = server.initTemplates(); err != nil {
 		return err
+	}
+
+	server.GlobalPortTracker = &GlobalPortTracker{
+		Min: MinDynoPort,
+		Max: MaxDynoPort,
 	}
 
 	initDrains(server)

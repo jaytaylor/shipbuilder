@@ -294,7 +294,7 @@ func AppendIfMissing(slice []int, i int) []int {
 
 // Get the next available port for a node.
 func (server *Server) getNextPort(nodeStatus *NodeStatus, usedPorts *[]int) int {
-	port := 10000
+	port := server.GlobalPortTracker.Next()
 	for _, container := range nodeStatus.Containers {
 		dyno, err := ContainerToDyno(nodeStatus.Host, container)
 		if err != nil {
@@ -314,13 +314,13 @@ func (server *Server) getNextPort(nodeStatus *NodeStatus, usedPorts *[]int) int 
 			break
 		}
 	}
-	err := dynoPortTracker.Allocate(nodeStatus.Host, port)
-	if err != nil {
+	if err := dynoPortTracker.Allocate(nodeStatus.Host, port); err != nil {
 		log.Infof("Server.getNextPort :: host/port combination %v/%v already in use, will find another", nodeStatus.Host, port)
 		*usedPorts = AppendIfMissing(*usedPorts, port)
 		return server.getNextPort(nodeStatus, usedPorts)
 	}
 	log.Infof("Server.getNextPort :: Result port: %v", port)
 	*usedPorts = AppendIfMissing(*usedPorts, port)
+	server.GlobalPortTracker.Using(port)
 	return port
 }
