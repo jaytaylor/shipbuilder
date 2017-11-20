@@ -319,13 +319,36 @@ function setupLxdWithZfs() {
    # fi
 
     # Create lxc and git volumes and set mountpoints.
-    for volume in git containers images snapshots ; do
+    for volume in git ; do
         #test -z "$(sudo zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" && sudo zfs create -o compression=on "${zfsPoolArg}/${volume}" || :
         test -n "$(sudo zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" || sudo zfs create -o compression=on "${zfsPoolArg}/${volume}"
         abortIfNonZero $? "command 'sudo zfs create -o compression=on ${zfsPoolArg}/${volume}'"
 
         sudo zfs set "mountpoint=/${zfsPoolArg}/${volume}" "${zfsPoolArg}/${volume}"
         abortIfNonZero $? "setting mountpoint via 'zfs set mountpoint=/${zfsPoolArg}/${volume} ${zfsPoolArg}/${volume}'"
+
+        sudo zfs mount "${zfsPoolArg}/${volume}"
+        abortIfNonZero $? "zfs mount'ing ${zfsPoolArg}/${volume}"
+
+        sudo unlink "/${volume}" || :
+
+        sudo ln -s "/${zfsPoolArg}/${volume}" "/${volume}"
+        abortIfNonZero $? "setting up symlink for volume=${volume}"
+    done
+
+    # Mount remaining volumes under LXC base path (rather than $zfsPoolArg
+    # [e.g. "/tank"]).
+    lxcBasePath=/var/lib/lxd
+
+    for volume in containers images snapshots ; do
+        test -n "$(sudo zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" || sudo zfs create -o compression=on "${zfsPoolArg}/${volume}"
+        abortIfNonZero $? "command 'sudo zfs create -o compression=on ${zfsPoolArg}/${volume}'"
+
+        sudo zfs set "mountpoint=${lxcBasePath}/${volume}" "${zfsPoolArg}/${volume}"
+        abortIfNonZero $? "setting mountpoint via 'zfs set mountpoint=${lxcBasePath}/${volume} ${zfsPoolArg}/${volume}'"
+
+        sudo zfs mount "${zfsPoolArg}/${volume}"
+        abortIfNonZero $? "zfs mount'ing ${zfsPoolArg}/${volume}"
 
         sudo unlink "/${volume}" || :
 
