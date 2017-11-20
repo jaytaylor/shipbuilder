@@ -74,7 +74,7 @@ verifySshAndSudoForHosts "${sbHost} ${nodeHost}"
 
 if [ "${action}" = "list-devices" ]; then
     echo '----'
-	ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $nodeHost 'sudo find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
+	ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" 'sudo find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
     abortIfNonZero $? "retrieving storage devices from host ${sbHost}"
 	exit 0
 
@@ -82,20 +82,20 @@ elif [ "${action}" = "install" ]; then
     test -z "${device}" && echo 'error: missing required parameter: -d [device]' 1>&2 && exit 1
     test -z "${lxcFs}" && echo 'error: missing required parameter: -f [lxc-filesystem]' 1>&2 && exit 1
 
-    installAccessForSshHost $nodeHost
+    installAccessForSshHost "${nodeHost}"
     
-    rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" libfns.sh $nodeHost:/tmp/
+    rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" libfns.sh "${nodeHost}:/tmp/"
     abortIfNonZero $? 'rsync libfns.sh failed'
 
-    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $nodeHost "source /tmp/libfns.sh && prepareNode ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" "source /tmp/libfns.sh && prepareNode ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
     abortIfNonZero $? 'remote prepareNode() invocation'
 
-    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $nodeHost "sudo lxc remote add sb-server ${sbHost} --accept-certificate --public"
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" 'sudo lxc remote add sb-server ${sbHost} --accept-certificate --public && sudo cp -a ${USER}/.config /root/"
     abortIfNonZero $? 'adding sb-server lxc image server to slave node'
 
     if test -z "${denyRestart}"; then
         echo 'info: checking if system restart is necessary'
-        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' $nodeHost "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && sudo reboot || echo 'no system restart is necessary'"
+        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && sudo reboot || echo 'no system restart is necessary'"
         abortIfNonZero $? 'remote system restart check failed'
     else
         echo 'warn: a restart may be required on the node to complete installation, but the action was disabled by a flag' 1>&2

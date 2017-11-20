@@ -1050,39 +1050,12 @@ func extractAppFromS3(e *Executor, app *Application, version string) error {
 func (d *Deployment) syncNode(node *Node) error {
 	logger := NewLogger(d.Logger, "["+node.Host+"] ")
 
-	// TODO: Maybe add fail check to clone operation.
-	err := d.exe.Run("ssh", DEFAULT_NODE_USERNAME+"@"+node.Host,
-		"sudo", "/bin/bash", "-c",
-		`"test ! -d '`+LXC_DIR+`/`+d.Application.Name+`' && lxc copy base-`+d.Application.BuildPack+` `+d.Application.Name+` || echo 'app image already exists'"`,
-	)
-	if err != nil {
-		fmt.Fprintf(logger, "error cloning base container: %v\n", err)
-		return err
+	if err := d.exe.Run("ssh", "root@"+node.Host, "lxc", "image", "copy", fmt.Sprintf("%v:%v", DefaultSSHHost, d.lxcImageName()), "local:", "--copy-aliases"); err != nil {
+		fmt.Fprintf(logger, "Problem sending image from host %v to %v: %s\n", DefaultSSHHost, node.Host, err)
+		return fmt.Errorf("sending image from host %v to %v: %s\n", DefaultSSHHost, node.Host, err)
 	}
-	// Rsync the application container over.
-	//rsync --recursive --links --hard-links --devices --specials --owner --group --perms --times --acls --delete --xattrs --numeric-ids
-	err = d.exe.Run("sudo", "rsync",
-		"--recursive",
-		"--links",
-		"--hard-links",
-		"--devices",
-		"--specials",
-		"--owner",
-		"--group",
-		"--perms",
-		"--times",
-		"--acls",
-		"--delete",
-		"--xattrs",
-		"--numeric-ids",
-		"-e", "ssh "+DEFAULT_SSH_PARAMETERS,
-		d.Application.LxcDir()+"/rootfs/",
-		"root@"+node.Host+":"+d.Application.LxcDir()+"/rootfs/",
-	)
-	if err != nil {
-		return err
-	}
-	err = d.exe.Run("rsync",
+
+	err := d.exe.Run("rsync",
 		"-azve", "ssh "+DEFAULT_SSH_PARAMETERS,
 		"/tmp/postdeploy.py", "/tmp/shutdown_container.py",
 		"root@"+node.Host+":/tmp/",
@@ -1091,6 +1064,11 @@ func (d *Deployment) syncNode(node *Node) error {
 		return err
 	}
 	return nil
+}
+
+func (d *Deployment) lxcImageName() string {
+	name := fmt.Sprintf("%v%v%v", d.Application.Name, DYNO_DELIMITER, d.Version)
+	return name
 }
 
 func (d *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) (Dyno, error) {
@@ -1421,6 +1399,14 @@ func (d *Deployment) postDeployHooks(err error) {
 	}
 }
 
+// publish pushes the built image to the LXC image repository.
+func (d *Deployment) publish() error {
+	if err := d.exe.Run("lxc", "publish", "--force", "--force-local", "--public", d.Application.Name, "--alias", d.lxcImageName()); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (d *Deployment) undoVersionBump() {
 	d.exe.DestroyContainer(d.Application.Name + DYNO_DELIMITER + d.Version)
 	d.Server.WithPersistentApplication(d.Application.Name, func(app *Application, cfg *Config) error {
@@ -1464,6 +1450,10 @@ func (d *Deployment) Deploy() error {
 		}
 
 		if err = d.build(); err != nil {
+			return err
+		}
+
+		if err = d.publish(); err != nil {
 			return err
 		}
 

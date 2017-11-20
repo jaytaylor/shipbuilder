@@ -747,9 +747,6 @@ fi
 # Clear out and remove all git files from the container; they are unnecessary
 # from this point forward.
 find . -regex '^.*\.git\(ignore\|modules\|attributes\)?$' -exec rm -rf {} \; 1>/dev/null 2>/dev/null || :
-#systemctl status networking
-#ifconfig
-#curl -v www.google.com || :
 `))
 
 	// preStartTpl is invoked by systemd before the app service is started.
@@ -772,23 +769,11 @@ After=network.target
 
 [Service]
 Type=simple
-##EnvironmentFile=-/etc/default/ssh
-#PermissionsStartOnly=true
-##WorkingDir=/app
-##ExecStartPre=mkdir -p /app/env
-##ExecStartPre=touch /app/ip /app/env/PORT
-##ExecStartPre=chown ubuntu:ubuntu /app/ip /app/env/PORT /app/src
-##ExecStartPre=sh -c 'test $(stat -c %U /app/src) = "root" && chown -R ubuntu:ubuntu /app || true'
-#ExecStartPre=/bin/bash /pre.sh
 ExecStartPre=!/app/preStart.sh
 ExecStart=/usr/bin/envdir /app/env /app/run
 User=` + DEFAULT_NODE_USERNAME + `
-#ExecReload=/bin/kill -HUP $MAINPID
-#KillMode=process
 Restart=on-failure
-#RestartPreventExitStatus=255
 
 [Install]
-WantedBy=multi-user.target
-#Alias=app.service`))
+WantedBy=multi-user.target`))
 )
