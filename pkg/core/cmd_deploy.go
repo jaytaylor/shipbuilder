@@ -875,7 +875,7 @@ func (d *Deployment) build() (err error) {
 			}
 			if n > 0 {
 				dimLogger.Write(buf[:n])
-				if bytes.Contains(buf, []byte("RETURN_CODE")) || bytes.Contains(buf, []byte("exited with non-zero status")) {
+				if bytes.Contains(buf, []byte("RETURN_CODE")) || bytes.Contains(buf, []byte("/app/run: line ")) {
 					if !bytes.Contains(buf, []byte("RETURN_CODE: 0")) {
 						waitErr = fmt.Errorf("build failed")
 					}
