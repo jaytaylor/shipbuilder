@@ -190,6 +190,7 @@ import os, stat, subprocess, sys, time
 
 defaultLxcFs='` + DefaultLXCFS + `'
 lxcDir='` + LXC_DIR + `'
+zfsContainerMount='` + ZFS_CONTAINER_MOUNT + `'
 container = None
 log = lambda message: sys.stdout.write('[{0}] {1}\n'.format(container, message))
 
@@ -202,6 +203,8 @@ def modifyIpTables(action, chain, ip, port):
     @param action str 'append' or 'delete'.
     @param chain str 'PREROUTING' or 'OUTPUT'.
     """
+    global container
+
     assert action in ('append', 'delete'), 'Invalid action: "{0}", must be "append" or "delete"'
     assert chain in ('PREROUTING', 'OUTPUT'), 'Invalid chain: "{0}", must be "PREROUTING" or "OUTPUT"'.format(chain)
     assert ip is not None and ip != '', 'Invalid ip: "{0}", ip cannot be None or empty'.format(ip)
@@ -222,6 +225,7 @@ def modifyIpTables(action, chain, ip, port):
                 '--dport', port,
                 '--jump', 'DNAT',
                 '--to-destination', '{0}:{1}'.format(ip, port),
+                '--comment', 'Forward for app-container=%s' % (container,)
             ] + (['--out-interface', 'lo'] if chain == 'OUTPUT' else []),
             stderr=sys.stderr,
             stdout=sys.stdout
@@ -264,11 +268,11 @@ def configureIpTablesForwarding(ip, port):
     # Add another rule so that the port will be reachable from <eth0-iface>:port from localhost.
     modifyIpTables('append', 'OUTPUT', ip, port)
 
-def cloneContainer(app, container, check=True):
+def cloneContainer(app, container, version, check=True):
     log('cloning container: {0}'.format(container))
     fn = subprocess.check_call if check else subprocess.call
     return fn(
-        ['/usr/bin/lxc', 'copy', app, container],
+        ['/usr/bin/lxc', 'init', app + '` + DYNO_DELIMITER + `' + version, container],
         stdout=sys.stdout,
         stderr=sys.stderr
     )
@@ -315,7 +319,7 @@ def mountContainerFs(container):
     if defaultLxcFs != 'zfs':
         return
     subprocess.check_call(
-        ['sudo', 'zfs', 'mount', lxcDir.strip('/') + '/' + container],
+        ['sudo', 'zfs', 'mount', zfsContainerMount.strip('/') + '/' + container],
         stdout=sys.stdout,
         stderr=sys.stderr
     )
@@ -324,7 +328,7 @@ def unmountContainerFs(container):
     if defaultLxcFs != 'zfs':
         return
     subprocess.check_call(
-        ['sudo', 'zfs', 'umount', lxcDir.strip('/') + '/' + container],
+        ['sudo', 'zfs', 'umount', zfsContainerMount.strip('/') + '/' + container],
         stdout=sys.stdout,
         stderr=sys.stderr
     )
@@ -342,15 +346,15 @@ def main(argv):
     subprocess.call(['/usr/bin/lxc delete --force {0} 1>&2 2>/dev/null'.format(container)], shell=True)
 
     # Clone the specified container.
-    cloneContainer(app, container)
+    cloneContainer(app, container, version)
 
-    # This line, if present, would prevent the container from booting.
-    #log('scrubbing any "lxc.cap.drop = mac_{0}" lines from container config'.format(container))
-    subprocess.check_call(
-        ['sed', '-i', '/lxc.cap.drop = mac_{0}/d'.format(container), lxcDir + '/{0}/config'.format(container)],
-        stdout=sys.stdout,
-        stderr=sys.stderr
-    )
+    ## This line, if present, would prevent the container from booting.
+    ##log('scrubbing any "lxc.cap.drop = mac_{0}" lines from container config'.format(container))
+    #subprocess.check_call(
+    #    ['sed', '-i', '/lxc.cap.drop = mac_{0}/d'.format(container), lxcDir + '/{0}/config'.format(container)],
+    #    stdout=sys.stdout,
+    #    stderr=sys.stderr
+    #)
 
     log('creating run script for app "{0}" with process type={1}'.format(app, process))
     # NB: The curly braces are kinda crazy here, to get a single '{' or '}' with python.format(), use double curly
@@ -365,7 +369,7 @@ while read line || [ -n "$line" ]; do
     process="${{line%%:*}}"
     command="${{line#*: }}"
     if [ "$process" == "{process}" ]; then
-        envdir ` + ENV_DIR + ` /bin/bash -c "export PATH=\"$(find /app/.shipbuilder -type d -wholename '*bin' -maxdepth 2):${{PATH}}\"; ( ${{command}} ) 2>&1 | /app/` + BINARY + ` logger -h{host} -a{app} -p{process}.{port}"
+        envdir ` + ENV_DIR + ` /bin/bash -c "export PATH=\"$(find /app/.shipbuilder -type d -wholename '*bin' -maxdepth 2):${{PATH}}\"; ( ${{command}} ) 2>&1 | /app/` + BINARY + ` logger --host={host} --app={app} --process={process}.{port}"
     fi
 done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, app=app)
     mountContainerFs(container)

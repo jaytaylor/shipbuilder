@@ -142,7 +142,10 @@ func (d *Deployment) createContainer() (err error) {
 	titleLogger := NewFormatter(d.Logger, GREEN)
 
 	// If there's not already a container.
-	if _, err = os.Stat(d.Application.RootFsDir()); err != nil {
+	var exists bool
+	if exists, err = d.exe.ContainerExists(d.Application.Name); err != nil {
+		return
+	} else if !exists {
 		fmt.Fprintf(titleLogger, "Creating container\n")
 		// Clone the base application.
 		if d.err = d.initContainer(); d.err != nil {
@@ -1049,8 +1052,14 @@ func extractAppFromS3(e *Executor, app *Application, version string) error {
 
 func (d *Deployment) syncNode(node *Node) error {
 	logger := NewLogger(d.Logger, "["+node.Host+"] ")
-
-	if err := d.exe.Run("ssh", "root@"+node.Host, "lxc", "image", "copy", fmt.Sprintf("%v:%v", DefaultSSHHost, d.lxcImageName()), "local:", "--copy-aliases"); err != nil {
+	bashCmds := fmt.Sprintf(`set -o errexit
+set -o pipefail
+test -n "$(lxc remote list | sed -e 1d -e 2d -e 3d | grep -v '^+' | awk '{print $2}' | grep %[1]v)" || lxc remote add --accept-certificate --public %[1]v https://%[1]v:8443
+lxc image copy --copy-aliases %[2]v local:`,
+		DefaultSSHHost,
+		fmt.Sprintf("%v:%v", DefaultSSHHost, d.lxcImageName()),
+	)
+	if err := d.exe.Run("ssh", "root@"+node.Host, "/bin/bash", "-c", bashCmds); err != nil {
 		fmt.Fprintf(logger, "Problem sending image from host %v to %v: %s\n", DefaultSSHHost, node.Host, err)
 		return fmt.Errorf("sending image from host %v to %v: %s\n", DefaultSSHHost, node.Host, err)
 	}

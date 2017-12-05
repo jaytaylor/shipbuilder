@@ -43,6 +43,10 @@ TODO 2017-10-24: Create additional buildpack provider which uses FS with bindata
 
 TODO: `lxd init` ??
 
+TODO: 2017-12-03: Fix sb-server /etc/shipbuilder dir permissions to disallow other users from viewing the directory contents (downgrade 3rd party perms).
+
+TODO: 2017-12-04: Fix port allocation bug triggered by blind port incrementing, grep for '// Then attempt start it again.' for relevant section of cmd_deploy.go.
+
 Note: it's now recommended to ensure $sbHost is set to a domain name.. example: install/node.sh 2nd ssh cmd.
 
 TOOD: PORT ALLOCATION BUG - could be caused by the tmp.sh during deploy; when there's an error it blindly tries incrementing the port...

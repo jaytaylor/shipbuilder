@@ -529,10 +529,10 @@ func main() {
 			// logger
 			appCommand(
 				[]string{"logger", "Logger"},
-				"Logger command ??? TODO: test this!",
+				"Logger command for apps to send logs back to shipbuilder",
 				flagSpec{
-					names:    []string{"host", "h"},
-					usage:    "Slae node name (e.g. hostname)",
+					names:    []string{"host"},
+					usage:    "Slave node name (e.g. hostname)",
 					required: true,
 				},
 				flagSpec{
