@@ -90,8 +90,11 @@ elif [ "${action}" = "install" ]; then
     ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" "source /tmp/libfns.sh && prepareNode ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
     abortIfNonZero $? 'remote prepareNode() invocation'
 
-    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" 'sudo lxc remote add sb-server ${sbHost} --accept-certificate --public && sudo cp -a ${USER}/.config /root/"
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" 'sudo lxc remote add sb-server ${sbHost} --accept-certificate --public && sudo cp -a ${USER}/.config /root/'
     abortIfNonZero $? 'adding sb-server lxc image server to slave node'
+
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" sudo bash -c 'set -o errexit ; set -o pipefail ; set -x ; sed -i "s/net.ipv4.conf.all.route_localnet *=.*//d" /etc/sysctl.conf && sysctl -w $(echo "net.ipv4.conf.all.route_localnet=1" | sudo tee -a /etc/sysctl.conf)'
+    abortIfNonZero $? 'setting sysctl -w net.ipv4.conf.all.route_localnet=1 on slave node'
 
     if test -z "${denyRestart}"; then
         echo 'info: checking if system restart is necessary'

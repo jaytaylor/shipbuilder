@@ -19,7 +19,7 @@ func (_ *baseReleasesProvider) parseManifest(data []byte) ([]domain.Release, err
 	return releases, nil
 }
 
-func (_ *baseReleasesProvider) createManifest(releases []domain.Release) ([]byte, error) {
+func (_ *baseReleasesProvider) toManifest(releases []domain.Release) ([]byte, error) {
 	data, err := json.Marshal(releases)
 	if err != nil {
 		return nil, err

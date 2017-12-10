@@ -181,6 +181,88 @@ destroyNonContainerVolumes
 #done
 
 exit $?`
+
+	// pyIptables is a python fragment with a collection of functions used by
+	// postdeploy.py and shutdown.py.
+	pyIptables = `
+import re, shlex
+
+def newIpTablesCmd(actionLetter, commandFragment):
+    command = '/sbin/iptables --table nat -' + actionLetter + ' ' + commandFragment
+    log('iptables command: %s' % (command,))
+    p = subprocess.Popen(
+        shlex.split(command),
+        stderr=sys.stderr,
+        stdout=sys.stdout,
+    )
+    return p
+
+def portForwardCommandFragments(includePostrouting, ip, port, container):
+    """
+    Fragments which are built into commands like:
+         iptables -t nat -A PREROUTING -m tcp -p tcp --dport {port} -j DNAT --to-destination {ip}:{port} {commentFlag}
+    or:
+        iptables -t nat -C PREROUTING  -m tcp -p tcp --dport {port} -j DNAT --to-destination {ip}:{port} {commentFlag}
+
+    Also see this stackoverflow for details on how local forwarding now works:
+
+        https://serverfault.com/a/823145/122599
+
+    @param includePostrouting bool When False, the POSTROUTING UNICAST
+        MASQUERADE rule will be omitted.
+    """
+    fragments = re.sub(
+        ' +',
+        ' ',
+        '''
+PREROUTING  -m tcp      -p tcp --dport {port} -j DNAT --to-destination {ip}:{port}                            -m comment --comment 'Shipbuilder remote NAT for app-container={container}'
+OUTPUT      -m addrtype --src-type LOCAL --dst-type LOCAL -p tcp --dport {port} -j DNAT --to-destination {ip} -m comment --comment 'Shipbuilder local NAT for app-container={container}'
+POSTROUTING -m addrtype --src-type LOCAL --dst-type UNICAST -j MASQUERADE                                     -m comment --comment 'Shipbuilder local NAT unicast masquerade'
+        '''.strip(),
+    ).format(ip=ip, port=port, container=container).split('\n')
+    if not includePostrouting:
+        fragments = fragments[0:2]
+    return fragments
+
+def portForward(action, ip, port):
+    """Adds or removes a port forwarding rule for an IP / port combination."""
+    assert action in ('add', 'remove'), 'Action must be one of: add, remove'
+    actionLetter = 'A' if action == 'add' else 'D'
+
+    # Sometimes iptables is being run too many times at once on the same box, and will give an error like:
+    #     iptables: Resource temporarily unavailable.
+    #     exit status 4
+    # We try to detect any such occurrence, and up to N times we'll wait for a moment and retry.
+    attempts = 0
+
+    for fragment in portForwardCommandFragments(action == 'add', ip, port, container):
+        while True:
+            child = newIpTablesCmd('C', fragment)
+            child.communicate()
+            statusCode = child.returncode
+            if statusCode is 0:
+                # Rule already exists!
+                break
+            if statusCode is 1:
+                # Rule needs to be added.
+                child = newIpTablesCmd(actionLetter, fragment)
+                child.communicate()
+                statusCode = child.returncode
+                if statusCode is 0:
+                    break
+                log('iptables: {action} rule for ip:port={ip}:{port} failed with exit status code {statusCode} ({attempts} previous attempts)'
+                    .format(action=action, ip=ip, port=port, statusCode=statusCode, attempts=attempts))
+                attempts += 1
+                time.sleep(0.5)
+                continue
+            elif statusCode == 4 and attempts < 40:
+                log('iptables: Resource temporarily unavailable (exit status 4), retrying.. ({0} previous attempts)'.format(attempts))
+                attempts += 1
+                time.sleep(0.5)
+                continue
+            else:
+                raise subprocess.CalledProcessError(statusCode, 'iptables failure; no handler for exit status code {0}'.format(statusCode))
+`
 )
 
 var POSTDEPLOY = `#!/usr/bin/python -u
@@ -188,93 +270,42 @@ var POSTDEPLOY = `#!/usr/bin/python -u
 
 import os, stat, subprocess, sys, time
 
-defaultLxcFs='` + DefaultLXCFS + `'
-lxcDir='` + LXC_DIR + `'
-zfsContainerMount='` + ZFS_CONTAINER_MOUNT + `'
+defaultLxcFs='''` + DefaultLXCFS + `'''
+lxcDir='''` + LXC_DIR + `'''
+zfsContainerMount='''` + ZFS_CONTAINER_MOUNT + `'''
+dynoDelimiter = '''` + DYNO_DELIMITER + `'''
+defaultSshHost = '''` + DefaultSSHHost + `'''
+envDir = '''` + ENV_DIR + `'''
 container = None
 log = lambda message: sys.stdout.write('[{0}] {1}\n'.format(container, message))
 
+` + pyIptables + `
+
 def getIp(name):
-    with open('` + LXC_DIR + `/' + name + '/rootfs/app/ip') as f:
+    with open(lxcDir + '/' + name + '/rootfs/app/ip') as f:
         return f.read().split('/')[0]
 
-def modifyIpTables(action, chain, ip, port):
-    """
-    @param action str 'append' or 'delete'.
-    @param chain str 'PREROUTING' or 'OUTPUT'.
-    """
-    global container
-
-    assert action in ('append', 'delete'), 'Invalid action: "{0}", must be "append" or "delete"'
-    assert chain in ('PREROUTING', 'OUTPUT'), 'Invalid chain: "{0}", must be "PREROUTING" or "OUTPUT"'.format(chain)
-    assert ip is not None and ip != '', 'Invalid ip: "{0}", ip cannot be None or empty'.format(ip)
-    assert port is not None and port != '', 'Invalid port: "{0}", port cannot be None or empty'.format(port)
-
-    # Sometimes iptables is being run too many times at once on the same box, and will give an error like:
-    #     iptables: Resource temporarily unavailable.
-    #     exit status 4
-    # We try to detect any such occurrence, and up to N times we'll wait for a moment and retry.
-    attempts = 0
-    while True:
-        child = subprocess.Popen(
-            [
-                '/sbin/iptables',
-                '--table', 'nat',
-                '--{0}'.format(action), chain,
-                '--proto', 'tcp',
-                '--dport', port,
-                '--jump', 'DNAT',
-                '--to-destination', '{0}:{1}'.format(ip, port),
-                '--comment', 'Forward for app-container=%s' % (container,)
-            ] + (['--out-interface', 'lo'] if chain == 'OUTPUT' else []),
-            stderr=sys.stderr,
-            stdout=sys.stdout
-        )
-        child.communicate()
-        exitCode = child.returncode
-        if exitCode == 0:
-            return
-        elif exitCode == 4 and attempts < 40:
-            log('iptables: Resource temporarily unavailable (exit status 4), retrying.. ({0} previous attempts)'.format(attempts))
-            attempts += 1
-            time.sleep(0.5)
-            continue
-        else:
-            raise subprocess.CalledProcessError('iptables failure; exited with status code {0}'.format(exitCode))
-
-def ipsForRulesMatchingPort(chain, port):
-    # NB: 'exit 0' added to avoid exit status code 1 when there were no results.
-    rawOutput = subprocess.check_output(
-        [
-            '/sbin/iptables --table nat --list {0} --numeric | grep -E -o "[0-9.]+:{1}" | grep -E -o "^[^:]+"; exit 0' \
-                .format(chain, port),
-        ],
-        shell=True,
-        stderr=sys.stderr
-    ).strip()
-    return rawOutput.split('\n') if len(rawOutput) > 0 else []
-
-def configureIpTablesForwarding(ip, port):
-    log('configuring iptables to forward port {0} to {1}'.format(port, ip))
-    # Clear out any conflicting pre-existing rules on the same port.
-    for chain in ('PREROUTING', 'OUTPUT'):
-        conflictingRules = ipsForRulesMatchingPort(chain, port)
-        for someOtherIp in conflictingRules:
-            modifyIpTables('delete', chain, someOtherIp, port)
-
-    # Add a rule to route <eth0-iface>:<port> TCP packets to the container.
-    modifyIpTables('append', 'PREROUTING', ip, port)
-
-    # Add another rule so that the port will be reachable from <eth0-iface>:port from localhost.
-    modifyIpTables('append', 'OUTPUT', ip, port)
+def enableRouteLocalNet():
+    '''
+    Set sysctl -w net.ip4v.conf.all.route_localnet=1 to ensure iptables port
+    forwarding rules work.
+    '''
+    out = subprocess.check_output('sysctl --binary net.ipv4.conf.all.route_localnet'.split(' '))
+    if out == '1':
+        return
+    subprocess.check_call('sysctl --write --quiet net.ipv4.conf.all.route_localnet=1'.split(' '),
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
+    return
 
 def cloneContainer(app, container, version, check=True):
     log('cloning container: {0}'.format(container))
     fn = subprocess.check_call if check else subprocess.call
     return fn(
-        ['/usr/bin/lxc', 'init', app + '` + DYNO_DELIMITER + `' + version, container],
+        ['/usr/bin/lxc', 'init', app + dynoDelimiter + version, container],
         stdout=sys.stdout,
-        stderr=sys.stderr
+        stderr=sys.stderr,
     )
 
 def startContainer(container, check=True):
@@ -283,7 +314,25 @@ def startContainer(container, check=True):
     return fn(
         ['/usr/bin/lxc', 'start', container],
         stdout=sys.stdout,
-        stderr=sys.stderr
+        stderr=sys.stderr,
+    )
+
+def mountContainerFs(container):
+    if defaultLxcFs != 'zfs':
+        return
+    subprocess.check_call(
+        ['sudo', 'zfs', 'mount', zfsContainerMount.strip('/') + '/' + container],
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    )
+
+def unmountContainerFs(container):
+    if defaultLxcFs != 'zfs':
+        return
+    subprocess.check_call(
+        ['sudo', 'zfs', 'umount', zfsContainerMount.strip('/') + '/' + container],
+        stdout=sys.stdout,
+        stderr=sys.stderr,
     )
 
 def showHelpAndExit(argv):
@@ -312,30 +361,12 @@ def validateMainArgs(argv):
 def parseMainArgs(argv):
     validateMainArgs(argv)
     container = argv[1]
-    app, version, process, port = container.rsplit('` + DYNO_DELIMITER + `', 3) # Format is app-version-process-port.
+    app, version, process, port = container.rsplit(dynoDelimiter, 3) # Format is app-version-process-port.
     return (container, app, version, process, port)
-
-def mountContainerFs(container):
-    if defaultLxcFs != 'zfs':
-        return
-    subprocess.check_call(
-        ['sudo', 'zfs', 'mount', zfsContainerMount.strip('/') + '/' + container],
-        stdout=sys.stdout,
-        stderr=sys.stderr
-    )
-
-def unmountContainerFs(container):
-    if defaultLxcFs != 'zfs':
-        return
-    subprocess.check_call(
-        ['sudo', 'zfs', 'umount', zfsContainerMount.strip('/') + '/' + container],
-        stdout=sys.stdout,
-        stderr=sys.stderr
-    )
 
 def main(argv):
     global container
-    #print('main argv={0}'.format(argv))
+
     if len(argv) > 1 and argv[1] in ('-h', '--help', 'help'):
         showHelpAndExit(argv)
 
@@ -348,39 +379,60 @@ def main(argv):
     # Clone the specified container.
     cloneContainer(app, container, version)
 
-    ## This line, if present, would prevent the container from booting.
-    ##log('scrubbing any "lxc.cap.drop = mac_{0}" lines from container config'.format(container))
-    #subprocess.check_call(
-    #    ['sed', '-i', '/lxc.cap.drop = mac_{0}/d'.format(container), lxcDir + '/{0}/config'.format(container)],
-    #    stdout=sys.stdout,
-    #    stderr=sys.stderr
-    #)
-
     log('creating run script for app "{0}" with process type={1}'.format(app, process))
     # NB: The curly braces are kinda crazy here, to get a single '{' or '}' with python.format(), use double curly
     # braces.
-    host = '''` + DefaultSSHHost + `'''
+    host = defaultSshHost
     runScript = '''#!/usr/bin/env bash
+# set -o errexit
+# set -o pipefail
+set -o nounset
+
 ip addr show eth0 | grep 'inet.*eth0' | awk '{{print $2}}' > /app/ip
+
 rm -rf /tmp/log
+
 cd /app/src
+
+__DEBUG=
+
+if [ -f ../env/SB_DEBUG ] ; then
+    export SB_DEBUG="$(cat ../env/SB_DEBUG)"
+    if [ "${{SB_DEBUG}}" = '1' ] \
+        || [ "${{SB_DEBUG}}" = 't' ] \
+        || [ "${{SB_DEBUG}}" = 'true' ] \
+        || [ "${{SB_DEBUG}}" = 'True' ] \
+        || [ "${{SB_DEBUG}}" = 'TRUE' ] \
+        || [ "${{SB_DEBUG}}" = 'y' ] \
+        || [ "${{SB_DEBUG}}" = 'yes' ] \
+        || [ "${{SB_DEBUG}}" = 'Y' ] \
+        || [ "${{SB_DEBUG}}" = 'Yes' ] \
+        || [ "${{SB_DEBUG}}" = 'YES' ] ; then
+        __DEBUG='set -x ; '
+    fi
+fi
+
 echo '{port}' > ../env/PORT
-while read line || [ -n "$line" ]; do
+while read line || [ -n "${{line}}" ]; do
     process="${{line%%:*}}"
     command="${{line#*: }}"
     if [ "$process" == "{process}" ]; then
-        envdir ` + ENV_DIR + ` /bin/bash -c "export PATH=\"$(find /app/.shipbuilder -type d -wholename '*bin' -maxdepth 2):${{PATH}}\"; ( ${{command}} ) 2>&1 | /app/` + BINARY + ` logger --host={host} --app={app} --process={process}.{port}"
+        envdir {envDir} /bin/bash -c "${{__DEBUG}}export PATH=\"$(find /app/.shipbuilder -type d -wholename '*bin' -maxdepth 2):${{PATH}}\" ; set -o errexit ; set -o pipefail ; ( ${{command}} ) 2>&1 | /app/` + BINARY + ` logger --host={host} --app={app} --process={process}.{port}"
     fi
-done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, app=app)
+done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, app=app, envDir=envDir)
+
     mountContainerFs(container)
+
     runScriptFileName = lxcDir + '/{0}/rootfs/app/run'.format(container)
     with open(runScriptFileName, 'w') as fh:
         fh.write(runScript)
+
     # Chmod to be executable.
     st = os.stat(runScriptFileName)
     os.chmod(runScriptFileName, st.st_mode | stat.S_IEXEC)
 
     unmountContainerFs(container)
+
     startContainer(container)
 
     log('waiting for container to boot and report ip-address')
@@ -399,7 +451,7 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
 
     if ip:
         log('found ip: {0}'.format(ip))
-        configureIpTablesForwarding(ip, port)
+        portForward('add', ip, port)
 
         if process == 'web':
             log('waiting for web-server to start up')
@@ -436,63 +488,13 @@ var SHUTDOWN_CONTAINER = `#!/usr/bin/python -u
 
 import subprocess, sys, time
 
-DefaultLXCFS = '` + DefaultLXCFS + `'
-DefaultZFSPool = '` + DefaultZFSPool + `'
+DefaultLXCFS = '''` + DefaultLXCFS + `'''
+DefaultZFSPool = '''` + DefaultZFSPool + `'''
+dynoDelimiter = '''` + DYNO_DELIMITER + `'''
 container = None
 log = lambda message: sys.stdout.write('[{0}] {1}\n'.format(container, message))
 
-def modifyIpTables(action, chain, ip, port):
-    """
-    @param action str 'append' or 'delete'.
-    @param chain str 'PREROUTING' or 'OUTPUT'.
-    """
-    assert action in ('append', 'delete'), 'Invalid action: "{0}", must be "append" or "delete"'
-    assert chain in ('PREROUTING', 'OUTPUT'), 'Invalid chain: "{0}", must be "PREROUTING" or "OUTPUT"'.format(chain)
-    assert ip is not None and ip != '', 'Invalid ip: "{0}", ip cannot be None or empty'.format(ip)
-    assert port is not None and port != '', 'Invalid port: "{0}", port cannot be None or empty'.format(port)
-
-    # Sometimes iptables is being run too many times at once on the same box, and will give an error like:
-    #     iptables: Resource temporarily unavailable.
-    #     exit status 4
-    # We try to detect any such occurrence, and up to N times we'll wait for a moment and retry.
-    attempts = 0
-    while True:
-        child = subprocess.Popen(
-            [
-                '/sbin/iptables',
-                '--table', 'nat',
-                '--{0}'.format(action), chain,
-                '--proto', 'tcp',
-                '--dport', port,
-                '--jump', 'DNAT',
-                '--to-destination', '{0}:{1}'.format(ip, port),
-            ] + (['--out-interface', 'lo'] if chain == 'OUTPUT' else []),
-            stderr=sys.stderr,
-            stdout=sys.stdout
-        )
-        child.communicate()
-        exitCode = child.returncode
-        if exitCode == 0:
-            return
-        elif exitCode == 4 and attempts < 15:
-            log('iptables: Resource temporarily unavailable (exit status 4), retrying.. ({0} previous attempts)'.format(attempts))
-            attempts += 1
-            time.sleep(1)
-            continue
-        else:
-            raise subprocess.CalledProcessError('iptables exited with non-zero status code {0}'.format(exitCode))
-
-def ipsForRulesMatchingPort(chain, port):
-    # NB: 'exit 0' added to avoid exit status code 1 when there were no results.
-    rawOutput = subprocess.check_output(
-        [
-            '/sbin/iptables --table nat --list {0} --numeric | grep -E --only-matching "[0-9.]+:{1}" | grep -E --only-matching "^[^:]+"; exit 0' \
-                .format(chain, port),
-        ],
-        shell=True,
-        stderr=sys.stderr
-    ).strip()
-    return rawOutput.split('\n') if len(rawOutput) > 0 else []
+` + pyIptables + `
 
 def retriableCommand(*command):
     for _ in range(0, 30):
@@ -533,23 +535,17 @@ def validateMainArgs(argv):
 def parseMainArgs(argv):
     validateMainArgs(argv)
     container = argv[1]
-    app, version, process, port = container.rsplit('` + DYNO_DELIMITER + `', 3) # Format is app-version-process-port.
+    app, version, process, port = container.rsplit(dynoDelimiter, 3) # Format is app-version-process-port.
     return (container, app, version, process, port)
 
 def main(argv):
     global container
-    #print('main argv={0}'.format(argv))
+
     if len(argv) > 1 and argv[1] in ('-h', '--help', 'help'):
         showHelpAndExit(argv)
 
     container, app, version, process, port = parseMainArgs(argv)
-
-
-def main(argv):
-    global container
-    container = argv[1]
     destroyOnly = len(argv) > 2 and argv[2] == 'destroy-only'
-    port = container.split('` + DYNO_DELIMITER + `').pop()
 
     try:
         # Stop and destroy the container.
@@ -559,19 +555,15 @@ def main(argv):
         if not destroyOnly:
             raise e # Otherwise ignore.
 
-    if DefaultLXCFS == 'zfs':
-        try:
-            retriableCommand('/sbin/zfs', 'destroy', '-r', DefaultZFSPool + '/' + container)
-        except subprocess.CalledProcessError, e:
-            print('warn: zfs destroy command failed: {0}'.format(e))
+    #if DefaultLXCFS == 'zfs':
+    #    try:
+    #        retriableCommand('/sbin/zfs', 'destroy', '-r', DefaultZFSPool + '/' + container)
+    #    except subprocess.CalledProcessError, e:
+    #        print('warn: zfs destroy command failed: {0}'.format(e))
 
     retriableCommand('/usr/bin/lxc', 'delete', '--force', container)
 
-    for chain in ('PREROUTING', 'OUTPUT'):
-        rules = ipsForRulesMatchingPort(chain, port)
-        for ip in rules:
-            log('removing iptables {0} chain rule: port={1} ip={2}'.format(chain, port, ip))
-            modifyIpTables('delete', chain, ip, port)
+    portForward('remove', ip, port)
 
 main(sys.argv)`
 

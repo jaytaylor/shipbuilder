@@ -34,6 +34,9 @@ func NewFSReleasesProvider(path string) *FSReleasesProvider {
 func (provider *FSReleasesProvider) List(applicationName string) ([]domain.Release, error) {
 	data, err := ioutil.ReadFile(provider.manifestPath(applicationName))
 	if err != nil {
+		if os.IsNotExist(err) {
+			return []domain.Release{}, nil
+		}
 		return nil, err
 	}
 	releases, err := provider.parseManifest(data)
@@ -45,7 +48,7 @@ func (provider *FSReleasesProvider) List(applicationName string) ([]domain.Relea
 
 // Set sets the list of releases for an application.
 func (provider *FSReleasesProvider) Set(applicationName string, releases []domain.Release) error {
-	data, err := provider.createManifest(releases)
+	data, err := provider.toManifest(releases)
 	if err != nil {
 		return err
 	}
@@ -74,7 +77,13 @@ func (provider *FSReleasesProvider) Delete(applicationName string, logger io.Wri
 
 // Store adds a new release to the set of releases.
 func (provider *FSReleasesProvider) Store(applicationName string, version string, r io.Reader, length int64) error {
-	archive := provider.releasePath(applicationName, version)
+	var (
+		archive = provider.releasePath(applicationName, version)
+		dir     = oslib.PathDirName(archive)
+	)
+	if err := os.MkdirAll(dir, os.FileMode(int(0700))); err != nil {
+		return fmt.Errorf("creating path %q: %s", dir, err)
+	}
 	fd, err := os.OpenFile(archive, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(int(0600)))
 	if err != nil {
 		return fmt.Errorf("creating archive file %v: %s", archive, err)
@@ -104,6 +113,6 @@ func (provider *FSReleasesProvider) manifestPath(applicationName string) string 
 }
 
 func (provider *FSReleasesProvider) releasePath(applicationName string, version string) string {
-	archive := fmt.Sprintf("%[1]v%[2]v%[3]v%[2]v%[4]v.tar.gz", provider.path, string(os.PathSeparator), applicationName, version)
+	archive := fmt.Sprintf("%[1]v%[2]v%[3]v%[2]v%[3]v%[4]v.tar.gz", provider.path, string(os.PathSeparator), applicationName, version)
 	return archive
 }
