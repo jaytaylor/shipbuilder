@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const STATUS_MONITOR_CHECK_COMMAND = `echo $(free -m | sed '1,2d' | head -n1 | grep --only '[0-9]\+$') $(sudo lxc-ls --fancy | sed 's/[ \t]\{1,\}/ /g' | grep '^[^_]\+_v[0-9]\+_[^_]\+_[^_]\+ [^ ]\+' | cut -d' ' -f1,2 | tr ' ' '_' | tr '\n' ' ')`
+const statusMonitorCheckCommand = `echo $(free -m | sed '1,2d' | head -n1 | grep --only '[0-9]\+$') $(sudo lxc list --format json | jq -r '.[] | "\(.name)` + DYNO_DELIMITER + `\(.status)"' | tr $'\n' ' ')`
 
 var nodeStatusRequestChannel = make(chan NodeStatusRequest)
 
@@ -34,13 +34,13 @@ func (ns *NodeStatus) ParseStatus(input string, err error) {
 
 	tokens := strings.Fields(strings.TrimSpace(input))
 	if len(tokens) == 0 {
-		ns.Err = fmt.Errorf("Parse failed for input '%v'", input)
+		ns.Err = fmt.Errorf("status parse failed for input %q", input)
 		return
 	}
 
 	ns.FreeMemoryMb, err = strconv.Atoi(tokens[0])
 	if err != nil {
-		ns.Err = fmt.Errorf("Integer conversion failed for token '%v' (tokens=%v)", tokens[0], tokens)
+		ns.Err = fmt.Errorf("integer conversion failed for token %q (tokens=%v)", tokens[0], tokens)
 		return
 	}
 
@@ -74,7 +74,7 @@ func checkServer(DefaultSSHHost string, currentDeployMarker int, ch chan NodeSta
 			DeployMarker: currentDeployMarker,
 			Err:          nil,
 		}
-		result.ParseStatus(RemoteCommand(DefaultSSHHost, STATUS_MONITOR_CHECK_COMMAND))
+		result.ParseStatus(RemoteCommand(DefaultSSHHost, statusMonitorCheckCommand))
 		done <- result
 	}()
 
@@ -87,7 +87,7 @@ func checkServer(DefaultSSHHost string, currentDeployMarker int, ch chan NodeSta
 			FreeMemoryMb: -1,
 			Containers:   nil,
 			DeployMarker: currentDeployMarker,
-			Err:          fmt.Errorf("Timed out for host %v", DefaultSSHHost),
+			Err:          fmt.Errorf("check timed out for host=%v", DefaultSSHHost),
 		} // Sends timeout result to channel.
 	}
 }

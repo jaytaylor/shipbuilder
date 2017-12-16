@@ -158,7 +158,7 @@ func (dpt *DynoPortTracker) Release(host string, port int) {
 func ContainerToDyno(host string, container string) (Dyno, error) {
 	tokens := strings.Split(container, DYNO_DELIMITER)
 	if len(tokens) != 5 {
-		return Dyno{}, fmt.Errorf("parsing container string %q into 5 tokens", container)
+		return Dyno{}, fmt.Errorf("unable to parse container string %q into 5 tokens", container)
 	}
 	if !strings.HasPrefix(tokens[1], "v") {
 		return Dyno{}, fmt.Errorf("invalid dyno version value %q, must begin with a 'v'", tokens[1])
@@ -197,7 +197,7 @@ func NodeStatusToDynos(nodeStatus *NodeStatus) ([]Dyno, error) {
 	return dynos, nil
 }
 
-func (server *Server) GetRunningDynos(application, processType string) ([]Dyno, error) {
+func (server *Server) GetRunningDynos(application string, processType string) ([]Dyno, error) {
 	dynos := []Dyno{}
 
 	cfg, err := server.getConfig(true)
