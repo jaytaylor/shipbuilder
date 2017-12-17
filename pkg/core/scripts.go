@@ -202,7 +202,7 @@ def portForwardCommandFragments(includePostrouting, ip, port, container):
     Fragments which are built into commands like:
          iptables -t nat -A PREROUTING -m tcp -p tcp --dport {port} -j DNAT --to-destination {ip}:{port} {commentFlag}
     or:
-        iptables -t nat -C PREROUTING  -m tcp -p tcp --dport {port} -j DNAT --to-destination {ip}:{port} {commentFlag}
+         iptables -t nat -C PREROUTING -m tcp -p tcp --dport {port} -j DNAT --to-destination {ip}:{port} {commentFlag}
 
     Also see this stackoverflow for details on how local forwarding now works:
 
@@ -225,9 +225,25 @@ POSTROUTING -m addrtype --src-type LOCAL --dst-type UNICAST -j MASQUERADE       
     return fragments
 
 def portForward(action, ip, port):
-    """Adds or removes a port forwarding rule for an IP / port combination."""
+    """
+    Adds or removes a port forwarding rule for an IP / port combination.
+
+    If @action is 'remove' and @ip is an empty string then automatic resolution
+    will be attempted by inspecting the iptables rules corresponding to port=@port.
+    """
     assert action in ('add', 'remove'), 'Action must be one of: add, remove'
     actionLetter = 'A' if action == 'add' else 'D'
+
+    if action == 'remove' and len(ip) == 0:
+        # Attempt automatic resolution of IP.
+        ip = subprocess.check_output([
+            'bash',
+            '-c',
+            '''set -o errexit ; set -o pipefail ; /sbin/iptables --table nat --list | {{ grep '^DNAT.* tcp dpt:{}' || : ; }} | head -n1 | sed 's/^.* to://' | cut -d ':' -f 1'''.format(port),
+        ]).strip()
+        if len(ip) == 0:
+            # No rules need to be removed.
+            return
 
     # Sometimes iptables is being run too many times at once on the same box, and will give an error like:
     #     iptables: Resource temporarily unavailable.
@@ -242,7 +258,21 @@ def portForward(action, ip, port):
             statusCode = child.returncode
             if statusCode is 0:
                 # Rule already exists!
-                break
+                if action == 'add':
+                    break
+                else:
+                    # Needs removal.
+                    child = newIpTablesCmd(actionLetter, fragment)
+                    child.communicate()
+                    statusCode = child.returncode
+                    if statusCode is 0:
+                        break
+                    log('iptables: {action} rule for ip:port={ip}:{port} failed with exit status code {statusCode} ({attempts} previous attempts)'
+                        .format(action=action, ip=ip, port=port, statusCode=statusCode, attempts=attempts))
+                    attempts += 1
+                    time.sleep(0.5)
+                    continue
+
             if statusCode is 1:
                 # Rule needs to be added.
                 child = newIpTablesCmd(actionLetter, fragment)
@@ -451,6 +481,7 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
 
     if ip:
         log('found ip: {0}'.format(ip))
+        portForward('remove', '', port)
         portForward('add', ip, port)
 
         if process == 'web':
@@ -471,14 +502,14 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
                 except subprocess.CalledProcessError, e:
                     if time.time() - startedTs > maxSeconds: # or attempts > maxAttempts:
                         sys.stderr.write('- error: curl http check failed, {0}\n'.format(e))
-                        subprocess.check_call(['/tmp/shutdown_container.py', container, 'destroy-only'])
+                        subprocess.check_call(['/tmp/shutdown_container.py', container, 'skip-stop'])
                         sys.exit(1)
                     else:
                         time.sleep(1)
 
     else:
         sys.stderr.write('- error: failed to retrieve container ip')
-        subprocess.check_call(['/tmp/shutdown_container.py', container, 'destroy-only'])
+        subprocess.check_call(['/tmp/shutdown_container.py', container, 'skip-stop'])
         sys.exit(1)
 
 main(sys.argv)`
@@ -507,30 +538,34 @@ def retriableCommand(*command):
             else:
                 raise e
 
-def showHelpAndExit(argv):
-    message = '''usage: {} [container-name] ["destroy-only"?]
-       where "container-name" is of the form: [app]_[version]_[process]_[port]
+def showHelpAndExit(argv, ok=True):
+    message = '''usage: {} [container-name] [?"skip-stop", ?"iptables-only"]
+       where "container-name" is of the form: [app]-v[version]-[process]-[port]
 
-       "destroy-only" will only go about destroying the container (not shutting it down).
+       "skip-stop" will only go about destroying the container (not shutting
+        it down).
 
-       For example, here is how you would terminate a container with the following attributes:
+       "iptables-only" will skip stop / destroy steps and only attempt to purge
+        the iptables rules corresponding with the container.
 
-           {
+       For example, here is how you would terminate a container with the
+       following attributes:
+
+           {{
                "app-name": "myApp",
                "version-tag": "v1337",
                "process-type": "web",
                "port-forward": "10001"
-           }
+           }}
 
        $ {} myApp-v1337-web-10001
-'''.format(argv[0])
+'''.format(argv[0], argv[0])
     print(message)
-    sys.exit(0)
+    sys.exit(0 if ok else 1)
 
 def validateMainArgs(argv):
-    if len(argv) != 2 or (len(argv) > 2 and argv[2] == 'destroy-only'):
-        sys.stderr.write('{} error: invalid arguments, see [-h|--help] for usage details.\n'.format(sys.argv))
-        sys.exit(1)
+    if len(argv) < 2 or (len(argv) > 2 and not all(map(lambda arg: arg in ('skip-stop', 'iptables-only'), argv[2:]))):
+        showHelpAndExit(argv, False)
 
 def parseMainArgs(argv):
     validateMainArgs(argv)
@@ -542,26 +577,35 @@ def main(argv):
     global container
 
     if len(argv) > 1 and argv[1] in ('-h', '--help', 'help'):
-        showHelpAndExit(argv)
+        showHelpAndExit(argv, True)
 
     container, app, version, process, port = parseMainArgs(argv)
-    destroyOnly = len(argv) > 2 and argv[2] == 'destroy-only'
+    skipStop = len(argv) > 2 and 'skip-stop' in argv[2:]
+    iptablesOnly = len(argv) > 2 and 'iptables-only' in argv[2:]
 
-    try:
-        # Stop and destroy the container.
-        log('stopping container: {}'.format(container))
-        subprocess.check_call(['/usr/bin/lxc', 'stop', '--force', container], stdout=sys.stdout, stderr=sys.stderr)
-    except Exception, e:
-        if not destroyOnly:
-            raise e # Otherwise ignore.
+    ip = subprocess.check_output([
+        'bash',
+        '-c',
+        '''set -o errexit ; set -o pipefail ; lxc list --format json | jq -r '.[] | select(.name == "{}").state.network.eth0.addresses[0].address' '''.format(container),
+    ]).strip()
 
-    #if DefaultLXCFS == 'zfs':
-    #    try:
-    #        retriableCommand('/sbin/zfs', 'destroy', '-r', DefaultZFSPool + '/' + container)
-    #    except subprocess.CalledProcessError, e:
-    #        print('warn: zfs destroy command failed: {0}'.format(e))
+    if not iptablesOnly:
+        exists = len(ip) > 0 or container == subprocess.check_output([
+            'bash',
+            '-c',
+            '''set -o errexit ; set -o pipefail ; lxc list --format json | jq -r '.[] | select(.name == "{}").name' '''.format(container),
+        ]).strip()
 
-    retriableCommand('/usr/bin/lxc', 'delete', '--force', container)
+        if exists:
+            try:
+                # Stop and destroy the container.
+                log('stopping container: {}'.format(container))
+                subprocess.check_call(['/usr/bin/lxc', 'stop', '--force', container], stdout=sys.stdout, stderr=sys.stderr)
+            except Exception, e:
+                if not skipStop:
+                    raise e # Otherwise ignore.
+
+            retriableCommand('/usr/bin/lxc', 'delete', '--force', container)
 
     portForward('remove', ip, port)
 
