@@ -1573,7 +1573,7 @@ func (server *Server) Redeploy(conn net.Conn, applicationName string) error {
 	})
 }
 
-func (server *Server) Rescale(conn net.Conn, applicationName string, args map[string]string) error {
+func (server *Server) Rescale(conn net.Conn, applicationName string, deferred bool, args map[string]string) error {
 	deployLock.start()
 	defer deployLock.finish()
 
@@ -1611,6 +1611,11 @@ func (server *Server) Rescale(conn net.Conn, applicationName string, args map[st
 	}
 	if len(changes) == 0 {
 		return fmt.Errorf("No scaling changes were detected")
+	}
+
+	if deferred {
+		fmt.Fprint(logger, "Rescaling will apply to the next deployment because deferral was requested\n")
+		return nil
 	}
 
 	// Apply the changes.

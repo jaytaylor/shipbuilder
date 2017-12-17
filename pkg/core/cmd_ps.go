@@ -25,8 +25,8 @@ func (server *Server) Ps_List(conn net.Conn, applicationName string) error {
 }
 
 // e.g. ps:scale web=12 worker=12 scheduler=1
-func (server *Server) Ps_Scale(conn net.Conn, applicationName string, args map[string]string) error {
-	return server.Rescale(conn, applicationName, args)
+func (server *Server) Ps_Scale(conn net.Conn, applicationName string, deferred bool, args map[string]string) error {
+	return server.Rescale(conn, applicationName, deferred, args)
 }
 
 // Wrapper used by ps:[start|stop|restart|status].
