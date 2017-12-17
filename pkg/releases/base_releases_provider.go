@@ -13,7 +13,7 @@ type baseReleasesProvider struct {
 
 func (_ *baseReleasesProvider) parseManifest(data []byte) ([]domain.Release, error) {
 	releases := []domain.Release{}
-	if err := json.Unmarshal(data, releases); err != nil {
+	if err := json.Unmarshal(data, &releases); err != nil {
 		return nil, err
 	}
 	return releases, nil

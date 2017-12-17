@@ -18,6 +18,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/gigawattio/errorlib"
 	"github.com/gigawattio/oslib"
 	"github.com/jaytaylor/shipbuilder/pkg/domain"
 
@@ -1524,6 +1525,18 @@ func (server *Server) Redeploy(conn net.Conn, applicationName string) error {
 		if err != nil {
 			return err
 		}
+
+		restore := func() error {
+			pErr := server.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
+				app.LastDeploy = previousVersion
+				return nil
+			})
+			if pErr != nil {
+				return fmt.Errorf("failed to restore version=%v for app=%v: %s", previousVersion, app.Name, pErr)
+			}
+			return nil
+		}
+
 		deployment := NewDeployment(DeploymentOptions{
 			Server:      server,
 			Logger:      logger,
@@ -1535,6 +1548,9 @@ func (server *Server) Redeploy(conn net.Conn, applicationName string) error {
 		// Find the release that corresponds with the latest deploy.
 		releases, err := server.ReleasesProvider.List(applicationName)
 		if err != nil {
+			if rErr := restore(); rErr != nil {
+				return errorlib.Merge([]error{err, rErr})
+			}
 			return err
 		}
 		found := false
@@ -1547,12 +1563,8 @@ func (server *Server) Redeploy(conn net.Conn, applicationName string) error {
 		}
 		if !found {
 			// Roll back the version bump.
-			err = server.WithPersistentApplication(applicationName, func(app *Application, cfg *Config) error {
-				app.LastDeploy = previousVersion
-				return nil
-			})
-			if err != nil {
-				return err
+			if rErr := restore(); rErr != nil {
+				return rErr
 			}
 			return fmt.Errorf("failed to find previous deploy: %v", previousVersion)
 		}
