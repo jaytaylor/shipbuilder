@@ -678,18 +678,22 @@ func main() {
 				[]string{"lb:add", "LoadBalancer_Add"},
 				"Add one or more load-balancers to the server",
 				flagSpec{
-					names: []string{"hostname"},
-					usage: "Specify flag multiple times for multiple load-balancer hostnames",
-					typ:   "slice",
+					names:    []string{"hostname", "hostnames"},
+					usage:    "Specify flag multiple times for multiple load-balancer hostnames",
+					required: true,
+					args:     true,
+					typ:      "slice",
 				},
 			),
 			command(
 				[]string{"lb:remove", "LoadBalancer_Remove"},
 				"Remove one or more load-balancers from the server",
 				flagSpec{
-					names: []string{"hostname"},
-					usage: "Specify flag multiple times for multiple load-balancer hostnames",
-					typ:   "slice",
+					names:    []string{"hostname", "hostnames"},
+					usage:    "Specify flag multiple times for multiple load-balancer hostnames",
+					required: true,
+					args:     true,
+					typ:      "slice",
 				},
 			),
 
@@ -703,18 +707,22 @@ func main() {
 				[]string{"nodes:add", "slaves:add", "slave:add", "Node_Add"},
 				"Add one or more slave nodes to the server",
 				flagSpec{
-					names: []string{"hostname"},
-					usage: "Specify flag multiple times for multiple slave node hostnames",
-					typ:   "slice",
+					names:    []string{"hostname", "hostnames"},
+					usage:    "Specify flag multiple times for multiple slave node hostnames",
+					required: true,
+					args:     true,
+					typ:      "slice",
 				},
 			),
 			command(
 				[]string{"nodes:remove", "slaves:remove", "slave:remove", "Node_Remove"},
 				"Remove one or more slave nodes from the server",
 				flagSpec{
-					names: []string{"hostname"},
-					usage: "Specify flag multiple times for multiple slave node hostnames",
-					typ:   "slice",
+					names:    []string{"hostname", "hostnames"},
+					usage:    "Specify flag multiple times for multiple slave node hostnames",
+					required: true,
+					args:     true,
+					typ:      "slice",
 				},
 			),
 
@@ -811,6 +819,8 @@ func sigWait() error {
 	return nil
 }
 
+// releasesProvider performs runtime resolution for which releases provider to
+// use.
 func releasesProvider(ctx *cli.Context) (provider domain.ReleasesProvider, err error) {
 	requested := ctx.String("releases-provider")
 
@@ -837,10 +847,15 @@ type flagSpec struct {
 	names    []string // NB: pos[0] = name, pos[1:] = aliases.
 	usage    string
 	required bool
-	typ      string // NB: one of "", or "slice", "" signifies a string flag.
+	args     bool   // Use as os.Args based parameter instead of a flag.
+	typ      string // NB: one of "", or "slice"; "" signifies a string flag.
 }
 
 func (spec flagSpec) flag() cli.Flag {
+	if spec.args {
+		panic(fmt.Sprintf("flagSpec %v has args enabled and thus is not eligible to be translated to a flag", spec.names[0]))
+	}
+
 	switch spec.typ {
 	case "":
 		return &cli.StringFlag{
@@ -864,27 +879,37 @@ func (spec flagSpec) flag() cli.Flag {
 func (spec flagSpec) val(ctx *cli.Context, argsConsumed *int) (interface{}, error) {
 	switch spec.typ {
 	case "":
-		val := ctx.String(spec.names[0])
+		var val string
+		if spec.args {
+			val = ctx.Args().First()
+		} else {
+			val = ctx.String(spec.names[0])
+		}
 		if spec.required && len(val) == 0 {
 			if ctx.Args().Len() > *argsConsumed {
 				val = ctx.Args().Slice()[*argsConsumed]
 				*argsConsumed++
 			}
 			if len(val) == 0 {
-				return nil, fmt.Errorf("%v flag is required", spec.names[0])
+				return nil, spec.requiredError()
 			}
 		}
 		return val, nil
 
 	case "slice":
-		val := ctx.StringSlice(spec.names[0])
+		var val []string
+		if spec.args {
+			val = ctx.Args().Slice()
+		} else {
+			val = ctx.StringSlice(spec.names[0])
+		}
 		if spec.required && len(val) == 0 {
 			if ctx.Args().Len() > *argsConsumed {
 				val = ctx.Args().Slice()[*argsConsumed:]
 				*argsConsumed += len(val)
 			}
 			if len(val) == 0 {
-				return nil, fmt.Errorf("%v flag is required", spec.names[0])
+				return nil, spec.requiredError()
 			}
 		}
 		return val, nil
@@ -893,6 +918,27 @@ func (spec flagSpec) val(ctx *cli.Context, argsConsumed *int) (interface{}, erro
 		return nil, fmt.Errorf("unrecognized spec.typ: %v", spec.typ)
 	}
 
+}
+
+// requiredError returns the "flag required" error message to present to user.
+func (spec flagSpec) requiredError() error {
+	if spec.required {
+		var plural string
+		if spec.typ == "slice" {
+			plural = "one or more "
+		}
+		if spec.args {
+			if spec.typ == "slice" {
+				return fmt.Errorf("one or more %v arguments are required", spec.names[0])
+			}
+			return fmt.Errorf("%v argument is required", spec.names[0], plural)
+		}
+		if spec.typ == "slice" {
+			return fmt.Errorf("one or more %v flags are required", spec.names[0])
+		}
+		return fmt.Errorf("%v flag is required", spec.names[0])
+	}
+	return nil
 }
 
 // command generates a cli.Command with 0 or more string flags.
@@ -913,6 +959,9 @@ func command(names []string, description string, flagSpecs ...flagSpec) *cli.Com
 		numRequired = 0
 	)
 	for _, spec := range flagSpecs {
+		if spec.args {
+			continue
+		}
 		if len(spec.names) == 0 {
 			panic("flag name / aliases slice must not be empty!")
 		}
