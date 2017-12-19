@@ -389,45 +389,26 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 		return err
 	}
 
-	type Server struct {
-		Host string
-		Port int
-	}
-	type App struct {
-		Name                    string
-		Domains                 []string
-		FirstDomain             string
-		Servers                 []*Server
-		Maintenance             bool
-		MaintenancePageFullPath string
-		MaintenancePageBasePath string
-		MaintenancePageDomain   string
-	}
-	type Lb struct {
-		LogServerIpAndPort  string // ShipBuilder server ip:port to send HAProxy UDP logs to.
-		Applications        []*App
-		LoadBalancers       []string
-		HaProxyStatsEnabled bool
-		HaProxyCredentials  string
-	}
-	lb := &Lb{
+	lbSpec := &LBSpec{
 		LogServerIpAndPort:  logServerIpAndPort,
-		Applications:        []*App{},
+		Applications:        []*LBApp{},
 		LoadBalancers:       cfg.LoadBalancers,
 		HaProxyStatsEnabled: HaProxyStatsEnabled(),
 		HaProxyCredentials:  HaProxyCredentials(),
 	}
 
 	for _, app := range cfg.Applications {
-		a := &App{
+		a := &LBApp{
 			Name:                    app.Name,
 			Domains:                 app.Domains,
 			FirstDomain:             app.FirstDomain(),
-			Servers:                 []*Server{},
+			Servers:                 []*LBAppDyno{},
 			Maintenance:             app.Maintenance,
 			MaintenancePageFullPath: app.MaintenancePageFullPath(),
 			MaintenancePageBasePath: app.MaintenancePageBasePath(),
 			MaintenancePageDomain:   app.MaintenancePageDomain(),
+			SSL:           !isTruthy(app.Environment["SB_DISABLE_SSL"]),
+			SSLForwarding: !isTruthy(app.Environment["SB_DISABLE_SSL_FORWARDING"]),
 		}
 		for proc, _ := range app.Processes {
 			if proc == "web" {
@@ -451,7 +432,7 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 					if err != nil {
 						return err
 					}
-					a.Servers = append(a.Servers, &Server{
+					a.Servers = append(a.Servers, &LBAppDyno{
 						Host: dyno.Host,
 						Port: port,
 					})
@@ -464,7 +445,7 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 							return err
 						}
 
-						candidateServer := &Server{
+						candidateServer := &LBAppDyno{
 							Host: addDyno.Host,
 							Port: port,
 						}
@@ -483,7 +464,7 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 				}
 			}
 		}
-		lb.Applications = append(lb.Applications, a)
+		lbSpec.Applications = append(lbSpec.Applications, a)
 	}
 
 	// Save it to the load balancer
@@ -492,31 +473,31 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 		return err
 	}
 	defer os.Remove("/tmp/haproxy.cfg")
-	err = HAPROXY_CONFIG.Execute(f, lb)
+	err = HAPROXY_CONFIG.Execute(f, lbSpec)
 	f.Close()
 	if err != nil {
 		return err
 	}
 
-	type LbSyncResult struct {
+	type LBSyncResult struct {
 		lbHost string
 		err    error
 	}
 
-	syncChannel := make(chan LbSyncResult)
-	for _, lb := range cfg.LoadBalancers {
-		go func(lb string) {
+	syncChannel := make(chan LBSyncResult)
+	for _, host := range cfg.LoadBalancers {
+		go func(host string) {
 			c := make(chan error, 1)
 			go func() {
 				err := e.Run("rsync",
 					"-azve", "ssh "+DEFAULT_SSH_PARAMETERS,
-					"/tmp/haproxy.cfg", "root@"+lb+":/etc/haproxy/",
+					"/tmp/haproxy.cfg", "root@"+host+":/etc/haproxy/",
 				)
 				if err != nil {
 					c <- err
 					return
 				}
-				err = e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+lb,
+				err = e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+host,
 					`/bin/bash -c 'if [ "$(sudo systemctl status haproxy | grep --only-matching "Active: [^ ]\+" | cut -d " " -f 2)" = "inactive" ]; then sudo systemctl start haproxy ; else sudo systemctl reload haproxy ; fi'`,
 				)
 				if err != nil {
@@ -527,11 +508,11 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 			}()
 			go func() {
 				time.Sleep(LOAD_BALANCER_SYNC_TIMEOUT_SECONDS * time.Second)
-				c <- fmt.Errorf("LB sync operation to '%v' timed out after %v seconds", lb, LOAD_BALANCER_SYNC_TIMEOUT_SECONDS)
+				c <- fmt.Errorf("LB sync operation to '%v' timed out after %v seconds", host, LOAD_BALANCER_SYNC_TIMEOUT_SECONDS)
 			}()
 			// Block until chan has something, at which point syncChannel will be notified.
-			syncChannel <- LbSyncResult{lb, <-c}
-		}(lb)
+			syncChannel <- LBSyncResult{host, <-c}
+		}(host)
 	}
 
 	nLoadBalancers := len(cfg.LoadBalancers)
@@ -553,8 +534,7 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 
 	// Uddate `currentLoadBalancerConfig` with updated HAProxy configuration.
 	cfgBuffer := bytes.Buffer{}
-	err = HAPROXY_CONFIG.Execute(&cfgBuffer, lb)
-	if err != nil {
+	if err = HAPROXY_CONFIG.Execute(&cfgBuffer, lbSpec); err != nil {
 		return err
 	}
 	server.currentLoadBalancerConfig = cfgBuffer.String()

@@ -5,6 +5,26 @@ export SB_REPO_PATH="${GOPATH:-${HOME}/go}/src/github.com/jaytaylor/shipbuilder"
 export goVersion='1.9.1'
 export lxcBaseImage='ubuntu:16.04'
 
+# function backtrace () {
+#     local deptn=${#FUNCNAME[@]}
+
+#     for ((i=1; i<$deptn; i++)); do
+#         local func="${FUNCNAME[$i]}"
+#         local line="${BASH_LINENO[$((i-1))]}"
+#         local src="${BASH_SOURCE[$((i-1))]}"
+#         printf '%*s' $i '' # indent
+#         echo "at: $func(), $src, line $line"
+#     done
+# }
+# function trace_top_caller () {
+#     local func="${FUNCNAME[1]}"
+#     local line="${BASH_LINENO[0]}"
+#     local src="${BASH_SOURCE[0]}"
+#     echo "  called from: $func(), $src, line $line"
+# }
+# set -o errtrace
+# trap 'trace_top_caller' ERR
+
 function abortIfNonZero() {
     # @param $1 command return code/exit status (e.g. $?, '0', '1').
     # @param $2 error message if exit status was non-zero.
@@ -860,26 +880,25 @@ function lxcConfigBuildPack() {
     lxcContainerExists "${container}"
     existsRc=$?
     if [ "${skipIfExists}" = '1' ] && [ ${existsRc} -eq 0 ] ; then
-        echo "info: lxcConfigBuildPack() skipping container=${container} because it already exists and the skip flag was passed"
+        echo "info: lxcConfigBuildPack() skipping container=${container} because it already exists and skipIfExists=${skipIfExists}"
     else
         test -z "${lxcFs}" && echo 'error: lxcConfigBuildPack() missing required parameter: $lxcFs' 1>&2 && exit 1
         echo "info: creating build-pack ${container} container"
         sudo lxc copy base "${container}"
-        #lxcInitContainer "${container}" "${skipIfExists}" "${lxcFs}"
         sudo lxc start "${container}"
         getContainerIp "${container}"
 
         # Install packages.
         echo "info: installing packages to ${container} container: ${packages}"
-        #ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo apt-get install -y ${packages}"
-        sudo lxc exec -T "${container}" -- /bin/bash -c "sudo apt-get update && sudo apt-get -o Dpkg::Options::='--force-overwrite' install -y ${packages}"
+        #ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo apt install -y ${packages}"
+        sudo lxc exec -T "${container}" -- /bin/bash -c "sudo apt update && sudo apt -o Dpkg::Options::='--force-overwrite' install -y ${packages}"
         rc=$?
         if [ ${rc} -ne 0 ] ; then
             echo 'warning: first attempt at installing packages failed, falling back to trying one by one..'
             for package in ${packages} ; do
-                #ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo apt-get install -y ${package}"
-                sudo lxc exec -T "${container}" -- /bin/bash -c "sudo apt-get install -o Dpkg::Options::='--force-overwrite' -y ${package}"
-                abortIfNonZero $? "[${container}] container apt-get install -y ${package}"
+                #ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo apt install -y ${package}"
+                sudo lxc exec -T "${container}" -- /bin/bash -c "sudo apt install -o Dpkg::Options::='--force-overwrite' -y ${package}"
+                abortIfNonZero $? "[${container}] container apt install -y ${package}"
             done
             #sudo lxc exec -T "${container}" -- sed -i 's/^NTPSERVERS=".*"$/NTPSERVERS=""/' /etc/default/ntpdate
             #abortIfNonZero $? "[${container}] container sed -i 's/^NTPSERVERS=\".*\"$/NTPSERVERS=\"\"/' /etc/default/ntpdate"
@@ -967,8 +986,12 @@ function prepareServerPart2() {
     test -z "${lxcFs}" && echo 'error: prepareServerPart2() missing required parameter: $lxcFs' 1>&2 && exit 1 || :
 
     local container='base'
+
     lxcInitContainer "${container}" "${skipIfExists}" "${lxcFs}"
     abortIfNonZero $? "lxcInitContainer(container=${container}, lxcFs=${lxcFs}, skipIfExists=${skipIfExists}) failed"
+
+    lxcConfigBase 'base' "${skipIfExists}"
+    abortIfNonZero $? "lxcConfigBase('base' skipIfExists=\"${skipIfExists}\")"
 
     lxcConfigBuildPacks "${skipIfExists}" "${lxcFs}"
     abortIfNonZero $? "lxcConfigBuildPacks(lxcFs=${lxcFs}, skipIfExists=${skipIfExists}) failed"

@@ -67,33 +67,78 @@ done`
 	ZFS_MAINTENANCE = `#!/usr/bin/env bash
 
 # Cleanup old versions on the shipbuilder build box (only old versions, not the newest/latest version).
-preserveVersionsRe=$(
-    lxc list --format=json \
+
+## How this filter pipe works
+# ---------------------------
+# First, captures LXC state as JSON and initiates filtration by desired
+# container state.  Using principle of word atom splitting to sort by app by version.
+# Then converts to sequence of comma-delimited:
+#
+#     app-name v1,v2,vN...
+#
+# Preserves only the latest version (at very end of sequence), and finally
+# rejoins back to app-version format.
+
+containerLxcState="$(sudo lxc list --format=json)"
+containerPreserveVersionsRe=$(
+    echo -n "${containerLxcState}" \
     | jq -r '.[] | select(.status == "Stopped") | .name' \
-    | grep --only-matching '^[^ ]\+-v[0-9]\+.*$' \
-    | sed 's/^\([^ ]\+\)\(-v\)\([0-9]\+\)\(.*\)$/\1 \3 \1\2\3\4/' \
+    | grep --only-matching '^[^ ]\+` + DYNO_DELIMITER + `v[0-9]\+.*$' \
+    | sed 's/^\([^ ]\+\)\(` + DYNO_DELIMITER + `v\)\([0-9]\+\)\(.*\)$/\1 \3 \1\2\3\4/' \
     | sort -t' ' -k 1,2 -g \
     | awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' \
     | sed 's/\([0-9]\+,\)*\([0-9]\+\)$/\2/' \
-    | awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s-v%s\n", $1, arr[i] }' \
+    | awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s` + DYNO_DELIMITER + `v%s\n", $1, arr[i] }' \
     | uniq \
     | tr '\n' ' ' \
     | sed 's/ /\\|/g' | sed 's/\\|$//' \
 )
-destroyVersions=$(
-    lxc list --format=json \
+
+containerDestroyVersions=$(
+    echo -n "${containerLxcState}" \
     | jq -r '.[] | select(.status == "Stopped") | .name' \
-    | grep --only-matching '^[^ ]\+-v[0-9]\+.*$' \
-    | sed 's/^\([^ ]\+\)\(-v\)\([0-9]\+\)\(.*\)$/\1 \3 \1\2\3\4/' \
+    | grep --only-matching '^[^ ]\+` + DYNO_DELIMITER + `v[0-9]\+.*$' \
+    | sed 's/^\([^ ]\+\)\(` + DYNO_DELIMITER + `v\)\([0-9]\+\)\(.*\)$/\1 \3 \1\2\3\4/' \
     | sort -t' ' -k 1,2 -g \
     | awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' \
     | grep '^[^ ]\+ [0-9]\+,' \
     | sed 's/,[0-9]\+$//' \
-    | awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s-v%s\n", $1, arr[i] }' \
+    | awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s` + DYNO_DELIMITER + `v%s\n", $1, arr[i] }' \
     | uniq
 )
 
-# TODO: Migrate this to ZFS 2.0 / SB LXC ZFS PATH (added 2017-11-04).
+
+imageLxcState="$(sudo lxc image list)"
+imagePreserveVersionsRe=$(
+    echo -n "${imageLxcState}" \
+    | sed '1,2d' \
+    | grep '^| ' \
+    | sed 's/^\(| \([^ ]\+\)\)\? *|.*/\2/g' \
+    | grep --only-matching '^[^ ]\+` + DYNO_DELIMITER + `v[0-9]\+.*$' \
+    | sed 's/^\([^ ]\+\)\(` + DYNO_DELIMITER + `v\)\([0-9]\+\)\(.*\)$/\1 \3 \1\2\3\4/' \
+    | sort -t' ' -k 1,2 -g \
+    | awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' \
+    | sed 's/\([0-9]\+,\)*\([0-9]\+\)$/\2/' \
+    | awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s` + DYNO_DELIMITER + `v%s\n", $1, arr[i] }' \
+    | uniq \
+    | tr '\n' ' ' \
+    | sed 's/ /\\|/g' | sed 's/\\|$//' \
+)
+
+imageDestroyVersions=$(
+    echo -n "${imageLxcState}" \
+    | sed '1,2d' \
+    | grep '^| ' \
+    | sed 's/^\(| \([^ ]\+\)\)\? *|.*/\2/g' \
+    | grep --only-matching '^[^ ]\+` + DYNO_DELIMITER + `v[0-9]\+.*$' \
+    | sed 's/^\([^ ]\+\)\(` + DYNO_DELIMITER + `v\)\([0-9]\+\)\(.*\)$/\1 \3 \1\2\3\4/' \
+    | sort -t' ' -k 1,2 -g \
+    | awk -F ' ' '$1==app{ printf ",%s", $2 ; next } { app=$1 ; printf "\n%s %s", $1, $2 } END { printf "\n" }' \
+    | grep '^[^ ]\+ [0-9]\+,' \
+    | sed 's/,[0-9]\+$//' \
+    | awk -F ' ' '{ split($2,arr,",") ; for (i in arr) printf "%s` + DYNO_DELIMITER + `v%s\n", $1, arr[i] }' \
+    | uniq
+)
 
 # Define function to destroy a container.
 function destroyContainer() {
@@ -166,7 +211,7 @@ function destroyOldAppVersions() {
 
 destroyOldAppVersions
 
-destroyNonContainerVolumes
+#destroyNonContainerVolumes
 
 ## Cleanup any empty container directories.
 #for dir in $(find /var/lib/lxc/ -maxdepth 1 -type d | grep '[a-zA-Z0-9-]\+_\(v[0-9]\+\(_.\+_[0-9]\+\)\?\|console_[a-zA-Z0-9]\+\)'); do
@@ -679,55 +724,65 @@ defaults
 
 frontend frontend
     bind 0.0.0.0:80
+    {{- if gt (len .SSLForwardingDomains) 0 }}
     # Require SSL
-    redirect scheme https code 301 if !{ ssl_fc }
+    http-request redirect scheme https code 301 if !{ ssl_fc } AND { {{ range $i, $d := .SSLForwardingDomains }}{{ if gt $i 0 }} OR {{ end }}{{ $d }}{{ end }} }
     bind 0.0.0.0:443 ssl crt /etc/haproxy/certs.d no-sslv3
+    {{- end }}
     maxconn 32000
     option httplog
     option http-pretend-keepalive
     option forwardfor
     option http-server-close
-{{range $app := .Applications}}
-    {{if .Domains}}use_backend {{$app.Name}}{{if $app.Maintenance}}-maintenance{{end}} if { {{range .Domains}} hdr(host) -i {{.}} {{end}} }{{end}}
-{{end}}
-    {{if and .HaProxyStatsEnabled .HaProxyCredentials .LoadBalancers}}use_backend load_balancer if { {{range .LoadBalancers }} hdr(host) -i {{.}} {{end}} }{{end}}
+    {{- range $app := .Applications }}
+    {{- if .Domains }}
+    use_backend {{ $app.Name }}{{ if $app.Maintenance }}-maintenance{{ end }} if { {{ range .Domains }} hdr(host) -i {{ . }} {{ end }} }
+    {{- end }}
+    {{- end }}
+    {{- if and .HaProxyStatsEnabled .HaProxyCredentials .LoadBalancers}}
+    use_backend load_balancer if { {{ range .LoadBalancers }} hdr(host) -i {{ . }} {{ end }} }
+    {{- end }}
 
-{{with $context := .}}{{range $app := .Applications}}
+{{ with $context := . }}
+{{- range $app := .Applications }}
+# app: {{.Name}}
 backend {{.Name}}
     balance roundrobin
     reqadd X-Forwarded-Proto:\ https if { ssl_fc }
     option forwardfor
     option abortonclose
-    option httpchk GET / HTTP/1.1\r\nHost:\ {{.FirstDomain}}
-  {{range $app.Servers}}
-    server {{.Host}}-{{.Port}} {{.Host}}:{{.Port}} check port {{.Port}} observe layer7
-  {{end}}{{if and $context.HaProxyStatsEnabled $context.HaProxyCredentials}}
+    option httpchk GET / HTTP/1.1\r\nHost:\ {{ .FirstDomain }}
+    {{- range $app.Servers }}
+    server {{ .Host }}-{{ .Port }} {{ .Host}}:{{ .Port}} check port {{ .Port}} observe layer7
+    {{- end }}
+    {{- if and $context.HaProxyStatsEnabled $context.HaProxyCredentials }}
     stats enable
     stats uri /haproxy
     stats auth {{$context.HaProxyCredentials}}
-  {{end}}
-{{end}}{{end}}
+    {{- end }}
+{{- end }}
 
-{{range .Applications}}
-backend {{.Name}}-maintenance
+backend {{ $app.Name }}-maintenance
     acl static_file path_end .gif || path_end .jpg || path_end .jpeg || path_end .png || path_end .css
-    reqirep ^GET\ (.*)                    GET\ {{.MaintenancePageBasePath}}\1     if static_file
-    reqirep ^([^\ ]*)\ [^\ ]*\ (.*)       \1\ {{.MaintenancePageFullPath}}\ \2    if !static_file
-    reqirep ^Host:\ .*                    Host:\ {{.MaintenancePageDomain}}
+    reqirep ^GET\ (.*)                    GET\ {{ $app.MaintenancePageBasePath }}\1     if static_file
+    reqirep ^([^\ ]*)\ [^\ ]*\ (.*)       \1\ {{ $app.MaintenancePageFullPath }}\ \2    if !static_file
+    reqirep ^Host:\ .*                    Host:\ {{ $app.MaintenancePageDomain }}
     reqadd Cache-Control:\ no-cache,\ no-store,\ must-revalidate
     reqadd Pragma:\ no-cache
     reqadd Expires:\ 0
     rspirep ^HTTP/([^0-9\.]+)\ 200\ OK    HTTP/\1\ 503\ 
     rspadd Retry-After:\ 60
-    server s3 {{.MaintenancePageDomain}}:80
-{{end}}
+    server s3 {{ $app.MaintenancePageDomain }}:80
 
-{{if and .HaProxyStatsEnabled .HaProxyCredentials .LoadBalancers}}
+{{- end }}
+{{- end }}
+
+{{- if and .HaProxyStatsEnabled .HaProxyCredentials .LoadBalancers }}
 backend load_balancer
     stats enable
     stats uri /haproxy
-    stats auth {{.HaProxyCredentials}}
-{{end}}
+    stats auth {{ .HaProxyCredentials }}
+{{- end }}
 `)
 	if err != nil {
 		return fmt.Errorf("parsing HAPROXY_CONFIG template: %s", err)

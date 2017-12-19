@@ -12,8 +12,7 @@ func (server *Server) Reset_App(conn net.Conn, applicationName string) error {
 
 		fmt.Fprintf(titleLogger, "=== Resetting %v\n", app.Name)
 
-		err := e.DestroyContainer(app.Name)
-		if err != nil {
+		if err := e.DestroyContainer(app.Name); err != nil {
 			return err
 		}
 
