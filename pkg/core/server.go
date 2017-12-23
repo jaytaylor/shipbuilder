@@ -203,7 +203,7 @@ func (server *Server) handleCall(conn net.Conn, body string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("unknown command: %v", args[1])
+	return fmt.Errorf("unknown command: %v", args)
 }
 
 func (server *Server) handleConnection(conn net.Conn) {
