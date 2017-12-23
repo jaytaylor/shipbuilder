@@ -56,9 +56,41 @@ Also: Revisit git push weirdness / workaround hacks.
 TODO: Test rollbacks.
 TODO: Automatically scrub old app images from slaves.
 
+TODO: Additional protection against dyno port conflicts via checking against running containers on the host during launch in container_start.py.
+
+TODO: Disable remaining services in ubuntu container, e.g.:
+
+TODO: Package SB-logger as a standalone program and stop embedding the full sb binary.  Security practice improvement.
+
+/sbin/init
+/lib/systemd/systemd-journald
+/lib/systemd/systemd-udevd
+/lib/systemd/systemd-logind
+/usr/bin/dbus-daemon --system --address=systemd: --nofork --nopidfile --systemd-activation
+/sbin/dhclient -1 -v -pf /run/dhclient.eth0.pid -lf /var/lib/dhcp/dhclient.eth0.leases -I -df /var/lib/dhcp/dhclient6.eth0.leases eth0
+/sbin/agetty --noclear --keep-baud console 115200 38400 9600 linux
+[ssh] <defunct>
+/bin/sh /usr/lib/apt/apt.systemd.daily install
+/bin/sh /usr/lib/apt/apt.systemd.daily lock_is_held install
+/usr/bin/python3 /usr/bin/unattended-upgrade
+
+
+---
+
 Note: it's now recommended to ensure $sbHost is set to a domain name.. example: install/node.sh 2nd ssh cmd.
 
 TOOD: PORT ALLOCATION BUG - could be caused by the tmp.sh during deploy; when there's an error it blindly tries incrementing the port...
+
+2017-12-17: =Idea=
+What about tracking user activity logging + queries w/ fields: USERNAME .  Remember how USERNAME is a difficult thing to infer with the present iteration of shipbuilder.  Perhaps make it a pluggable "Addon" or "Module", "Dynamic Plugin Module, etc.  One is the current scheme of not caring about or handling anything.  Maybe it's a plugin which simply enforces that the other spydaddy plugin isn't installed?  Then there is the most granular scenario of the current username where both the username, timestamp, and argv are embedded alongside a system account producing start/stop(/error?) messages. Finally, consider the middleground of not forcing users to get their own accounts, this exists as a clean subset of the more complete solution.
+
+(Also: LDAP integration?)
+
+TODO: 2017-12-18 (Mon) Fix needed for SB client exiting with 0 status code even when connecting to sb-server failed.
+
+TODO: 2017-12-20: SB client can be fixed by adding 'ruok' equivalent in client.go.
+
+TODO: 2017-12-12: Make backup of HAProxy cfg before overwriting, then restore orig config if hap svc restart fails.
 
 ## Client
 
