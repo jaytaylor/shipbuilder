@@ -25,6 +25,11 @@ var (
 		Aliases: []string{"a", "app-name"},
 		Usage:   "Name of app",
 	}
+	deferredFlag = &cli.BoolFlag{
+		Name:    "deferred",
+		Aliases: []string{"defer", "d"},
+		Usage:   "Defer app redeployment",
+	}
 )
 
 func main() {
@@ -78,10 +83,17 @@ func main() {
 				Name:    "server",
 				Aliases: []string{"s"},
 				Flags: []cli.Flag{
-					&cli.BoolFlag{ // TODO: Change to bool.
+					&cli.StringFlag{
+						Name:        "haproxy-enable-nonstandard-ports",
+						EnvVars:     []string{"SB_HAPROXY_ENABLE_NONSTANDARD_PORTS"},
+						Usage:       "Set to '1' to enable support for non-standard HAProxy load-balancer ports; should only be enabled for testing and development purposes because it's a little less precise about domain name matching",
+						Value:       core.DefaultHAProxyEnableNonstandardPorts,
+						Destination: &core.DefaultHAProxyEnableNonstandardPorts,
+					},
+					&cli.StringFlag{
 						Name:        "haproxy-stats",
 						EnvVars:     []string{"SB_HAPROXY_STATS"},
-						Usage:       "Control whether or not generated HAProxy configs will have statistics enabled",
+						Usage:       "Set to '1' to enable statistics for generated HAProxy configs will have statistics enabled",
 						Value:       core.DefaultHAProxyStats,
 						Destination: &core.DefaultHAProxyStats,
 					},
@@ -198,6 +210,7 @@ func main() {
 								value interface{}
 							}
 							pairs := []pair{
+								{"DefaultHAProxyEnableNonstandardPorts", core.DefaultHAProxyEnableNonstandardPorts},
 								{"DefaultHAProxyStats", core.DefaultHAProxyStats},
 								{"DefaultHAProxyCredentials", core.DefaultHAProxyCredentials},
 								{"DefaultAWSKey", core.DefaultAWSKey},
@@ -388,20 +401,28 @@ func main() {
 			////////////////////////////////////////////////////////////////////
 			// domains:*
 			appCommand(
-				[]string{"domains", "domains:list", "Domains_List"},
+				[]string{"domains", "domains:list", "domain", "Domains_List"},
 				"Show domain names associated with an app",
+				// TODO: Add sub-commands instead of ':' delimited pair
+				// clusters.
 			),
 			&cli.Command{
-				Name:        "domains:add",
-				Aliases:     []string{"domain:add", "Domains_Add"},
+				Name: "domains:add",
+				Aliases: []string{
+					"domain:a",
+					"domain:add", "domains:a",
+					"Domains_Add",
+				},
 				Description: "Associate one or more domain names to an app",
 				Flags: []cli.Flag{
 					appFlag,
+					deferredFlag,
 				},
 				Action: func(ctx *cli.Context) error {
 					var (
-						app     = ctx.String("app")
-						domains = ctx.Args().Slice()
+						app      = ctx.String("app")
+						deferred = ctx.Bool("deferred")
+						domains  = ctx.Args().Slice()
 					)
 					if len(app) == 0 {
 						return errors.New("app flag is required")
@@ -409,20 +430,26 @@ func main() {
 					if len(domains) == 0 {
 						return errors.New("cannot add empty list of domains to app")
 					}
-					return (&core.Client{}).RemoteExec("Domains_Add", app, domains)
+					return (&core.Client{}).RemoteExec("Domains_Add", app, deferred, domains)
 				},
 			},
 			&cli.Command{
-				Name:        "domains:remove",
-				Aliases:     []string{"domain:remove", "Domains_Remove"},
+				Name: "domains:remove",
+				Aliases: []string{
+					"domains:rm", "domains:delete", "domains:r",
+					"domain:remove", "domain:rm", "domain:delete", "domain:r",
+					"Domains_Remove",
+				},
 				Description: "Remove one or more domain names from an app",
 				Flags: []cli.Flag{
 					appFlag,
+					deferredFlag,
 				},
 				Action: func(ctx *cli.Context) error {
 					var (
-						app     = ctx.String("app")
-						domains = ctx.Args().Slice()
+						app      = ctx.String("app")
+						deferred = ctx.Bool("deferred")
+						domains  = ctx.Args().Slice()
 					)
 					if len(app) == 0 {
 						return errors.New("app flag is required")
@@ -430,7 +457,19 @@ func main() {
 					if len(domains) == 0 {
 						return errors.New("cannot remove empty list of domains from app")
 					}
-					return (&core.Client{}).RemoteExec("Domains_Remove", app, domains)
+					return (&core.Client{}).RemoteExec("Domains_Remove", app, deferred, domains)
+				},
+			},
+			&cli.Command{
+				Name: "domains:sync",
+				Aliases: []string{
+					"domains:s",
+					"domain:sync", "domain:s",
+					"Domains_Sync",
+				},
+				Description: "Sync internal apps and domains state to physical LB configuration",
+				Action: func(ctx *cli.Context) error {
+					return (&core.Client{}).RemoteExec("Domains_Sync")
 				},
 			},
 
@@ -1073,11 +1112,7 @@ func deferredMappedAppCommand(names []string, description string) *cli.Command {
 		Description: description,
 		Flags: []cli.Flag{
 			appFlag,
-			&cli.BoolFlag{
-				Name:    "deferred",
-				Aliases: []string{"defer", "d"},
-				Usage:   "Defer app redeployment",
-			},
+			deferredFlag,
 		},
 		Action: func(ctx *cli.Context) error {
 			var (

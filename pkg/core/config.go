@@ -46,18 +46,21 @@ var defaultSshParametersList = strings.Split(DEFAULT_SSH_PARAMETERS, " ")
 // Global configuration.
 var (
 	// TODO: Remove "Default" prefix from all these vars.
-	DefaultHAProxyStats = true // NB: Bools are not settable via ldflags.
+
+	// NB: Bools are not settable via ldflags.
 
 	// NB: LDFLAGS can be specified by compiling with `-ldflags '-X main.DefaultSSHHost=.. ...'`.
-	DefaultHAProxyCredentials string
-	DefaultAWSKey             string
-	DefaultAWSSecret          string
-	DefaultAWSRegion          string
-	DefaultS3BucketName       string
-	DefaultSSHHost            string
-	DefaultSSHKey             string
-	DefaultLXCFS              string
-	DefaultZFSPool            string
+	DefaultHAProxyEnableNonstandardPorts string
+	DefaultHAProxyStats                  string
+	DefaultHAProxyCredentials            string
+	DefaultAWSKey                        string
+	DefaultAWSSecret                     string
+	DefaultAWSRegion                     string
+	DefaultS3BucketName                  string
+	DefaultSSHHost                       string
+	DefaultSSHKey                        string
+	DefaultLXCFS                         string
+	DefaultZFSPool                       string
 )
 
 var (
@@ -393,7 +396,7 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 		LogServerIpAndPort:  logServerIpAndPort,
 		Applications:        []*LBApp{},
 		LoadBalancers:       cfg.LoadBalancers,
-		HaProxyStatsEnabled: HaProxyStatsEnabled(),
+		HaProxyStatsEnabled: isTruthy(DefaultHAProxyStats),
 		HaProxyCredentials:  HaProxyCredentials(),
 	}
 
@@ -642,14 +645,6 @@ func GetSystemIp() string {
 	}
 	fmt.Printf("warning: GetSystemIp: system address discovery failed, defaulting to '127.0.0.1'\n")
 	return "127.0.0.1"
-}
-
-func HaProxyStatsEnabled() bool {
-	maybeValue := strings.TrimSpace(strings.ToLower(os.Getenv("SB_HAPROXY_STATS")))
-	if maybeValue != "" {
-		return maybeValue == "1" || maybeValue == "true" || maybeValue == "yes"
-	}
-	return DefaultHAProxyStats
 }
 
 func HaProxyCredentials() string {

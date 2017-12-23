@@ -230,6 +230,7 @@ func init() {
 		writer("domains:remove", "domains:remove", "Domains_Remove",
 			required("app"), list("domains"),
 		),
+		writer("domains:sync", "domains:sync", "Domains_Sync"),
 
 		////////////////////////////////////////////////////////////////////////
 		// drains:*

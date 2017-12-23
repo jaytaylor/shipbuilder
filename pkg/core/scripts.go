@@ -722,11 +722,13 @@ defaults
     timeout server 30000
     #option http-server-close
 
+{{- with $context := . }}
+
 frontend frontend
     bind 0.0.0.0:80
     {{- if gt (len .SSLForwardingDomains) 0 }}
     # Require SSL
-    http-request redirect scheme https code 301 if !{ ssl_fc } AND { {{ range $i, $d := .SSLForwardingDomains }}{{ if gt $i 0 }} OR {{ end }}{{ $d }}{{ end }} }
+    http-request redirect scheme https code 301 if !{ ssl_fc } { {{ range $i, $d := .SSLForwardingDomains }}{{ if gt $i 0 }} OR {{ end }}hdr(host) -i {{ $context.DynHdrFlags }}-- {{ $d }}{{ end }} }
     bind 0.0.0.0:443 ssl crt /etc/haproxy/certs.d no-sslv3
     {{- end }}
     maxconn 32000
@@ -736,15 +738,18 @@ frontend frontend
     option http-server-close
     {{- range $app := .Applications }}
     {{- if .Domains }}
-    use_backend {{ $app.Name }}{{ if $app.Maintenance }}-maintenance{{ end }} if { {{ range .Domains }} hdr(host) -i {{ . }} {{ end }} }
+    use_backend {{ $app.Name }}{{ if $app.Maintenance }}-maintenance{{ end }} if { {{ range .Domains }} hdr(host) -i {{ $context.DynHdrFlags }}-- {{ . }} {{ end }} }
     {{- end }}
-    {{- end }}
-    {{- if and .HaProxyStatsEnabled .HaProxyCredentials .LoadBalancers}}
-    use_backend load_balancer if { {{ range .LoadBalancers }} hdr(host) -i {{ . }} {{ end }} }
     {{- end }}
 
-{{ with $context := . }}
+    {{- if and .HaProxyStatsEnabled .HaProxyCredentials .LoadBalancers}}
+    # NB: Restrict stats vhosts to load-balancers hostnames, only.
+    use_backend load_balancer if { {{ range .LoadBalancers }} hdr(host) -i {{ $context.DynHdrFlags }}-- {{ . }} {{ end }} }
+    {{- end }}
+
 {{- range $app := .Applications }}
+
+
 # app: {{.Name}}
 backend {{.Name}}
     balance roundrobin
@@ -760,7 +765,6 @@ backend {{.Name}}
     stats uri /haproxy
     stats auth {{$context.HaProxyCredentials}}
     {{- end }}
-{{- end }}
 
 backend {{ $app.Name }}-maintenance
     acl static_file path_end .gif || path_end .jpg || path_end .jpeg || path_end .png || path_end .css
@@ -775,9 +779,10 @@ backend {{ $app.Name }}-maintenance
     server s3 {{ $app.MaintenancePageDomain }}:80
 
 {{- end }}
+
 {{- end }}
 
-{{- if and .HaProxyStatsEnabled .HaProxyCredentials .LoadBalancers }}
+{{ if and .HaProxyStatsEnabled .HaProxyCredentials .LoadBalancers }}
 backend load_balancer
     stats enable
     stats uri /haproxy

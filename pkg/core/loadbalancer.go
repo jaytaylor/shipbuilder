@@ -42,3 +42,13 @@ func (lbSpec LBSpec) SSLForwardingDomains() []string {
 	}
 	return found
 }
+
+// DynHdrFlags returns dynamic flags to include to the HAProxy `hdr(host)'
+// function.  For example, when SB_ENABLE_NONSTANDARD_LB_PORTS is enabled, the
+// "-m beg" flag is necessary to ensure reachability to apps via the LB.
+func (lbSpec LBSpec) DynHdrFlags() string {
+	if isTruthy(DefaultHAProxyEnableNonstandardPorts) {
+		return "-m beg "
+	}
+	return ""
+}

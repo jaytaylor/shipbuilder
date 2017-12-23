@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"net"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
-func (server *Server) Domains_Add(conn net.Conn, applicationName string, domains []string) error {
+func (server *Server) Domains_Add(conn net.Conn, applicationName string, deferred bool, domains []string) error {
 	titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
 	fmt.Fprintf(titleLogger, "=== Adding domains to %v\n", applicationName)
 
@@ -45,6 +47,10 @@ func (server *Server) Domains_Add(conn net.Conn, applicationName string, domains
 	if err != nil {
 		return err
 	}
+	if deferred {
+		fmt.Fprintf(dimLogger, "Load-balancer sync deferred at request of user for op=add domains=$+v\n", domains)
+		return nil
+	}
 	e := &Executor{dimLogger}
 	return server.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
 }
@@ -61,7 +67,7 @@ func (server *Server) Domains_List(conn net.Conn, applicationName string) error 
 	})
 }
 
-func (server *Server) Domains_Remove(conn net.Conn, applicationName string, domains []string) error {
+func (server *Server) Domains_Remove(conn net.Conn, applicationName string, deferred bool, domains []string) error {
 	titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
 	fmt.Fprintf(titleLogger, "=== Removing domains from %v\n", applicationName)
 
@@ -87,6 +93,36 @@ func (server *Server) Domains_Remove(conn net.Conn, applicationName string, doma
 	if err != nil {
 		return err
 	}
+	if deferred {
+		fmt.Fprintf(dimLogger, "Load-balancer sync deferred at request of user for op=add domains=$+v\n", domains)
+		return nil
+	}
 	e := &Executor{dimLogger}
 	return server.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
+}
+
+// domainsSync Attmpts to sync all HAProxy load-balancer configurations
+// across the fleet.
+func (server *Server) domainsSync(conn net.Conn, applicationName string) error {
+	var (
+		dimLogger = NewFormatter(server.getLogger(conn), DIM)
+		e         = &Executor{dimLogger}
+	)
+	if err := server.SyncLoadBalancers(e, []Dyno{}, []Dyno{}); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Domains_Sync is the public interface for syncing all HAProxy load-balancer
+// configurations across the fleet.
+func (server *Server) Domain_Sync(conn net.Conn, applicationName string) error {
+	if err := server.domainsSync(conn, applicationName); err != nil {
+		log.Errorf("Problem syncing load-balancer configuration: %s", err)
+		fmt.Fprintf(conn, "Problem syncing load-balancer configuration: %s\n", err)
+		return err
+	}
+	log.Infof("Succeeded syncing load-balancer configuration")
+	fmt.Fprint(conn, "Succeeded syncing load-balancer configuration\n")
+	return nil
 }
