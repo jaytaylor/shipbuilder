@@ -366,14 +366,26 @@ func (server *Server) WithApplication(name string, fn func(*Application, *Config
 // ResolveLogServerIpAndPortr eturns the ShipBuilder log server ip:port to send
 // HAProxy UDP logs to.  Autmatically takes care of transforming ssh hostname
 // into just a hostname.
-func (*Server) ResolveLogServerIpAndPort() (string, error) {
-	hostname := DefaultSSHHost[int(math.Max(float64(strings.Index(DefaultSSHHost, "@")+1), 0)):]
+func (server *Server) ResolveLogServerIpAndPort() (string, error) {
+	var (
+		hostname = DefaultSSHHost[int(math.Max(float64(strings.Index(DefaultSSHHost, "@")+1), 0)):]
+		port     = fmt.Sprint(lslog.DefaultPort)
+	)
+
+	if server.LogServerListenAddr != "" && !strings.HasPrefix(server.LogServerListenAddr, ":") {
+		pieces := strings.Split(server.LogServerListenAddr, ":")
+		hostname = pieces[0]
+		if len(pieces) > 1 && len(pieces[1]) > 0 {
+			port = pieces[1]
+		}
+	}
+
 	ipAddr, err := net.ResolveIPAddr("ip", hostname)
 	if err != nil {
 		return "", err
 	}
+
 	ip := ipAddr.IP.String()
-	port := strconv.Itoa(lslog.Port)
 	return ip + ":" + port, nil
 }
 

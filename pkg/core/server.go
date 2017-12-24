@@ -13,6 +13,7 @@ import (
 
 	"github.com/jaytaylor/shipbuilder/pkg/domain"
 
+	lsbase "github.com/jaytaylor/logserver"
 	logserver "github.com/jaytaylor/logserver/server"
 	log "github.com/sirupsen/logrus"
 )
@@ -20,6 +21,8 @@ import (
 const (
 	MinDynoPort = 10000
 	MaxDynoPort = 60000
+
+	DefaultListenAddr = ":9999"
 )
 
 var (
@@ -28,6 +31,8 @@ var (
 )
 
 type Server struct {
+	ListenAddr                string
+	LogServerListenAddr       string
 	LogServer                 *logserver.Server
 	BuildpacksProvider        domain.BuildpacksProvider
 	ReleasesProvider          domain.ReleasesProvider
@@ -237,9 +242,11 @@ func (server *Server) verifyRequiredBuildPacks() error {
 }
 
 func (server *Server) Start() error {
+	server.init()
+
 	var err error
 
-	if server.LogServer, err = logserver.Start(); err != nil {
+	if server.LogServer, err = logserver.Start(server.LogServerListenAddr); err != nil {
 		return err
 	}
 
@@ -256,8 +263,8 @@ func (server *Server) Start() error {
 	go server.monitorNodes()
 	go server.startCrons()
 
-	log.Println("starting server on :9999")
-	ln, err := net.Listen("tcp", ":9999")
+	log.Infof("Starting server on %v", server.ListenAddr)
+	ln, err := net.Listen("tcp", server.ListenAddr)
 	if err != nil {
 		return err
 	}
@@ -270,13 +277,26 @@ func (server *Server) Start() error {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				log.Printf("err in connection loop: %v", err)
+				log.Errorf("err in connection loop (will continue on): %v", err)
 				continue
 			}
-			log.Printf("new connection %v", conn.RemoteAddr())
+			log.Infof("new connection %v", conn.RemoteAddr())
 			go server.handleConnection(conn)
 		}
 	}()
 
 	return nil
+}
+
+// init initializes default values to empty struct configuration members.
+//
+// TODO: This is quick and dirty, and should really go in a `NewServer()'
+// constructor.
+func (server *Server) init() {
+	if server.ListenAddr == "" {
+		server.ListenAddr = DefaultListenAddr
+	}
+	if server.LogServerListenAddr == "" {
+		server.LogServerListenAddr = fmt.Sprintf(":%v", lsbase.DefaultPort)
+	}
 }

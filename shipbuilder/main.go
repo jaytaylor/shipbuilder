@@ -8,13 +8,14 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/gigawattio/errorlib"
 	"github.com/jaytaylor/shipbuilder/pkg/bindata_buildpacks"
 	"github.com/jaytaylor/shipbuilder/pkg/core"
 	"github.com/jaytaylor/shipbuilder/pkg/domain"
 	"github.com/jaytaylor/shipbuilder/pkg/releases"
 	"github.com/jaytaylor/shipbuilder/pkg/version"
 
+	"github.com/gigawattio/errorlib"
+	lsbase "github.com/jaytaylor/logserver"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/urfave/cli.v2"
 )
@@ -172,6 +173,20 @@ func main() {
 						EnvVars: []string{"SB_FS_RELEASES_PROVIDER_PATH"},
 						Usage:   "Storage path for FS releases provider",
 					},
+					&cli.StringFlag{
+						Name:    "listen",
+						Aliases: []string{"l", "listen-addr"},
+						EnvVars: []string{"SB_SERVER_LISTEN_ADDR", "SB_SERVER_LISTEN_ADDRESS"},
+						Usage:   "addr:port for Shipbuilder to listen for TCP connections on",
+						Value:   core.DefaultListenAddr,
+					},
+					&cli.StringFlag{
+						Name:    "logserver-listen",
+						Aliases: []string{"lsl", "logserver-listen-addr"},
+						EnvVars: []string{"SB_LOGSERVER_LISTEN_ADDR", "SB_LOGSERVER_LISTEN_ADDRESS"},
+						Usage:   "addr:port for Logserver to listen for TCP connections on",
+						Value:   fmt.Sprintf(":%v", lsbase.DefaultPort),
+					},
 				},
 				Before: func(ctx *cli.Context) error {
 					if ctx.Args().Len() == 0 {
@@ -188,8 +203,10 @@ func main() {
 					}
 
 					server := &core.Server{
-						BuildpacksProvider: bindata_buildpacks.NewProvider(),
-						ReleasesProvider:   releasesProvider,
+						ListenAddr:          ctx.String("listen"),
+						LogServerListenAddr: ctx.String("logserver-listen"),
+						BuildpacksProvider:  bindata_buildpacks.NewProvider(),
+						ReleasesProvider:    releasesProvider,
 					}
 					if err := server.Start(); err != nil {
 						return err

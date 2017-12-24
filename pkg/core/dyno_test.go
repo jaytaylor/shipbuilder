@@ -9,8 +9,10 @@ import (
 
 func TestDynoPortAllocation(t *testing.T) {
 	server := &Server{
-		BuildpacksProvider: bindata_buildpacks.NewProvider(),
-		ReleasesProvider:   releases.NewFSReleasesProvider("/tmp/sb-dyno-test"),
+		ListenAddr:          ":",
+		LogServerListenAddr: ":59595",
+		BuildpacksProvider:  bindata_buildpacks.NewProvider(),
+		ReleasesProvider:    releases.NewFSReleasesProvider("/tmp/sb-dyno-test"),
 	}
 	if err := server.Start(); err != nil {
 		t.Fatal(err)
