@@ -15,7 +15,7 @@ Linux:
 
     sudo apt-get install daemontools
 
-* go-lang v1.3, 1.2, or 1.1 installed on your local machine
+* go-lang v1.8+
 * AWS S3 bucket auth keys - Used to store backups of application configurations and releases on S3 for easy rollback and restoration.
 
 Server Modules
@@ -81,7 +81,7 @@ cp -r env.example env
 
 cd ..
 ssh SERVERHOSTNAME mkdir -p ~/go/src/github.com/jaytaylor
-rsync -azve ssh shipbuilder SERVERHOSTNAME:~/go/src/github.com/jaytaylor/
+rsync -azve ssh shipbuilder $SERVERHOSTNAME:~/go/src/github.com/jaytaylor/
 ssh SERVERHOSTNAME bash -c 'cd ~/go/src/github.com/jaytaylor/shipbuilder && ./install/shipbuilder.sh -d /dev/sdb'
 ```
 
@@ -108,7 +108,17 @@ ssh SERVERHOSTNAME bash -c 'cd ~/go/src/github.com/jaytaylor/shipbuilder && ./in
 4. Compile ShipBuilder locally:
 
 ```bash
-make build
+# Install dependencies.
+go get -u github.com/jteeuwen/go-bindata
+make generate
+go get ./...
+make deps
+
+# Build binaries.
+make clean deb
+sudo dpkg -i dist/shipbuilder_*.deb
+sudo systemctl daemon-reload
+sudo systemctl start shipbuilder
 ```
 
 5. Add the load-balancer:
