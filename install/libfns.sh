@@ -241,11 +241,11 @@ function installLxc() {
     sudo apt-add-repository -y ppa:ubuntu-lxc/stable
     abortIfNonZero $? "command 'sudo apt-add-repository -y ppa:ubuntu-lxc/stable'"
 
-    sudo apt-get update
-    abortIfNonZero $? "command 'sudo add-get update'"
+    sudo apt update
+    abortIfNonZero $? "command 'sudo add update'"
 
-    sudo apt-get install -y lxc lxc-templates
-    abortIfNonZero $? "command 'apt-get install -y lxc lxc-templates'"
+    sudo apt install -y lxc lxc-templates
+    abortIfNonZero $? "command 'apt install -y lxc lxc-templates'"
 
     echo "info: installed version $(sudo apt-cache show lxc | grep Version | sed 's/^Version: //') (should be >= 0.9.0)"
 
@@ -254,13 +254,13 @@ function installLxc() {
 
     local required="${fsPackages} git mercurial bzr build-essential bzip2 daemontools ntp ntpdate jq"
     echo "info: installing required build-server packages: ${required}"
-    sudo apt-get install -y ${required}
-    abortIfNonZero $? "command 'apt-get install -y ${required}'"
+    sudo apt install -y ${required}
+    abortIfNonZero $? "command 'apt install -y ${required}'"
 
     local recommended='aptitude htop iotop unzip screen bzip2 bmon'
     echo "info: installing recommended packages: ${recommended}"
-    sudo apt-get install -y ${recommended}
-    abortIfNonZero $? "command 'apt-get install -y ${recommended}'"
+    sudo apt install -y ${recommended}
+    abortIfNonZero $? "command 'apt install -y ${recommended}'"
     echo 'info: installLxc() succeeded'
 }
 
@@ -536,7 +536,7 @@ function prepareNode() {
     majorVersion=$(lsb_release --release | sed 's/^[^0-9]*\([0-9]*\)\..*$/\1/')
     if [ ${majorVersion} -eq 12 ] ; then
         echo 'info: installing 3.8 or newer kernel, a system restart will be required to complete installation'
-        sudo apt-get install -y linux-generic-lts-raring-eol-upgrade
+        sudo apt install -y linux-generic-lts-raring-eol-upgrade
         abortIfNonZero $? 'installing linux-generic-lts-raring-eol-upgrade'
         echo 1 | sudo tee -a /tmp/SB_RESTART_REQUIRED
     fi
@@ -585,15 +585,15 @@ net.core.wmem_max = 16777216' | sudo tee /etc/sysctl.d/60-shipbuilder.conf
 
     required="haproxy ntp"
     echo "info: installing required packages: ${required}"
-    sudo apt-get update
+    sudo apt update
     abortIfNonZero $? "updating apt"
-    sudo apt-get install -y ${required}
-    abortIfNonZero $? "apt-get install ${required}"
+    sudo apt install -y ${required}
+    abortIfNonZero $? "apt install ${required}"
 
     optional="vim-haproxy"
     echo "info: installing optional packages: ${optional}"
-    sudo apt-get install -y ${optional}
-    abortIfNonZero $? "apt-get install ${optional}"
+    sudo apt install -y ${optional}
+    abortIfNonZero $? "apt install ${optional}"
 
     if [ -r "${certFile}" ] ; then
         if ! [ -d "/etc/haproxy/certs.d" ] ; then
@@ -768,17 +768,17 @@ function lxcConfigContainer() {
     abortIfNonZero $? "adding 'ubuntu' to container=${container} sudoers"
 
     echo "info: updating apt repositories in container=${container}"
-    ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo apt-get update"
-    abortIfNonZero $? "container=${container} apt-get update"
+    ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo apt update"
+    abortIfNonZero $? "container=${container} apt update"
 
     packages='daemontools git-core curl unzip'
     echo "info: installing packages to container=${container}: ${packages}"
-    ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo apt-get install -y ${packages}"
-    abortIfNonZero $? "container=${container} apt-get install -y ${packages}"
+    ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo apt install -y ${packages}"
+    abortIfNonZero $? "container=${container} apt install -y ${packages}"
 
     echo "info: removing $(shipbuilder containers list-purge-packages | tr $'\n' ' ') packages"
-    sudo lxc exec -T "${container}" -- apt-get purge -y $(shipbuilder containers list-purge-packages | tr $'\n' ' ')
-    abortIfNonZero $? "container=${container} apt-get purge -y $(shipbuilder containers list-purge-packages | tr $'\n' ' ')"
+    sudo lxc exec -T "${container}" -- apt purge -y $(shipbuilder containers list-purge-packages | tr $'\n' ' ')
+    abortIfNonZero $? "container=${container} apt purge -y $(shipbuilder containers list-purge-packages | tr $'\n' ' ')"
 
     echo "info: disabling unnecessary system services - $(shipbuilder containers list-disable-services | tr $'\n' ' ')"
     shipbuilder containers list-disable-services | sudo lxc exec -T "${container}" -- bash -c "xargs -n1 -IX /bin/bash -c 'systemctl is-enabled X 1>/dev/null && ( systemctl stop X ; systemctl disable X )'"
