@@ -74,8 +74,7 @@ fi
 verifySshAndSudoForHosts "${sbHost}"
 
 
-getIpCommand="ifconfig | tr '\t' ' '| sed 's/ \{1,\}/ /g' | grep '^e[a-z]\+0[: ]' --after 8 | grep --only 'inet \(addr:\)\?[: ]*[^: ]\+' | tr ':' ' ' | sed 's/\(.*\) addr[: ]\{0,\}\(.*\)/\1 \2/' | sed 's/ \{1,\}/ /g' | cut -f2 -d' '"
-
+getIpCommand="ip addr | grep '^[0-9]\+: e[a-z]\+[0-9][: ]' --after 8 | grep --only-matching ' inet [^ \/]\+' | awk '{print \$2}'"
 
 function deployShipBuilder() {
     # Builds and installs shipbuilder deb.
@@ -85,41 +84,46 @@ function deployShipBuilder() {
     set -o pipefail
     set -o nounset
 
-    sudo systemctl stop shipbuilder || :
     cd ..
+    # NB: Ignore possible unhappy exit status codes since shipbuilder service
+    # may not yet exist.
+    ${SB_SUDO} systemctl stop shipbuilder || :
     # TODO: Consider removing generate step, since it's included in `test'.
-    envdir env bash -c 'make clean get generate test deb | tee /tmp/make.log'
-    deb="$(tail -n1 /tmp/make.log | sed 's/^.*=>"\([^"]\+\)"}$/\1/')"
-    test -n "${deb}" || (echo 'error: no deb artifact name detected, see /tmp/make.log for more information' 1>&2 && exit 1)
-    sudo dpkg -i "dist/${deb}"
-    sudo systemctl start shipbuilder
+    envdir env bash -c 'make clean get generate test deb | tee /tmp/sb-build.log'
+    deb="$(tail -n 1 /tmp/sb-build.log | sed 's/^.*=>"\([^"]\+\)"}$/\1/')"
+    test -n "${deb}" || (echo 'error: no deb artifact name detected, see /tmp/sb-build.log for more information' 1>&2 && exit 1)
+    ${SB_SUDO} dpkg -i "dist/${deb}"
+    ${SB_SUDO} systemctl daemon-reload
+    ${SB_SUDO} systemctl start shipbuilder
+    cd -
 
-    $OLD_SHELLOPTS
+    ${OLD_SHELLOPTS}
 }
 
 
 function rsyncLibfns() {
+    pwd
     rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" libfns.sh "${sbHost}:/tmp/"
     abortIfNonZero $? 'rsync libfns.sh failed'
 }
 
 
-if [ "${action}" = "list-devices" ]; then
+if [ "${action}" = 'list-devices' ]; then
     echo '----'
     ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" 'sudo find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
     abortIfNonZero $? "retrieving storage devices from host ${sbHost}"
     exit 0
 
-elif [ "${action}" = "build-deploy" ]; then
+elif [ "${action}" = 'build-deploy' ]; then
     deployShipBuilder
 
-elif [ "${action}" = "buildpacks" ] || [ "${action}" = "build-packs" ]; then
+elif [ "${action}" = 'buildpacks' ] || [ "${action}" = 'build-packs' ]; then
     rsyncLibfns
 
     ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "source /tmp/libfns.sh && prepareServerPart2 ${skipIfExists} ${lxcFs}"
     abortIfNonZero $? 'buildpacks: remote prepareServerPart2() invocation'
 
-elif [ "${action}" = "install" ]; then
+elif [ "${action}" = 'install' ]; then
     if [ -n "${buildPackToInstall}" ]; then
         deployShipBuilder
 
