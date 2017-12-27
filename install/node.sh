@@ -4,15 +4,15 @@ cd "$(dirname "$0")"
 
 source libfns.sh
 
-device=
-lxcFs=
-nodeHost=
-denyRestart=
-sbHost=
-swapDevice=
+export device=
+export SB_LXC_FS=
+export nodeHost=
+export denyRestart=
+export SB_SSH_HOST=
+export swapDevice=
 
 while getopts "d:f:H:hnS:s:" OPTION; do
-    case $OPTION in
+    case ${OPTION} in
         h)
             echo "usage: $0 -H [node-host] -S [shipbuilder-host] -d [device] -f [lxc-filesystem] [ACTION]" 1>&2
             echo '' 1>&2
@@ -30,67 +30,67 @@ while getopts "d:f:H:hnS:s:" OPTION; do
             exit 1
             ;;
         d)
-            device=$OPTARG
+            export device=${OPTARG}
             ;;
         f)
-            lxcFs=$OPTARG
+            export SB_LXC_FS=${OPTARG}
             ;;
         H)
-            nodeHost=$OPTARG
+            export nodeHost=${OPTARG}
             ;;
         n)
-            denyRestart=1
+            export denyRestart=1
             ;;
         S)
-            sbHost=$OPTARG
+            export SB_SSH_HOST=${OPTARG}
             ;;
         s)
-            swapDevice=$OPTARG
+            export swapDevice=${OPTARG}
             ;;
     esac
 done
 
 # Clear options from $n.
-shift $(($OPTIND - 1))
+shift $((${OPTIND} - 1))
 
 action=$1
 
-test -z "${sbHost}" && autoDetectServer
-test -z "${lxcFs}" && autoDetectFilesystem
-test -z "${zfsPool}" && autoDetectZfsPool
+test -z "${SB_SSH_HOST}" && autoDetectServer
+test -z "${SB_LXC_FS}" && autoDetectFilesystem
+test -z "${SB_ZFS_POOL}" && autoDetectZfsPool
 
 # Validate required parameters.
-test -z "${sbHost}" && echo 'error: missing required parameter: -S [shipbuilder-host]' 1>&2 && exit 1
+test -z "${SB_SSH_HOST}" && echo 'error: missing required parameter: -S [shipbuilder-host]' 1>&2 && exit 1
 test -z "${nodeHost}" && echo 'error: missing required parameter: -H [node-host]' 1>&2 && exit 1
-#test -z "${action}" && echo 'error: missing required parameter: action' 1>&2 && exit 1
+
 if test -z "${action}"; then
-    echo 'info: action defaulted to: install'
+    echo 'info: action defaulting to: install'
     action='install'
 fi
 
 
-verifySshAndSudoForHosts "${sbHost} ${nodeHost}" 
+verifySshAndSudoForHosts "${SB_SSH_HOST} ${nodeHost}"
 
 
 if [ "${action}" = "list-devices" ]; then
     echo '----'
 	ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" 'sudo find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
-    abortIfNonZero $? "retrieving storage devices from host ${sbHost}"
+    abortIfNonZero $? "retrieving storage devices from host ${SB_SSH_HOST}"
 	exit 0
 
 elif [ "${action}" = "install" ]; then
     test -z "${device}" && echo 'error: missing required parameter: -d [device]' 1>&2 && exit 1
-    test -z "${lxcFs}" && echo 'error: missing required parameter: -f [lxc-filesystem]' 1>&2 && exit 1
+    test -z "${SB_LXC_FS}" && echo 'error: missing required parameter: -f [lxc-filesystem]' 1>&2 && exit 1
 
     installAccessForSshHost "${nodeHost}"
     
     rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" libfns.sh "${nodeHost}:/tmp/"
     abortIfNonZero $? 'rsync libfns.sh failed'
 
-    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" "source /tmp/libfns.sh && prepareNode ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" "source /tmp/libfns.sh && prepareNode ${device} ${SB_LXC_FS} ${SB_ZFS_POOL} ${swapDevice}"
     abortIfNonZero $? 'remote prepareNode() invocation'
 
-    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" 'sudo lxc remote add sb-server ${sbHost} --accept-certificate --public && sudo cp -a ${USER}/.config /root/'
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" 'sudo lxc remote add sb-server ${SB_SSH_HOST} --accept-certificate --public && sudo cp -a ${USER}/.config /root/'
     abortIfNonZero $? 'adding sb-server lxc image server to slave node'
 
     ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" sudo bash -c 'set -o errexit ; set -o pipefail ; set -x ; sed -i "s/net.ipv4.conf.all.route_localnet *=.*//d" /etc/sysctl.conf && sysctl -w $(echo "net.ipv4.conf.all.route_localnet=1" | sudo tee -a /etc/sysctl.conf)'

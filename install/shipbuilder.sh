@@ -4,16 +4,16 @@ cd "$(dirname "$0")"
 
 source libfns.sh
 
-device=
-lxcFs=
-denyRestart=0
-sbHost=
-swapDevice=
-skipIfExists=0
-buildPackToInstall=
+export device=
+export SB_LXC_FS=
+export denyRestart=0
+export SB_SSH_HOST=
+export swapDevice=
+export skipIfExists=0
+export buildPackToInstall=
 
 while getopts "b:d:f:hS:s:ne" OPTION; do
-    case $OPTION in
+    case ${OPTION} in
         h)
             echo "usage: $0 -S [shipbuilder-host] -d [server-dedicated-device] -f [lxc-filesystem] ACTION" 1>&2
             echo '' 1>&2
@@ -31,47 +31,47 @@ while getopts "b:d:f:hS:s:ne" OPTION; do
             exit 1
             ;;
         d)
-            device=$OPTARG
+            export device=${OPTARG}
             ;;
         f)
-            lxcFs=$OPTARG
+            export SB_LXC_FS=${OPTARG}
             ;;
         n)
-            denyRestart=1
+            export denyRestart=1
             ;;
         S)
-            sbHost=$OPTARG
+            export SB_SSH_HOST=${OPTARG}
             ;;
         s)
-            swapDevice=$OPTARG
+            export swapDevice=${OPTARG}
             ;;
         e)
-            skipIfExists=1
+            export skipIfExists=1
             ;;
         b)
-            buildPackToInstall=$OPTARG
+            export buildPackToInstall=${OPTARG}
             ;;
     esac
 done
 
 # Clear options from $n.
-shift $(($OPTIND - 1))
+shift $((${OPTIND} - 1))
 
-action=$1
+action=${1:-}
 
-test -z "${sbHost}" && autoDetectServer
-test -z "${lxcFs}" && autoDetectFilesystem
-test -z "${zfsPool}" && autoDetectZfsPool
+test -z "${SB_SSH_HOST}" && autoDetectServer
+test -z "${SB_LXC_FS}" && autoDetectFilesystem
+test -z "${SB_ZFS_POOL}" && autoDetectZfsPool
 
-test -z "${sbHost}" && echo 'error: missing required parameter: -S [shipbuilder-host]' 1>&2 && exit 1
-#test -z "${action}" && echo 'error: missing required parameter: action' 1>&2 && exit 1
+test -z "${SB_SSH_HOST}" && echo 'error: missing required parameter: -S [shipbuilder-host]' 1>&2 && exit 1
+
 if test -z "${action}"; then
-    echo 'info: action defaulted to: install'
+    echo 'info: action defaulting to: install'
     action='install'
 fi
 
 
-verifySshAndSudoForHosts "${sbHost}"
+verifySshAndSudoForHosts "${SB_SSH_HOST}"
 
 
 getIpCommand="ip addr | grep '^[0-9]\+: e[a-z]\+[0-9][: ]' --after 8 | grep --only-matching ' inet [^ \/]\+' | awk '{print \$2}'"
@@ -103,15 +103,15 @@ function deployShipBuilder() {
 
 function rsyncLibfns() {
     pwd
-    rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" libfns.sh "${sbHost}:/tmp/"
+    rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" libfns.sh "${SB_SSH_HOST}:/tmp/"
     abortIfNonZero $? 'rsync libfns.sh failed'
 }
 
 
 if [ "${action}" = 'list-devices' ]; then
     echo '----'
-    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" 'sudo find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
-    abortIfNonZero $? "retrieving storage devices from host ${sbHost}"
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${SB_SSH_HOST}" 'sudo find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
+    abortIfNonZero $? "retrieving storage devices from host ${SB_SSH_HOST}"
     exit 0
 
 elif [ "${action}" = 'build-deploy' ]; then
@@ -120,7 +120,7 @@ elif [ "${action}" = 'build-deploy' ]; then
 elif [ "${action}" = 'buildpacks' ] || [ "${action}" = 'build-packs' ]; then
     rsyncLibfns
 
-    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "source /tmp/libfns.sh && prepareServerPart2 ${skipIfExists} ${lxcFs}"
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${SB_SSH_HOST}" "source /tmp/libfns.sh && prepareServerPart2 ${skipIfExists} ${SB_LXC_FS}"
     abortIfNonZero $? 'buildpacks: remote prepareServerPart2() invocation'
 
 elif [ "${action}" = 'install' ]; then
@@ -135,32 +135,32 @@ elif [ "${action}" = 'install' ]; then
         fi
 
         rsyncLibfns
-        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "source /tmp/libfns.sh && installSingleBuildPack ${buildPackToInstall} ${skipIfExists} ${lxcFs}"
+        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${SB_SSH_HOST}" "source /tmp/libfns.sh && installSingleBuildPack ${buildPackToInstall} ${skipIfExists} ${SB_LXC_FS}"
         abortIfNonZero $? 'remote installSingleBuildPack() invocation'
 
     else
         # Perform a full ShipBuilder install.
         test -z "${device}" && echo 'error: missing required parameter: -d [device]' 1>&2 && exit 1
-        test -z "${lxcFs}" && echo 'error: missing required parameter: -f [lxc-filesystem]' 1>&2 && exit 1
+        test -z "${SB_LXC_FS}" && echo 'error: missing required parameter: -f [lxc-filesystem]' 1>&2 && exit 1
 
-        installAccessForSshHost "${sbHost}"
+        installAccessForSshHost "${SB_SSH_HOST}"
         abortIfNonZero $? 'installAccessForSshHost() failed'
 
         deployShipBuilder
 
         rsyncLibfns
-        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "source /tmp/libfns.sh && prepareServerPart1 ${sbHost} ${device} ${lxcFs} ${zfsPool} ${swapDevice}"
+        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${SB_SSH_HOST}" "source /tmp/libfns.sh && prepareServerPart1 ${SB_SSH_HOST} ${device} ${SB_LXC_FS} ${SB_ZFS_POOL} ${swapDevice}"
         abortIfNonZero $? 'remote prepareServerPart1() invocation'
 
-        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "set -o errexit ; sudo lxc config set core.https_address '[::]:8443'"
+        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${SB_SSH_HOST}" "set -o errexit ; sudo lxc config set core.https_address '[::]:8443'"
         abortIfNonZero $? 'activating lxc image server'
 
-        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "source /tmp/libfns.sh && prepareServerPart2 ${skipIfExists} ${lxcFs}"
+        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${SB_SSH_HOST}" "source /tmp/libfns.sh && prepareServerPart2 ${skipIfExists} ${SB_LXC_FS}"
         abortIfNonZero $? 'remote prepareServerPart2() invocation'
 
         if test -z "${denyRestart}"; then
             echo 'info: checking if system restart is necessary'
-            ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${sbHost}" "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && sudo reboot || echo 'no system restart is necessary'"
+            ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${SB_SSH_HOST}" "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && sudo reboot || echo 'no system restart is necessary'"
             abortIfNonZero $? 'remote system restart check failed'
         else
             echo 'warn: a restart may be required on the shipbuilder server to complete installation, but the action was disabled by a flag' 1>&2
