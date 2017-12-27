@@ -237,22 +237,31 @@ function installLxc() {
     # @param $1 $lxcFs lxc filesystem to use (zfs, btrfs are both supported).
     local lxcFs=$1
     test -z "${lxcFs}" && echo 'error: installLxc() missing required parameter: $lxcFs' 1>&2 && exit 1 || :
-    echo 'info: a supported version of lxc must be installed (as of 2013-07-02, ubuntu comes with v0.7.x by default, we require v0.9.0 or greater)'
-    echo 'info: adding lxc daily ppa'
-    ${SB_SUDO} apt-add-repository --yes ppa:ubuntu-lxc/stable
-    abortIfNonZero $? "command 'apt-add-repository --yes ppa:ubuntu-lxc/stable'"
+    echo 'info: supported versions of lxc+lxd must be installed'
+    echo 'info: as of 2017-12-27, ubuntu comes with lxc+lxd=v2.0.11 by default, and we require lxc=v2.1.1 lxd=2.2.1 or newer'
+    echo 'info: installing lxd via snap'
+    ${SB_SUDO} groupadd --system lxd
+    rc=$?
+    # NB: if group already exists, groupadd exits with status code 9.
+    if [ ${rc} -ne 0 ] && [ ${rc} -ne 9 ] ; then
+        abortWithError "command 'groupadd --system lxd' exited with unhappy non-zero status code ${rc}" 
+    fi
+
+    ${SB_SUDO} usermod -G lxd -a root
+    abortIfNonZero $? "command 'usermod -G lxd -a root'"
+
+    ${SB_SUDO} snap install lxd
+    abortIfNonZero $? "command 'snap install lxd'"
 
     ${SB_SUDO} apt update
     abortIfNonZero $? "command 'apt update'"
 
-    # NB: zfs-fuse dependency is now switched to zfsutils-linux for shipbuilder v2.
+    echo "info: installed version of lxc=$(${SB_SUDO} lxc version) and lxd=$(lxd --version) (all must be v2.21 or newer)"
+
+    # Legacy migration: zfs-fuse dependency is now switched to zfsutils-linux
+    # for shipbuilder v2.
     ${SB_SUDO} apt remove --purge zfs-fuse
     abortIfNonZero $? "command 'apt remove --yes --purge zfs-fuse'"
-
-    ${SB_SUDO} apt install --yes lxc lxc-templates
-    abortIfNonZero $? "command 'apt install --yes lxc lxc-templates'"
-
-    echo "info: installed version $(${SB_SUDO} apt-cache show lxc | grep Version | sed 's/^Version: //') (should be >= 0.9.0)"
 
     # Add supporting package(s) for selected filesystem type.
     local fsPackages="$(test "${lxcFs}" = 'btrfs' && echo 'btrfs-tools' || :) $(test "${lxcFs}" = 'zfs' && echo 'zfsutils-linux' || :)"
