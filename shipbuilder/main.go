@@ -58,6 +58,20 @@ func main() {
 				EnvVars: []string{"SB_VERBOSE_LOGGING", "SB_DEBUG_LOGGING"},
 				Usage:   "Enable verbose debug logging messages",
 			},
+			&cli.StringFlag{
+				Name:        "ssh-host",
+				EnvVars:     []string{"SB_SSH_HOST"},
+				Usage:       "Address of the server host for the client to connect to",
+				Value:       core.DefaultSSHHost,
+				Destination: &core.DefaultSSHHost,
+			},
+			&cli.StringFlag{
+				Name:        "ssh-key",
+				EnvVars:     []string{"SB_SSH_KEY"},
+				Usage:       "Location of SSH key for the client to use",
+				Value:       core.DefaultSSHKey,
+				Destination: &core.DefaultSSHKey,
+			},
 		},
 		Before: func(ctx *cli.Context) error {
 			if err := initLogging(ctx); err != nil {
@@ -132,20 +146,6 @@ func main() {
 						Usage:       "Name of S3 bucket where app releases will be stored",
 						Value:       core.DefaultS3BucketName,
 						Destination: &core.DefaultS3BucketName,
-					},
-					&cli.StringFlag{
-						Name:        "ssh-host",
-						EnvVars:     []string{"SB_SSH_HOST"},
-						Usage:       "Address of the server host for the client to connect to",
-						Value:       core.DefaultSSHHost,
-						Destination: &core.DefaultSSHHost,
-					},
-					&cli.StringFlag{
-						Name:        "ssh-key",
-						EnvVars:     []string{"SB_SSH_KEY"},
-						Usage:       "Location of SSH key for the client to use",
-						Value:       core.DefaultSSHKey,
-						Destination: &core.DefaultSSHKey,
 					},
 					&cli.StringFlag{
 						Name:        "lxc-fs",
@@ -312,20 +312,24 @@ func main() {
 				[]string{"apps", "apps:list", "Apps_List"},
 				"List shipbuilder-managed apps",
 			),
+
 			appCommand(
 				[]string{"create", "apps:create", "Apps_Create"},
 				"Create a new app",
 				flagSpec{
-					names:    []string{"buildpack", "b"},
-					usage:    "Desired buildpack for app type",
-					required: true,
+					names:       []string{"buildpack", "b"},
+					usage:       "Desired buildpack for app type",
+					allowedVals: bindata_buildpacks.NewProvider().Available(),
+					required:    true,
 				},
 			),
+
 			// TODO: Add --force flag for `destroy'.
 			appCommand(
 				[]string{"destroy", "apps:destroy", "delete", "Apps_Destroy"},
 				"Destroy an app",
 			),
+
 			command(
 				[]string{"clone", "apps:clone", "Apps_Clone"},
 				"Clone an app",
@@ -900,11 +904,12 @@ func releasesProvider(ctx *cli.Context) (provider domain.ReleasesProvider, err e
 }
 
 type flagSpec struct {
-	names    []string // NB: pos[0] = name, pos[1:] = aliases.
-	usage    string
-	required bool
-	args     bool   // Use as os.Args based parameter instead of a flag.
-	typ      string // NB: one of "", or "slice"; "" signifies a string flag.
+	names       []string // NB: pos[0] = name, pos[1:] = aliases.
+	usage       string
+	required    bool
+	allowedVals []string // Optional.
+	args        bool     // Use as os.Args based parameter instead of a flag.
+	typ         string   // NB: one of "", or "slice"; "" signifies a string flag.
 }
 
 func (spec flagSpec) flag() cli.Flag {
@@ -912,19 +917,24 @@ func (spec flagSpec) flag() cli.Flag {
 		panic(fmt.Sprintf("flagSpec %v has args enabled and thus is not eligible to be translated to a flag", spec.names[0]))
 	}
 
+	allowedValsUsage := ""
+	if len(spec.allowedVals) > 0 {
+		allowedValsUsage = fmt.Sprintf("; allowed values: %v", strings.Join(spec.allowedVals, ", "))
+	}
+
 	switch spec.typ {
 	case "":
 		return &cli.StringFlag{
 			Name:    spec.names[0],
 			Aliases: spec.names[1:],
-			Usage:   spec.usage,
+			Usage:   spec.usage + allowedValsUsage,
 		}
 
 	case "slice":
 		return &cli.StringSliceFlag{
 			Name:    spec.names[0],
 			Aliases: spec.names[1:],
-			Usage:   spec.usage,
+			Usage:   spec.usage + allowedValsUsage,
 		}
 
 	default:
@@ -1010,19 +1020,13 @@ func command(names []string, description string, flagSpecs ...flagSpec) *cli.Com
 		panic("name / aliases slice must not be empty!")
 	}
 
-	var (
-		cliFlags    = []cli.Flag{}
-		numRequired = 0
-	)
+	cliFlags := []cli.Flag{}
 	for _, spec := range flagSpecs {
 		if spec.args {
 			continue
 		}
 		if len(spec.names) == 0 {
 			panic("flag name / aliases slice must not be empty!")
-		}
-		if spec.required {
-			numRequired++
 		}
 		cliFlags = append(cliFlags, spec.flag())
 	}
@@ -1043,6 +1047,18 @@ func command(names []string, description string, flagSpecs ...flagSpec) *cli.Com
 				if err != nil {
 					errs = append(errs, err)
 					continue
+				}
+				if len(spec.allowedVals) > 0 {
+					var found bool
+					for _, allowed := range spec.allowedVals {
+						if val == allowed {
+							found = true
+							break
+						}
+					}
+					if !found {
+						errs = append(errs, fmt.Errorf("%v must be one of: %v", spec.names[0], strings.Join(spec.allowedVals, ", ")))
+					}
 				}
 				funcArgs = append(funcArgs, val)
 			}
