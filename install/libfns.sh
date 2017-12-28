@@ -964,6 +964,9 @@ function lxcConfigBuildPack() {
         test -z "${lxcFs}" && echo 'error: lxcConfigBuildPack() missing required parameter: $lxcFs' 1>&2 && exit 1
         echo "info: creating build-pack ${container} container"
 
+        # Ensure any pre-existing image gets removed.
+        ${SB_SUDO} lxc delete --force "${container}" 1>/dev/null 2>/dev/null
+
         ${SB_SUDO} lxc copy base "${container}"
         abortIfNonZero $? "command 'lxc copy base ${container}'"
 
@@ -974,7 +977,6 @@ function lxcConfigBuildPack() {
 
         # Install packages.
         echo "info: installing packages to ${container} container: ${packages}"
-        #ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "${SB_SUDO} apt install --yes ${packages}"
         ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "set -o errexit && apt update && apt -o Dpkg::Options::='--force-overwrite' install --yes ${packages}"
         rc=$?
         if [ ${rc} -ne 0 ] ; then
@@ -984,20 +986,15 @@ function lxcConfigBuildPack() {
                 ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "set -o errexit && apt install -o Dpkg::Options::='--force-overwrite' --yes ${package}"
                 abortIfNonZero $? "[${container}] container apt install --yes ${package}"
             done
-            #${SB_SUDO} lxc exec -T "${container}" -- sed -i 's/^NTPSERVERS=".*"$/NTPSERVERS=""/' /etc/default/ntpdate
-            #abortIfNonZero $? "[${container}] container sed -i 's/^NTPSERVERS=\".*\"$/NTPSERVERS=\"\"/' /etc/default/ntpdate"
-            ##
-            # NB: NTPSERVERS override disabled because not all build-packs have ntp* installed.
-            ##
         fi
 
         # Run custom container commands.
         if [ -n "${customCommandsFile}" ] ; then
+            if [ ! -r "${customCommandsFile}" ] ; then
+                echo "error: lxcConfigBuildPack(buildPack=${buildPack}, skipIfExists=${skipIfExists}, lxcFs=${lxcFs}): unable to read customCommandsFile=${customCommandsFile}" 1>&2 && exit 1
+            fi
             echo "info: running customCommandsFile: ${customCommandsFile}"
-            #ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "${customCommands}"
             base64 < "${customCommandsFile}" | ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "set -o errexit && base64 -d > /tmp/custom.sh && chmod a+x /tmp/custom.sh"
-            # rsync -azve 'ssh -o "StrictHostKeyChecking=no" -o "BatchMode=yes"' "${customCommandsFile}" "ubuntu@${ip}:/tmp/custom.sh"
-            # abortIfNonZero $? "[${container}] rsyncing customCommandsFile=${customCommandsFile} to ubuntu@${ip}:/tmp/custom.sh failed"
             abortIfNonZero $? "[${container}] sending customCommandsFile=${customCommandsFile} to ${container} failed"
             ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash /tmp/custom.sh
             rc=$?
