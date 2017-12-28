@@ -1,5 +1,7 @@
 set -x
 
+set -o nounset
+
 export SB_REPO_PATH="${GOPATH:-${HOME}/go}/src/github.com/jaytaylor/shipbuilder"
 export SB_SUDO='sudo --non-interactive'
 
@@ -29,20 +31,20 @@ export lxcBaseImage='ubuntu:16.04'
 function abortIfNonZero() {
     # @param $1 command return code/exit status (e.g. $?, '0', '1').
     # @param $2 error message if exit status was non-zero.
-    local rc=$1
-    local what=$2
+    local rc=${1:-}
+    local what=${2:-}
     test ${rc} -ne 0 && echo "error: ${what} exited with non-zero status ${rc}" 1>&2 && exit ${rc} || :
 }
 
 function abortWithError() {
-    echo "$1" 1>&2 && exit 1
+    echo "${1:-}" 1>&2 && exit 1
 }
 
 function warnIfNonZero() {
     # @param $1 command return code/exit status (e.g. $?, '0', '1').
     # @param $2 error message if exit status was non-zero.
-    local rc=$1
-    local what=$2
+    local rc=${1:-}
+    local what=${2:-}
     test ${rc} -ne 0 && echo "warn: ${what} exited with non-zero status ${rc}" 1>&2 || :
 }
 
@@ -88,7 +90,7 @@ function autoDetectZfsPool() {
 
 function verifySshAndSudoForHosts() {
     # @param $1 string. List of space-delimited SSH connection strings.
-    local sshHosts="$1"
+    local sshHosts="${1:-}"
 
     local result
     local rc
@@ -112,8 +114,8 @@ function initSbServerKeys() {
     ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' ${SB_SSH_HOST} '/bin/bash -c '"'"'
     echo "remote: info: setting up pub/private SSH keys so that root and main users can SSH in to either account"
     function abortIfNonZero() {
-        local rc=$1
-        local what=$2
+        local rc=${1:-}
+        local what=${2:-}
         test ${rc} -ne 0 && echo "remote: error: ${what} exited with non-zero status ${rc}" && exit ${rc} || :
     }
     if ! [ -e ~/.ssh/id_rsa.pub ] ; then
@@ -178,7 +180,7 @@ function initSbServerKeys() {
 }
 
 function getSbServerPublicKeys() {
-    local sshHost=$1
+    local sshHost=${1:-}
 
     test -z "${sshHost}" && echo 'error: getSbServerPublicKeys(): missing required parameter: SSH hostname' 1>&2 && exit 1
 
@@ -209,11 +211,11 @@ function getSbServerPublicKeys() {
 function installAccessForSshHost() {
     # @precondition Variable $sshKeysCommand must be initialized and not empty.
     # @param $1 SSH connection string (e.g. user@host)
-    local sshHost=$1
+    local sshHost=${1:-}
 
     test -z "${sshHost}" && echo 'error: installAccessForSshHost(): missing required parameter: SSH hostname' 1>&2 && exit 1
 
-    if [ -z "${SB_UNPRIVILEGED_PUBKEY}" ] || [ -z "${SB_ROOT_PUBKEY}" ] ; then
+    if [ -z "${SB_UNPRIVILEGED_PUBKEY:-}" ] || [ -z "${SB_ROOT_PUBKEY:-}" ] ; then
         getSbServerPublicKeys ${sshHost}
     fi
 
@@ -222,8 +224,8 @@ function installAccessForSshHost() {
     echo "info: setting up remote access from build-server to host: ${sshHost}"
     ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' ${sshHost} '/bin/bash -c '"'"'
     function abortIfNonZero() {
-        local rc=$1
-        local what=$2
+        local rc=${1:-}
+        local what=${2:-}
         test ${rc} -ne 0 && echo "remote: error: ${what} exited with non-zero status ${rc}" && exit ${rc} || :
     }
     echo "remote: checking main user.."
@@ -248,7 +250,7 @@ function installAccessForSshHost() {
 
 function installLxc() {
     # @param $1 $lxcFs lxc filesystem to use (zfs, btrfs are both supported).
-    local lxcFs=$1
+    local lxcFs=${1:-}
 
     test -z "${lxcFs}" && echo 'error: installLxc() missing required parameter: $lxcFs' 1>&2 && exit 1 || :
 
@@ -351,8 +353,8 @@ function setupLxcNetworking() {
 }
 
 function setupLxdWithZfs() {
-    local zfsPoolArg=$1
-    local device=$2
+    local zfsPoolArg=${1:-}
+    local device=${2:-}
 
     test -z "${zfsPoolArg}" && echo 'error: setupLxdWithZfs() missing required parameter: $zfsPoolArg' 1>&2 && exit 1 || :
     test -z "${device}" && echo 'error: setupLxdWithZfs() missing required parameter: $device' 1>&2 && exit 1 || :
@@ -443,10 +445,10 @@ function prepareNode() {
     # @param $1 $device to format and use for new mount.
     # @param $2 $lxcFs lxc filesystem to use (zfs, btrfs are both supported).
     # @param $3 $swapDevice to format and use as for swap (optional).
-    local device=$1
-    local lxcFs=$2
-    local zfsPool=$3
-    local swapDevice=$4
+    local device=${1:-}
+    local lxcFs=${2:-}
+    local zfsPool=${3:-}
+    local swapDevice=${4:-}
 
     test -z "${device}" && echo 'error: prepareNode() missing required parameter: $device' 1>&2 && exit 1 || :
     test "${device}" = "${swapDevice}" && echo 'error: prepareNode() device & swapDevice must be different' 1>&2 && exit 1 || :
@@ -458,6 +460,8 @@ function prepareNode() {
     local fs
     local zfsPoolArg
     local majorVersion
+    local numLines
+    local insertAtLineNo
 
     setupSysctlAndL
 
@@ -577,17 +581,32 @@ function prepareNode() {
         echo 1 | ${SB_SUDO} tee -a /tmp/SB_RESTART_REQUIRED
     fi
 
-    echo 'info: installing automatic zpool importer to system bootscript /etc/rc.local'
-    test -e /etc/rc.local || (${SB_SUDO} touch /etc/rc.local && ${SB_SUDO} chmod a+x /etc/rc.local)
+    echo 'info: installing automatic zpool importer to system startup script /etc/rc.local'
+    if [ ! -e /etc/rc.local ] ; then
+        ${SB_SUDO} rm -rf /etc/rc.local
+        echo '#!/bin/sh -e' | ${SB_SUDO} sudo tee /etc/rc.local
+        abortIfNonZero $? 'creating /etc/rc.local'
+    fi
+    ${SB_SUDO} chmod a+x /etc/rc.local
 
-    if [ $(grep '^sudo[ a-zA-Z0-9-]* zpool import '"${zfsPoolArg}"' -f$' /etc/rc.local | wc -l) -eq 0 ] ; then
-        ${SB_SUDO} sed -i 's/^exit 0$/sudo --non-interactive zpool import '"${zfsPoolArg}"' -f/' /etc/rc.local
+    if [ $(grep '^sudo[ a-zA-Z0-9-]* zpool import -f '"${zfsPoolArg}"'$' /etc/rc.local | wc -l) -eq 0 ] ; then
+        # Find best line number offset to insert the zpool import command at.
+        numLines=$(wc --lines /etc/rc.local | awk '{print $1}')
+        # Ensure there are enough lines to insert at the minimum line offset.
+        if [ ${numLines} -lt 2 ] ; then
+            echo '' | sudo tee -a /etc/rc.local
+        fi
+        # Try to find the first non-comment line number in the file and attempt
+        # to insert there.
+        insertAtLineNo=$(grep --line-number --max-count=1 '^\([^#]\|$\)' /etc/rc.local | tr ':' ' ' | awk '{print $1}')
+        if [ -z "${insertAtLineNo}" ] || [ "${numLines}" = "${insertAtLineNo}" ] ; then
+            insertAtLineNo=2
+        fi
+        ${SB_SUDO} sed -i "${insertAtLineNo}isudo --non-interactive zpool import -f ${zfsPoolArg}" /etc/rc.local
+        abortIfNonZero $? 'adding zpool auto-import to /etc/rc.local'
     fi
-    if [ $(grep '^sudo[ a-zA-Z0-9-]* zpool import '"${zfsPoolArg}"' -f$' /etc/rc.local | wc -l) -eq 0 ] ; then
-        echo 'sudo --non-interactive zpool import '"${zfsPoolArg}"' -f' | ${SB_SUDO} tee -a /etc/rc.local
-    fi
-    grep "^sudo[ a-zA-Z0-9-]* zpool import ${zfsPoolArg} -f"'$' /etc/rc.local
-    abortIfNonZero $? 'adding zpool auto-mount to /etc/rc.local' 1>&2
+    grep "^sudo[ a-zA-Z0-9-]* zpool import -f ${zfsPoolArg}"'$' /etc/rc.local
+    abortIfNonZero $? 'ensuring zpool auto-import exists in /etc/rc.local'
 
     echo 'info: prepareNode() succeeded'
 }
@@ -713,7 +732,7 @@ function rsyslogLoggingListeners() {
 }
 
 function getContainerIp() {
-    local container=$1
+    local container=${1:-}
 
     test -z "${container}" && echo 'error: getContainerIp() missing required parameter: $container' 1>&2 && exit 1 || :
 
@@ -756,9 +775,9 @@ function lxcInitContainer() {
     # @param $2 skipIfExists Whether or not to skip over this container if it already exists.
     # @param $3 lxc filesystem to use.
     # @param $4 zfs pool name.
-    local container=$1
-    local skipIfExists=$2
-    local lxcFs=$3
+    local container=${1:-}
+    local skipIfExists=${2:-}
+    local lxcFs=${3:-}
 
     test -z "${container}" && echo 'error: lxcInitContainer() missing required parameter: $container' 1>&2 && exit 1
     test -z "${skipIfExists}" && echo 'error: lxcInitContainer() missing required parameter: $skipIfExists' 1>&2 && exit 1
@@ -788,7 +807,7 @@ function lxcInitContainer() {
 
 function lxcConfigContainer() {
     # @param $1 container name.
-    local container=$1
+    local container=${1:-}
 
     test -z "${container}" && echo 'error: lxcConfigContainer() missing required parameter: $container' 1>&2 && exit 1
 
@@ -811,22 +830,25 @@ function lxcConfigContainer() {
     ${SB_SUDO} lxc exec -T "${container}" -- ${SB_SUDO} bash -c 'set -o errexit && set -o pipefail && echo "ubuntu ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers'
     abortIfNonZero $? "adding 'ubuntu' to container=${container} sudoers"
 
+    # sleep 5
+
     echo "info: updating apt repositories in container=${container}"
     # ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "${SB_SUDO} apt update"
-    ${SB_SUDO} lxc exec -T "${container}" -- ${SB_SUDO} apt update
+    ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "set -x && set -o errexit && DEBIAN_FRONTEND=noninteractive apt update"
     abortIfNonZero $? "container=${container} apt update"
 
     packages='daemontools git-core curl unzip'
     echo "info: installing packages to container=${container}: ${packages}"
-    ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "${SB_SUDO} apt install --yes ${packages}"
+    ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "set -x && set -o errexit && DEBIAN_FRONTEND=noninteractive apt install --yes ${packages}"
     abortIfNonZero $? "container=${container} apt install --yes ${packages}"
 
     echo "info: removing $(shipbuilder containers list-purge-packages | tr $'\n' ' ') packages"
-    ${SB_SUDO} lxc exec -T "${container}" -- apt purge --yes $(shipbuilder containers list-purge-packages | tr $'\n' ' ')
+    ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "set -x && set -o errexit && DEBIAN_FRONTEND=noninteractive apt purge --yes $(shipbuilder containers list-purge-packages | tr $'\n' ' ')"
     abortIfNonZero $? "container=${container} apt purge --yes $(shipbuilder containers list-purge-packages | tr $'\n' ' ')"
 
     echo "info: disabling unnecessary system services - $(shipbuilder containers list-disable-services | tr $'\n' ' ')"
-    shipbuilder containers list-disable-services | ${SB_SUDO} lxc exec -T "${container}" -- bash -c "xargs -n 1 -IX /bin/bash -c 'systemctl is-enabled X 1>/dev/null && ( systemctl stop X ; systemctl disable X )'"
+    shipbuilder containers list-disable-services | ${SB_SUDO} lxc exec -T "${container}" -- \
+        /bin/bash -c "set -x && set -o errexit && xargs -n 1 -IX /bin/bash -c 'systemctl is-enabled X 1>/dev/null ; test \$? -ne 0 && return 0 ; systemctl stop X ; set -o errexit ; systemctl disable X'"
     abortIfNonZero $? "container=${container} disabling unnecessary system services - $(shipbuilder containers list-disable-services | tr $'\n' ' ')"
 
     echo "info: stopping container=${container}"
@@ -836,7 +858,7 @@ function lxcConfigContainer() {
 }
 
 function lxcContainerExists() {
-    local container=$1
+    local container=${1:-}
 
     test -z "${container}" && echo 'error: lxcContainerExists() missing required parameter: $container' 1>&2 && exit 1
 
@@ -845,7 +867,7 @@ function lxcContainerExists() {
 }
 
 function lxcContainerRunning() {
-    local container=$1
+    local container=${1:-}
 
     test -z "${container}" && echo 'error: lxcContainerRunning() missing required parameter: $container' 1>&2 && exit 1
 
@@ -855,8 +877,8 @@ function lxcContainerRunning() {
 
 function lxcDestroyContainer() {
     local  __resultvar=$1
-    local container=$2
-    local lxcFs=$3
+    local container=${2:-}
+    local lxcFs=${3:-}
 
     test -z "${container}" && echo 'error: lxcDestroyContainer() missing required parameter: $container' 1>&2 && exit 1
     test -z "${lxcFs}" && echo 'error: lxcDestroyContainer() missing required parameter: $lxcFs' 1>&2 && exit 1
@@ -901,21 +923,23 @@ function lxcConfigBuildPack() {
     # @param $2 skipIfExists Whether or not to skip over this container if it already exists.
     # @param $3 lxc filesystem to use.
     # @param $4 zfs pool (optional, only needed when applicable).
-    local buildPack=$1
-    local skipIfExists=$2
-    local lxcFs=$3
-    local container="base-${buildPack}"
+    local buildPack=${1:-}
+    local skipIfExists=${2:-}
+    local lxcFs=${3:-}
 
     test -z "${buildPack}" && echo 'error: lxcConfigBuildPack() missing required parameter: $buildPack' 1>&2 && exit 1 || :
     test -z "${skipIfExists}" && echo 'error: lxcConfigBuildPack() missing required parameter: $skipIfExists' 1>&2 && exit 1 || :
     test -z "${lxcFs}" && echo 'error: lxcConfigBuildPack() missing required parameter: $lxcFs' 1>&2 && exit 1 || :
 
+    local container
     local packagesFile
     local packages
     local customCommandsFile
     local runningRc
     local existsRc
     local rc
+
+    local container="base-${buildPack}"
 
     packagesFile="${SB_REPO_PATH}/build-packs/${buildPack}/container-packages"
     test ! -r "${packagesFile}" && echo "error: lxcConfigBuildPack() missing packages file for build-pack '${buildPack}': '${packagesFile}' not found" 1>&2 && exit 1
@@ -927,7 +951,7 @@ function lxcConfigBuildPack() {
     # Test if the container was left in a running state, and if so, destroy it (since failed runs can leave things partially done).
     lxcContainerRunning "${container}"
     runningRc=$?
-    if [ ${alreadyRunning} -eq 0 ] ; then
+    if [ ${runningRc} -eq 0 ] ; then
         lxcDestroyContainer destroyedRc "${container}" "${lxcFs}"
         test ${destroyedRc} -ne 0 && echo "error: failed to destroy container=${container}" 1>&2 && exit 1
     fi
@@ -951,13 +975,13 @@ function lxcConfigBuildPack() {
         # Install packages.
         echo "info: installing packages to ${container} container: ${packages}"
         #ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "${SB_SUDO} apt install --yes ${packages}"
-        ${SB_SUDO} lxc exec -T "${container}" -- ${SB_SUDO} /bin/bash -c "apt update && apt -o Dpkg::Options::='--force-overwrite' install --yes ${packages}"
+        ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "set -o errexit && apt update && apt -o Dpkg::Options::='--force-overwrite' install --yes ${packages}"
         rc=$?
         if [ ${rc} -ne 0 ] ; then
             echo 'warning: first attempt at installing packages failed, falling back to trying installation of packages one by one..'
             for package in ${packages} ; do
                 #ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "${SB_SUDO} apt install --yes ${package}"
-                ${SB_SUDO} lxc exec -T "${container}" -- ${SB_SUDO} /bin/bash -c "apt install -o Dpkg::Options::='--force-overwrite' --yes ${package}"
+                ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "set -o errexit && apt install -o Dpkg::Options::='--force-overwrite' --yes ${package}"
                 abortIfNonZero $? "[${container}] container apt install --yes ${package}"
             done
             #${SB_SUDO} lxc exec -T "${container}" -- sed -i 's/^NTPSERVERS=".*"$/NTPSERVERS=""/' /etc/default/ntpdate
@@ -971,26 +995,29 @@ function lxcConfigBuildPack() {
         if [ -n "${customCommandsFile}" ] ; then
             echo "info: running customCommandsFile: ${customCommandsFile}"
             #ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "${customCommands}"
-            rsync -azve 'ssh -o "StrictHostKeyChecking=no" -o "BatchMode=yes"' "${customCommandsFile}" "ubuntu@${ip}:/tmp/custom.sh"
-            abortIfNonZero ${rc} "[${container}] rsyncing customCommandsFile=${customCommandsFile} to ubuntu@${ip}:/tmp/custom.sh failed"
-            ${SB_SUDO} lxc exec -T "${container}" -- ${SB_SUDO} /bin/bash /tmp/custom.sh
+            base64 < "${customCommandsFile}" | ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "set -o errexit && base64 -d > /tmp/custom.sh && chmod a+x /tmp/custom.sh"
+            # rsync -azve 'ssh -o "StrictHostKeyChecking=no" -o "BatchMode=yes"' "${customCommandsFile}" "ubuntu@${ip}:/tmp/custom.sh"
+            # abortIfNonZero $? "[${container}] rsyncing customCommandsFile=${customCommandsFile} to ubuntu@${ip}:/tmp/custom.sh failed"
+            abortIfNonZero $? "[${container}] sending customCommandsFile=${customCommandsFile} to ${container} failed"
+            ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash /tmp/custom.sh
             rc=$?
             # Cleanup temp custom commands script.
-            #${SB_SUDO} lxc exec -T "${container}" -- ${SB_SUDO} rm -f /tmp/custom.sh
+            ${SB_SUDO} lxc exec -T "${container}" -- rm -f /tmp/custom.sh
             abortIfNonZero ${rc} "[${container}] container customCommandsFile=${customCommandsFile}"
         fi
 
         echo "info: stopping ${container} container"
         ${SB_SUDO} lxc stop --force "${container}"
         abortIfNonZero $? "[${container}] lxc stop --force ${container}"
+
         echo 'info: build-pack configuration succeeded'
     fi
 }
 
 function lxcConfigBuildPacks() {
     # @param $2 lxc filesystem to use.
-    local skipIfExists=$1
-    local lxcFs=$2
+    local skipIfExists=${1:-}
+    local lxcFs=${2:-}
 
     test -z "${lxcFs}" && echo 'error: lxcConfigBuildPacks() missing required parameter: $lxcFs' 1>&2 && exit 1 || :
 
@@ -1008,11 +1035,11 @@ function prepareServerPart1() {
     # @param $3 lxc filesystem to use.
     # @param $4 $zfsPool zfs pool name to create (only required when lxc filesystem is zfs).
     # @param $5 $swapDevice to format and use as for swap (optional).
-    local sbHost=$1
-    local device=$2
-    local lxcFs=$3
-    local zfsPool=$4
-    local swapDevice=$5
+    local sbHost=${1:-}
+    local device=${2:-}
+    local lxcFs=${3:-}
+    local zfsPool=${4:-}
+    local swapDevice=${5:-}
 
     test -z "${sbHost}" && echo 'error: prepareServerPart1(): missing required parameter: shipbuilder host' 1>&2 && exit 1 || :
     test -z "${device}" && echo 'error: prepareServerPart1(): missing required parameter: device' 1>&2 && exit 1 || :
@@ -1034,8 +1061,8 @@ function prepareServerPart1() {
 
 function prepareServerPart2() {
     # @param $2 lxc filesystem to use.
-    local skipIfExists=$1
-    local lxcFs=$2
+    local skipIfExists=${1:-}
+    local lxcFs=${2:-}
 
     test -z "${skipIfExists}" && echo 'error: prepareServerPart2() missing required parameter: $skipIfExists' 1>&2 && exit 1 || :
     test -z "${lxcFs}" && echo 'error: prepareServerPart2() missing required parameter: $lxcFs' 1>&2 && exit 1 || :
@@ -1045,9 +1072,6 @@ function prepareServerPart2() {
     lxcInitContainer "${container}" "${skipIfExists}" "${lxcFs}"
     abortIfNonZero $? "lxcInitContainer(container=${container}, lxcFs=${lxcFs}, skipIfExists=${skipIfExists}) failed"
 
-    lxcConfigBase 'base' "${skipIfExists}"
-    abortIfNonZero $? "lxcConfigBase('base' skipIfExists=\"${skipIfExists}\")"
-
     lxcConfigBuildPacks "${skipIfExists}" "${lxcFs}"
     abortIfNonZero $? "lxcConfigBuildPacks(lxcFs=${lxcFs}, skipIfExists=${skipIfExists}) failed"
 
@@ -1056,9 +1080,9 @@ function prepareServerPart2() {
 
 function installSingleBuildPack() {
     # @param $3 lxc filesystem to use.
-    local buildPack=$1
-    local skipIfExists=$2
-    local lxcFs=$3
+    local buildPack=${1:-}
+    local skipIfExists=${2:-}
+    local lxcFs=${3:-}
 
     test -z "${buildPack}" && echo 'error: installSingleBuildPack() missing required parameter: $buildPack' 1>&2 && exit 1
     test -z "${skipIfExists}" && echo 'error: installSingleBuildPack() missing required parameter: $skipIfExists' 1>&2 && exit 1

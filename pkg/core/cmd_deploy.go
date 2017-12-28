@@ -598,7 +598,6 @@ var PurgePackages = []string{
 
 // DisableServices is the list of unnecessary system services to disable in app containers.
 var DisableServices = []string{
-	"accounts-daemon",
 	"atd",
 	"autovt@",
 	"cloud-config",
@@ -608,7 +607,6 @@ var DisableServices = []string{
 	"cron",
 	"friendly-recovery",
 	"getty@",
-	"iscsi",
 	"iscsid",
 	"lvm2-monitor",
 	"lxcfs",
