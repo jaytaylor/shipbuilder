@@ -366,7 +366,7 @@ function prepareZfsPoolDevice() {
 
     # Create ZFS pool mount point.
     # test ! -d "/${zfsPoolArg}" && ${SB_SUDO} rm -rf "/${zfsPoolArg}" && ${SB_SUDO} mkdir "/${zfsPoolArg}" || :
-    # abortIfNonZero $? "creating /${zfsPool} mount point"
+    # abortIfNonZero $? "creating /${zfsPool} mountpoint"
 
     # Create ZFS pool and attach to a device.
     if [ -z "$(${SB_SUDO} zfs list -o name,mountpoint | sed '1d' | grep "^${zfsPoolArg}.*\/${zfsPoolArg}"'$')" ] ; then
@@ -397,8 +397,6 @@ function prepareZfsPoolDevice() {
         echo y | ${SB_SUDO} mkfs.ext4 -q "${device}"
         abortIfNonZero $? "command 'mkfs.ext4 -q ${device}', ensure the device is not in use and partitions are all removed"
 
-        # sudo --non-interactive fdisk -l /dev/xvdb | grep -A 100 '^Device' | awk '{print $1}' | grep --only-matching '[0-9]\+$' | xargs -n1 -IX echo -e 'd\nX' && echo w | sudo --non-interactive fdisk /dev/xvdb
-
         ${SB_SUDO} zpool destroy "${zfsPoolArg}" 2>/dev/null
 
         #${SB_SUDO} zpool create -o ashift=12 "${zfsPoolArg}" "${device}"
@@ -410,7 +408,9 @@ function prepareZfsPoolDevice() {
         #${SB_SUDO} zpool create -f "${zfsPoolArg}" "${device}"
         #abortIfNonZero $? "command 'zpool create -f ${zfsPoolArg} ${device}'"
     fi
+}
 
+function prepareZfsDirs() {
     # Create lxc and git volumes and set mountpoints.
     for volume in git ; do
         #test -z "$(${SB_SUDO} zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" && ${SB_SUDO} zfs create -o compression=on "${zfsPoolArg}/${volume}" || :
@@ -487,10 +487,19 @@ function configureLxdZfs() {
     if [ -z "${storage}" ] ; then
         ${SB_SUDO} lxc storage create "${zfsPoolArg}" zfs "source=${device}"
         abortIfNonZero $? "command 'lxc storage create ${zfsPoolArg} zfs source=${device}'"
+
+        # Set ZFS mountpoint - the shipbuilder usage of ZFS for git storage
+        # relies on the pool having a particular mountpoint.
+        ${SB_SUDO} mkdir -p "/${zfsPoolArg}"
+        abortIfNonZero $? "command 'mkdir -p /${zfsPoolArg}'"
+
+        ${SB_SUDO} zfs set "mountpoint=/${zfsPoolArg}" "/${zfsPoolArg}"
+        abortIfNonZero $? "setting mountpoint via 'zfs set mountpoint=/${zfsPoolArg} ${zfsPoolArg}'"
     fi
 
     if [ -z "$(${SB_SUDO} lxc profile device show default | grep -A3 '^root:' | grep "pool: ${zfsPoolArg}")" ] ; then
         ${SB_SUDO} lxc profile device remove default root
+
         ${SB_SUDO} lxc profile device add default root disk path=/ "pool=${zfsPoolArg}"
         abortIfNonZero $? "LXC root zfs device assertion"
     fi
@@ -511,6 +520,7 @@ function configureLxd() {
     ${SB_SUDO} systemctl restart snap.lxd.daemon
     abortIfNonZero $? "command 'systemctl restart snap.lxd.daemon'"
 
+    # Give the LXD daemon a moment to come up.
     sleep 3
 
     ${SB_SUDO} lxd init --auto
@@ -626,6 +636,8 @@ function prepareNode() {
 
             # Remove any fstab entry for the ZFS device (ZFS will auto-mount one pool).
             ${SB_SUDO} sed -i "/.*$(echo "${device}" | sed 's/\//\\\//g').*/d" /etc/fstab
+
+            prepareZfsDirs
 
             # Chmod 777 /${zfsPoolArg}/git
             ${SB_SUDO} chmod 777 "/${zfsPoolArg}/git"

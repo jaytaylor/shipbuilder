@@ -99,7 +99,7 @@ function main() {
         # ${SB_SSH} "${nodeHost}" "${SB_SUDO} lxc remote add --accept-certificate --public sb-server ${SB_SSH_HOST} && ${SB_SUDO}"' cp -a ${USER}/.config /root/'
         # abortIfNonZero $? 'adding sb-server lxc remote image server to slave node'
 
-        ${SB_SSH} "${nodeHost}" ${SB_SUDO} bash -c "set -o errexit && set -o pipefail && sed -i \"/^[ \t]*net\.ipv4\.conf\.all\.route_localnet *=.*/d\" /etc/sysctl.conf && sysctl -w $(echo \"net.ipv4.conf.all.route_localnet=1\" | tee -a /etc/sysctl.conf)"
+        ${SB_SSH} "${nodeHost}" bash -c "set -o errexit && set -o pipefail && ${SB_SUDO} sed -i \"/^[ \t]*net\.ipv4\.conf\.all\.route_localnet *=.*/d\" /etc/sysctl.conf && sysctl -w $(echo \"net.ipv4.conf.all.route_localnet=1\" | ${SB_SUDO} tee -a /etc/sysctl.conf)"
         abortIfNonZero $? 'setting sysctl -w net.ipv4.conf.all.route_localnet=1 on slave node'
 
         if test -z "${denyRestart}"; then
