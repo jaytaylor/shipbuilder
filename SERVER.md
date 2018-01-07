@@ -133,8 +133,10 @@ sudo systemctl start shipbuilder
 ./shipbuilder/shipbuilder-darwin client nodes:add HOST_OR_IP1 HOST_OR_IP2..
 ```
 
-7. Start creating apps!
+**Important:**
 
+* Shipbuilder server must be able to reach nodes for SSH'ing on port 22.
+* Nodes must be able to reach the shipbuilder server on port 8443 in order to pull down LXC container images.
 
 Port Mappings
 =============

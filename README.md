@@ -92,6 +92,8 @@ TODO: 2017-12-20: SB client can be fixed by adding 'ruok' equivalent in client.g
 
 TODO: 2017-12-12: Make backup of HAProxy cfg before overwriting, then restore orig config if hap svc restart fails.
 
+TODO: 2017-12-28: Add "git remote add shipbuilder ssh://xxxxxxxxxx" to apps:create output.
+
 ## Client
 
 See [CLIENT.md](https://github.com/jaytaylor/shipbuilder/blob/master/CLIENT.md)
