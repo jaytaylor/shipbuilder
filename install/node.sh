@@ -60,9 +60,7 @@ function main() {
 
     action=${1:-install}
 
-    test -z "${SB_SSH_HOST:-}" && autoDetectServer
-    test -z "${SB_LXC_FS:-}" && autoDetectFilesystem
-    test -z "${SB_ZFS_POOL:-}" && autoDetectZfsPool
+    autoDetectVars
 
     # Validate required parameters.
     test -z "${SB_SSH_HOST:-}" && echo 'error: missing required parameter: -S [shipbuilder-host]' 1>&2 && exit 1
@@ -73,13 +71,11 @@ function main() {
         action='install'
     fi
 
-
     verifySshAndSudoForHosts "${SB_SSH_HOST} ${nodeHost}"
-
 
     if [ "${action}" = "list-devices" ]; then
         echo '----'
-        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" "${SB_SUDO}"' find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
+        ${SB_SSH} "${nodeHost}" "${SB_SUDO}"' find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
         abortIfNonZero $? "retrieving storage devices from host ${SB_SSH_HOST}"
         exit 0
 
@@ -89,21 +85,26 @@ function main() {
 
         installAccessForSshHost "${nodeHost}"
 
-        rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" libfns.sh "${nodeHost}:/tmp/"
+        rsync -azve "${SB_SSH}" libfns.sh "${nodeHost}:/tmp/"
         abortIfNonZero $? 'rsync libfns.sh failed'
 
-        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" "source /tmp/libfns.sh && prepareNode ${device} ${SB_LXC_FS} ${SB_ZFS_POOL} ${swapDevice}"
-        abortIfNonZero $? 'remote prepareNode() invocation'
 
-        # ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" "${SB_SUDO} lxc remote add --accept-certificate --public sb-server ${SB_SSH_HOST} && ${SB_SUDO}"' cp -a ${USER}/.config /root/'
+        rsync -azve "${SB_SSH}" "${HOME}/.config" "${nodeHost}:~/"
+        abortIfNonZero $? "rsync LXD HTTPS client key and cert from ~/.config over to host=${nodeHost}"
+
+        ${SB_SSH} "${nodeHost}" "source /tmp/libfns.sh && $(dumpAutoDetectedVars) prepareNode ${device} ${SB_LXC_FS} ${SB_ZFS_POOL} ${swapDevice}"
+        abortIfNonZero $? 'remote prepareNode() invocation'
+        set +x
+
+        # ${SB_SSH} "${nodeHost}" "${SB_SUDO} lxc remote add --accept-certificate --public sb-server ${SB_SSH_HOST} && ${SB_SUDO}"' cp -a ${USER}/.config /root/'
         # abortIfNonZero $? 'adding sb-server lxc remote image server to slave node'
 
-        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" ${SB_SUDO} bash -c 'set -o errexit && set -o pipefail && set -x && sed -i "s/net.ipv4.conf.all.route_localnet *=.*//d" /etc/sysctl.conf && sysctl -w $(echo "net.ipv4.conf.all.route_localnet=1" | '"${SB_SUDO}"' tee -a /etc/sysctl.conf)'
+        ${SB_SSH} "${nodeHost}" ${SB_SUDO} bash -c "set -o errexit && set -o pipefail && sed -i \"/^[ \t]*net\.ipv4\.conf\.all\.route_localnet *=.*/d\" /etc/sysctl.conf && sysctl -w $(echo \"net.ipv4.conf.all.route_localnet=1\" | tee -a /etc/sysctl.conf)"
         abortIfNonZero $? 'setting sysctl -w net.ipv4.conf.all.route_localnet=1 on slave node'
 
         if test -z "${denyRestart}"; then
             echo 'info: checking if system restart is necessary'
-            ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${nodeHost}" "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && ${SB_SUDO} reboot || echo 'no system restart is necessary'"
+            ${SB_SSH} "${nodeHost}" "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && ${SB_SUDO} reboot || echo 'no system restart is necessary'"
             abortIfNonZero $? 'remote system restart check failed'
         else
             echo 'warn: a restart may be required on the node to complete installation, but the action was disabled by a flag' 1>&2

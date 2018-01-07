@@ -4,6 +4,7 @@ set -o nounset
 
 export SB_REPO_PATH="${GOPATH:-${HOME}/go}/src/github.com/jaytaylor/shipbuilder"
 export SB_SUDO='sudo --non-interactive'
+export SB_SSH='ssh -o BatchMode=yes -o StrictHostKeyChecking=no'
 
 export goVersion='1.9.1'
 export lxcBaseImage='ubuntu:16.04'
@@ -88,6 +89,29 @@ function autoDetectZfsPool() {
     fi
 }
 
+function autoDetectVars() {
+    test -z "${SB_SSH_HOST:-}" && autoDetectServer
+    test -z "${SB_LXC_FS:-}" && autoDetectFilesystem
+    test -z "${SB_ZFS_POOL:-}" && autoDetectZfsPool
+}
+
+# dumpAutoDetectedVars is useful to pass auto-detected variables explicitly to a
+# command which won't be able to do the auto-detection itself.
+#
+# For example, when libfns.sh has been rsync'd to a remote machine and a
+# function with a dependency on one or more auto-detected variables needs to be
+# invoked through SSH.
+#
+# Dumps out variables contained in the autoDetectVars function in the form of:
+#
+#     k1=v1 k2=v2 .. kN=vN
+#
+function dumpAutoDetectedVars() {
+    autoDetectVars
+
+    declare -f autoDetectVars | grep --only-matching 'SB_[A-Z0-9_]\+' | xargs -n1 -IX bash -c 'echo X=${X}' | tr $'\n' ' '
+}
+
 function verifySshAndSudoForHosts() {
     # @param $1 string. List of space-delimited SSH connection strings.
     local sshHosts="${1:-}"
@@ -109,6 +133,7 @@ function verifySshAndSudoForHosts() {
 function initSbServerKeys() {
     # @precondition $SB_SSH_HOST must not be empty.
     test -z "${SB_SSH_HOST}" && echo 'error: initSbServerKeys(): required parameter $SB_SSH_HOST cannot be empty' 1>&2 && exit 1
+
     echo "info: checking SB server=${SB_SSH_HOST} SSH keys, will generate if missing"
 
     ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' ${SB_SSH_HOST} '/bin/bash -c '"'"'
@@ -290,7 +315,7 @@ function installLxc() {
     ${SB_SUDO} systemctl restart snap.lxd.daemon
     abortIfNonZero $? "systemctl restart snap.lxd.daemon"
 
-    echo "info: installed version of lxc=$(${SB_SUDO} lxc version) and lxd=$(lxd --version) (all must be v2.21 or newer)"
+    echo "info: installed version of lxc=$(${SB_SUDO} lxc version) and lxd=$(${SB_SUDO} lxd --version) (all must be v2.21 or newer)"
 
     # Add supporting package(s) for selected filesystem type.
     fsPackages="$(test "${lxcFs}" = 'btrfs' && echo 'btrfs-tools' || :) $(test "${lxcFs}" = 'zfs' && echo 'zfsutils-linux' || :)"
@@ -328,12 +353,12 @@ function setupSysctlAndLimits() {
     done
 }
 
-function prepareZfs() {
+function prepareZfsPoolDevice() {
     local zfsPoolArg=${1:-}
     local device=${2:-}
 
-    test -z "${zfsPoolArg}" && echo 'error: prepareZfs() missing required parameter: $zfsPoolArg' 1>&2 && exit 1 || :
-    test -z "${device}" && echo 'error: prepareZfs() missing required parameter: $device' 1>&2 && exit 1 || :
+    test -z "${zfsPoolArg}" && echo 'error: prepareZfsPoolDevice() missing required parameter: $zfsPoolArg' 1>&2 && exit 1 || :
+    test -z "${device}" && echo 'error: prepareZfsPoolDevice() missing required parameter: $device' 1>&2 && exit 1 || :
 
     local numPartitions
     local storage
@@ -355,15 +380,15 @@ function prepareZfs() {
         )
         if [ ${numPartitions} -ne 0 ] ; then
             echo "info: removing ${numPartitions} from device=${device}"
-            echo $(
+            echo -e "$(
                 ${SB_SUDO} fdisk -l "${device}" \
-                    | grep -A 100 '^Device' \
+                    | grep -A 999 '^Device' \
                     | awk '{print $1}' \
                     | grep --only-matching '[0-9]\+$' \
                     | xargs -n1 -IX echo -e 'd\nX' \
                 ; \
                 echo w \
-            ) \
+            )" \
                 | ${SB_SUDO} fdisk "${device}"
             abortIfNonZero $? "removing ${numPartitions} from device=${device}"
         fi
@@ -378,8 +403,12 @@ function prepareZfs() {
 
         #${SB_SUDO} zpool create -o ashift=12 "${zfsPoolArg}" "${device}"
         #abortIfNonZero $? "command 'zpool create -o ashift=12 ${zfsPoolArg} ${device}'"
-        ${SB_SUDO} zpool create -f "${zfsPoolArg}" "${device}"
-        abortIfNonZero $? "command 'zpool create -f ${zfsPoolArg} ${device}'"
+
+        # NB: This step is no longer necessary as the `lxc storage create ..'
+        # command handles the the ZFS pool creation.
+        #
+        #${SB_SUDO} zpool create -f "${zfsPoolArg}" "${device}"
+        #abortIfNonZero $? "command 'zpool create -f ${zfsPoolArg} ${device}'"
     fi
 
     # Create lxc and git volumes and set mountpoints.
@@ -470,6 +499,9 @@ function configureLxdZfs() {
 }
 
 function configureLxd() {
+    # @precondition $SB_SSH_HOST must not be empty.
+    test -z "${SB_SSH_HOST}" && echo 'error: configureLxd(): required parameter $SB_SSH_HOST cannot be empty' 1>&2 && exit 1
+
     local lxcFs=${1:-}
 
     test -z "${lxcFs}" && echo 'configureLxd: missing required parameter: lxcFs' 1>&2 && exit 1 || :
@@ -494,11 +526,11 @@ function configureLxd() {
     sbServerRemote=$(${SB_SUDO} lxc remote list | awk '{print $2}' | grep -v '^$' | sed 1d | grep '^sb-server$' | wc -l)
     if [ ${sbServerRemote} -ne 1 ] ; then
         ${SB_SUDO} lxc remote add --accept-certificate --public sb-server ${SB_SSH_HOST}
-        abortIfNonZero $? 'adding sb-server lxc remote image server=${SB_SSH_HOST} on $(hostname --fqdn)'
+        abortIfNonZero $? "command 'lxc remote add --accept-certificate --public sb-server ${SB_SSH_HOST}' on $(hostname --fqdn)"
     fi
 
-    ${SB_SUDO} cp -a ${USER}/.config /root/
-    abortIfNonZero $? "command 'cp -a ${USER}/.config /root/'"
+    ${SB_SUDO} cp -a ${HOME}/.config /root/
+    abortIfNonZero $? "command 'cp -a ${HOME}/.config /root/'"
 }
 
 function prepareNode() {
@@ -516,14 +548,13 @@ function prepareNode() {
     test -z "${lxcFs}" && echo 'error: prepareNode() missing required parameter: $lxcFs' 1>&2 && exit 1 || :
     test "${lxcFs}" = 'zfs' && test -z "${zfsPool}" && echo 'error: prepareNode() missing required zfs parameter: $zfsPool' 1>&2 && exit 1 || :
 
-    local rc
     local fs
     local zfsPoolArg
     local majorVersion
     local numLines
     local insertAtLineNo
 
-    setupSysctlAndL
+    setupSysctlAndLimits
 
     if [ -n "${swapDevice}" ] ; then
         echo "info: attempting to unmount swap device=${swapDevice} to be cautious/safe"
@@ -533,7 +564,8 @@ function prepareNode() {
     installLxc "${lxcFs}"
 
     fs=$(${SB_SUDO} df -T "${device}" | tail -n 1 | awk '{print $2}')
-    test -z "${fs}" && echo "error: failed to determine FS type for ${device}" 1>&2 && exit 1
+    test -z "${fs}" && echo "error: failed to determine FS type for ${device}" 1>&2 && exit 1 || :
+
     ${SB_SUDO} umount "${device}" 1>&2 2>/dev/null
     #abortIfNonZero $? "umounting device=${device}"
 
@@ -570,7 +602,7 @@ function prepareNode() {
             configureLxd "${lxcFs}"
 
         elif [ "${lxcFs}" = 'zfs' ] ; then
-            prepareZfs "${zfsPoolArg}" "${device}"
+            prepareZfsPoolDevice "${zfsPoolArg}" "${device}"
 
             configureLxd "${lxcFs}"
 

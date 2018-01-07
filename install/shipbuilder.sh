@@ -99,9 +99,7 @@ function main() {
 
     action=${1:-}
 
-    test -z "${SB_SSH_HOST:-}" && autoDetectServer
-    test -z "${SB_LXC_FS:-}" && autoDetectFilesystem
-    test -z "${SB_ZFS_POOL:-}" && autoDetectZfsPool
+    autoDetectVars
 
     test -z "${SB_SSH_HOST:-}" && echo 'error: missing required parameter: -S [shipbuilder-host]' 1>&2 && exit 1
 
