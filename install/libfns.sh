@@ -369,7 +369,7 @@ function prepareZfsPoolDevice() {
     # abortIfNonZero $? "creating /${zfsPool} mountpoint"
 
     # Create ZFS pool and attach to a device.
-    if [ -z "$(${SB_SUDO} zfs list -o name,mountpoint | sed '1d' | grep "^${zfsPoolArg}.*\/${zfsPoolArg}"'$')" ] ; then
+    if [ -z "$(${SB_SUDO} zfs list -o name | sed '1d' | grep "^${zfsPoolArg}"'$')" ] ; then
         # Reset any partitions on the device.
         numPartitions=$(
             ${SB_SUDO} fdisk -l "${device}" \
@@ -379,7 +379,7 @@ function prepareZfsPoolDevice() {
                 | wc -l
         )
         if [ ${numPartitions} -ne 0 ] ; then
-            echo "info: removing ${numPartitions} from device=${device}"
+            echo "info: removing ${numPartitions} partitions from device=${device}"
             echo -e "$(
                 ${SB_SUDO} fdisk -l "${device}" \
                     | grep -A 999 '^Device' \
@@ -396,17 +396,6 @@ function prepareZfsPoolDevice() {
         # Format the device with any filesystem (mkfs.ext4 is fast).
         echo y | ${SB_SUDO} mkfs.ext4 -q "${device}"
         abortIfNonZero $? "command 'mkfs.ext4 -q ${device}', ensure the device is not in use and partitions are all removed"
-
-        ${SB_SUDO} zpool destroy "${zfsPoolArg}" 2>/dev/null
-
-        #${SB_SUDO} zpool create -o ashift=12 "${zfsPoolArg}" "${device}"
-        #abortIfNonZero $? "command 'zpool create -o ashift=12 ${zfsPoolArg} ${device}'"
-
-        # NB: This step is no longer necessary as the `lxc storage create ..'
-        # command handles the the ZFS pool creation.
-        #
-        #${SB_SUDO} zpool create -f "${zfsPoolArg}" "${device}"
-        #abortIfNonZero $? "command 'zpool create -f ${zfsPoolArg} ${device}'"
     fi
 }
 
@@ -417,18 +406,13 @@ function prepareZfsDirs() {
         test -n "$(${SB_SUDO} zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" || ${SB_SUDO} zfs create -o compression=on "${zfsPoolArg}/${volume}"
         abortIfNonZero $? "command 'zfs create -o compression=on ${zfsPoolArg}/${volume}'"
 
-        ${SB_SUDO} zfs set "mountpoint=/${zfsPoolArg}/${volume}" "${zfsPoolArg}/${volume}"
+        ${SB_SUDO} zfs set "mountpoint=/${volume}" "${zfsPoolArg}/${volume}"
         abortIfNonZero $? "setting mountpoint via 'zfs set mountpoint=/${zfsPoolArg}/${volume} ${zfsPoolArg}/${volume}'"
 
         ${SB_SUDO} zfs umount "${zfsPoolArg}/${volume}" 2>/dev/null || :
 
         ${SB_SUDO} zfs mount "${zfsPoolArg}/${volume}"
         abortIfNonZero $? "zfs mount'ing ${zfsPoolArg}/${volume}"
-
-        ${SB_SUDO} unlink "/${volume}" 2>/dev/null || :
-
-        ${SB_SUDO} ln -s "/${zfsPoolArg}/${volume}" "/${volume}"
-        abortIfNonZero $? "setting up symlink for volume=${volume}"
     done
 
     # Mount remaining volumes under LXC base path (rather than $zfsPoolArg
@@ -447,10 +431,10 @@ function prepareZfsDirs() {
         ${SB_SUDO} zfs mount "${zfsPoolArg}/${volume}"
         abortIfNonZero $? "zfs mount'ing ${zfsPoolArg}/${volume}"
 
-        ${SB_SUDO} unlink "/${volume}" 2>/dev/null || :
+        # ${SB_SUDO} unlink "/${volume}" 2>/dev/null || :
 
-        ${SB_SUDO} ln -s "/${zfsPoolArg}/${volume}" "/${volume}"
-        abortIfNonZero $? "setting up symlink for volume=${volume}"
+        # ${SB_SUDO} ln -s "/${zfsPoolArg}/${volume}" "/${volume}"
+        # abortIfNonZero $? "setting up symlink for volume=${volume}"
     done
 }
 
@@ -487,14 +471,6 @@ function configureLxdZfs() {
     if [ -z "${storage}" ] ; then
         ${SB_SUDO} lxc storage create "${zfsPoolArg}" zfs "source=${device}"
         abortIfNonZero $? "command 'lxc storage create ${zfsPoolArg} zfs source=${device}'"
-
-        # Set ZFS mountpoint - the shipbuilder usage of ZFS for git storage
-        # relies on the pool having a particular mountpoint.
-        ${SB_SUDO} mkdir -p "/${zfsPoolArg}"
-        abortIfNonZero $? "command 'mkdir -p /${zfsPoolArg}'"
-
-        ${SB_SUDO} zfs set "mountpoint=/${zfsPoolArg}" "/${zfsPoolArg}"
-        abortIfNonZero $? "setting mountpoint via 'zfs set mountpoint=/${zfsPoolArg} ${zfsPoolArg}'"
     fi
 
     if [ -z "$(${SB_SUDO} lxc profile device show default | grep -A3 '^root:' | grep "pool: ${zfsPoolArg}")" ] ; then
@@ -640,8 +616,8 @@ function prepareNode() {
             prepareZfsDirs
 
             # Chmod 777 /${zfsPoolArg}/git
-            ${SB_SUDO} chmod 777 "/${zfsPoolArg}/git"
-            abortIfNonZero $? "command 'chmod 777 /${zfsPoolArg}/git'"
+            ${SB_SUDO} chmod 777 "/git"
+            abortIfNonZero $? "command 'chmod 777 /git'"
 
             # # Link /var/lib/lxc to /${zfsPoolArg}/lxc, and then link /mnt/build/lxc to /var/lib/lxc.
             # test -d '/var/lib/lxc' && ${SB_SUDO} mv /var/lib/lxc{,.bak} || :
