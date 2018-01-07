@@ -262,6 +262,15 @@ function installLxc() {
     local required
     local recommended
 
+    ${SB_SUDO} apt update
+    abortIfNonZero $? "command 'apt update'"
+
+    # Legacy migration: zfs-fuse dependency is now switched to zfsutils-linux
+    # for shipbuilder v2.
+    # LXC and LXD get installed via snap.
+    ${SB_SUDO} apt remove --yes --purge zfs-fuse lxd lxd-client lxc lxc1 lxc2 liblxc1 lxc-common lxcfs
+    abortIfNonZero $? "command 'apt remove --yes --purge zfs-fuse lxd lxd-client lxc lxc1 lxc2 liblxc1 lxc-common lxcfs'"
+
     echo 'info: supported versions of lxc+lxd must be installed'
     echo 'info: as of 2017-12-27, ubuntu comes with lxc+lxd=v2.0.11 by default, and we require lxc=v2.1.1 lxd=2.2.1 or newer'
     echo 'info: installing lxd via snap'
@@ -278,15 +287,10 @@ function installLxc() {
     ${SB_SUDO} snap install lxd
     abortIfNonZero $? "command 'snap install lxd'"
 
-    ${SB_SUDO} apt update
-    abortIfNonZero $? "command 'apt update'"
+    ${SB_SUDO} systemctl restart snap.lxd.daemon
+    abortIfNonZero $? "systemctl restart snap.lxd.daemon"
 
     echo "info: installed version of lxc=$(${SB_SUDO} lxc version) and lxd=$(lxd --version) (all must be v2.21 or newer)"
-
-    # Legacy migration: zfs-fuse dependency is now switched to zfsutils-linux
-    # for shipbuilder v2.
-    ${SB_SUDO} apt remove --purge zfs-fuse
-    abortIfNonZero $? "command 'apt remove --yes --purge zfs-fuse'"
 
     # Add supporting package(s) for selected filesystem type.
     fsPackages="$(test "${lxcFs}" = 'btrfs' && echo 'btrfs-tools' || :) $(test "${lxcFs}" = 'zfs' && echo 'zfsutils-linux' || :)"
@@ -301,9 +305,6 @@ function installLxc() {
     ${SB_SUDO} apt install --yes ${recommended}
     abortIfNonZero $? "command 'apt install --yes ${recommended}'"
     echo 'info: installLxc() succeeded'
-
-    ${SB_SUDO} lxd init --auto
-    abortIfNonZero $? "command 'lxd init --auto'"
 }
 
 function setupSysctlAndLimits() {
@@ -327,71 +328,51 @@ function setupSysctlAndLimits() {
     done
 }
 
-function setupLxcNetworking() {
-    local lxcNetExistsTest
-    local topInterface
-
-    # Setup LXC/LXD networking.
-    ip addr show lxdbr0 1>/dev/null 2>/dev/null
-    if [ $? -eq 0 ] ; then
-        test -n "$(ip addr show lxdbr0 | grep ' inet ')" || ${SB_SUDO} lxc network delete lxdbr0
-        abortIfNonZero $? "lxc/lxd removal of non-ipv4 network bridge lxdbr0"
-    fi
-
-    lxcNetExistsTest="$(${SB_SUDO} lxc network show lxdbr0 2>/dev/null)"
-    if [ -z "${lxcNetExistsTest}" ] ; then
-        ${SB_SUDO} lxc network create lxdbr0 ipv6.address=none ipv4.address=10.0.1.1/24 ipv4.nat=true
-        abortIfNonZero $? "lxc/lxd ipv4 network bridge creation of lxdbr0"
-    fi
-
-    topInterface=$(ip addr | grep '^[0-9]\+: \([^l]\|l[^o]\)' | head -n 1 | awk '{print $2}' | tr -d ':')
-    if [ -z "${topInterface}" ] ; then
-        abortWithError "no network interface found to attach to LXC"
-    fi
-
-    ${SB_SUDO} lxc network detach-profile lxdbr0 default ${topInterface} 2>/dev/null || :
-
-    ${SB_SUDO} lxc network attach-profile lxdbr0 default ${topInterface}
-    abortIfNonZero $? "command 'lxc network attach-profile lxdbr0 default ${topInterface}'"
-}
-
-function setupLxdWithZfs() {
+function prepareZfs() {
     local zfsPoolArg=${1:-}
     local device=${2:-}
 
-    test -z "${zfsPoolArg}" && echo 'error: setupLxdWithZfs() missing required parameter: $zfsPoolArg' 1>&2 && exit 1 || :
-    test -z "${device}" && echo 'error: setupLxdWithZfs() missing required parameter: $device' 1>&2 && exit 1 || :
+    test -z "${zfsPoolArg}" && echo 'error: prepareZfs() missing required parameter: $zfsPoolArg' 1>&2 && exit 1 || :
+    test -z "${device}" && echo 'error: prepareZfs() missing required parameter: $device' 1>&2 && exit 1 || :
 
+    local numPartitions
     local storage
     local lxcBasePath
-
-    setupLxcNetworking
 
     # Create ZFS pool mount point.
     # test ! -d "/${zfsPoolArg}" && ${SB_SUDO} rm -rf "/${zfsPoolArg}" && ${SB_SUDO} mkdir "/${zfsPoolArg}" || :
     # abortIfNonZero $? "creating /${zfsPool} mount point"
 
-    # TODO: Move to function and invoke even when FS already formatted w/ ZFS.
-
-    storage="$(${SB_SUDO} lxc storage show "${zfsPoolArg}" 2>/dev/null)"
-    if [ -z "${storage}" ] ; then
-        ${SB_SUDO} lxc storage create "${zfsPoolArg}" zfs "source=${device}"
-        abortIfNonZero $? "command 'lxc storage create ${zfsPoolArg} zfs source=${device}'"
-    fi
-
-    if [ -z "$(${SB_SUDO} lxc profile device show default | grep -A3 '^root:' | grep "pool: ${zfsPoolArg}")" ] ; then
-        ${SB_SUDO} lxc profile device remove default root
-        ${SB_SUDO} lxc profile device add default root disk path=/ "pool=${zfsPoolArg}"
-        abortIfNonZero $? "LXC root zfs device assertion"
-    fi
-    # ${SB_SUDO} lxc profile device show default || ${SB_SUDO} lxc profile device add default root disk path=/ "pool=${zfsPoolArg}"
-    # abortIfNonZero $? "LXC root zfs device assertion"
-
     # Create ZFS pool and attach to a device.
     if [ -z "$(${SB_SUDO} zfs list -o name,mountpoint | sed '1d' | grep "^${zfsPoolArg}.*\/${zfsPoolArg}"'$')" ] ; then
+        # Reset any partitions on the device.
+        numPartitions=$(
+            ${SB_SUDO} fdisk -l "${device}" \
+                | grep -A 100 '^Device' \
+                | awk '{print $1}' \
+                | grep --only-matching '[0-9]\+$' \
+                | wc -l
+        )
+        if [ ${numPartitions} -ne 0 ] ; then
+            echo "info: removing ${numPartitions} from device=${device}"
+            echo $(
+                ${SB_SUDO} fdisk -l "${device}" \
+                    | grep -A 100 '^Device' \
+                    | awk '{print $1}' \
+                    | grep --only-matching '[0-9]\+$' \
+                    | xargs -n1 -IX echo -e 'd\nX' \
+                ; \
+                echo w \
+            ) \
+                | ${SB_SUDO} fdisk "${device}"
+            abortIfNonZero $? "removing ${numPartitions} from device=${device}"
+        fi
+
         # Format the device with any filesystem (mkfs.ext4 is fast).
         echo y | ${SB_SUDO} mkfs.ext4 -q "${device}"
-        abortIfNonZero $? "command 'mkfs.ext4 -q ${device}'"
+        abortIfNonZero $? "command 'mkfs.ext4 -q ${device}', ensure the device is not in use and partitions are all removed"
+
+        # sudo --non-interactive fdisk -l /dev/xvdb | grep -A 100 '^Device' | awk '{print $1}' | grep --only-matching '[0-9]\+$' | xargs -n1 -IX echo -e 'd\nX' && echo w | sudo --non-interactive fdisk /dev/xvdb
 
         ${SB_SUDO} zpool destroy "${zfsPoolArg}" 2>/dev/null
 
@@ -444,6 +425,82 @@ function setupLxdWithZfs() {
     done
 }
 
+function configureLxdNetworking() {
+    local lxcNetExistsTest
+    local topInterface
+
+    # Setup LXC/LXD networking.
+    ip addr show lxdbr0 1>/dev/null 2>/dev/null
+    if [ $? -eq 0 ] ; then
+        test -n "$(ip addr show lxdbr0 | grep ' inet ')" || ${SB_SUDO} lxc network delete lxdbr0
+        abortIfNonZero $? "lxc/lxd removal of non-ipv4 network bridge lxdbr0"
+    fi
+
+    lxcNetExistsTest="$(${SB_SUDO} lxc network show lxdbr0 2>/dev/null)"
+    if [ -z "${lxcNetExistsTest}" ] ; then
+        ${SB_SUDO} lxc network create lxdbr0 ipv6.address=none ipv4.address=10.0.1.1/24 ipv4.nat=true
+        abortIfNonZero $? "lxc/lxd ipv4 network bridge creation of lxdbr0"
+    fi
+
+    topInterface=$(ip addr | grep '^[0-9]\+: \([^l]\|l[^o]\)' | head -n 1 | awk '{print $2}' | tr -d ':')
+    if [ -z "${topInterface}" ] ; then
+        abortWithError "no network interface found to attach to LXC"
+    fi
+
+    ${SB_SUDO} lxc network detach-profile lxdbr0 default ${topInterface} 2>/dev/null || :
+
+    ${SB_SUDO} lxc network attach-profile lxdbr0 default ${topInterface}
+    abortIfNonZero $? "command 'lxc network attach-profile lxdbr0 default ${topInterface}'"
+}
+
+function configureLxdZfs() {
+    storage="$(${SB_SUDO} lxc storage show "${zfsPoolArg}" 2>/dev/null)"
+    if [ -z "${storage}" ] ; then
+        ${SB_SUDO} lxc storage create "${zfsPoolArg}" zfs "source=${device}"
+        abortIfNonZero $? "command 'lxc storage create ${zfsPoolArg} zfs source=${device}'"
+    fi
+
+    if [ -z "$(${SB_SUDO} lxc profile device show default | grep -A3 '^root:' | grep "pool: ${zfsPoolArg}")" ] ; then
+        ${SB_SUDO} lxc profile device remove default root
+        ${SB_SUDO} lxc profile device add default root disk path=/ "pool=${zfsPoolArg}"
+        abortIfNonZero $? "LXC root zfs device assertion"
+    fi
+    # ${SB_SUDO} lxc profile device show default || ${SB_SUDO} lxc profile device add default root disk path=/ "pool=${zfsPoolArg}"
+    # abortIfNonZero $? "LXC root zfs device assertion"
+}
+
+function configureLxd() {
+    local lxcFs=${1:-}
+
+    test -z "${lxcFs}" && echo 'configureLxd: missing required parameter: lxcFs' 1>&2 && exit 1 || :
+
+    local sbServerRemote
+
+    ${SB_SUDO} systemctl restart snap.lxd.daemon
+    abortIfNonZero $? "command 'systemctl restart snap.lxd.daemon'"
+
+    sleep 3
+
+    ${SB_SUDO} lxd init --auto
+    abortIfNonZero $? "command 'lxd init --auto'"
+
+
+    configureLxdNetworking
+
+    if [ "${lxcFs}" = 'zfs' ] ; then
+        configureLxdZfs
+    fi
+
+    sbServerRemote=$(${SB_SUDO} lxc remote list | awk '{print $2}' | grep -v '^$' | sed 1d | grep '^sb-server$' | wc -l)
+    if [ ${sbServerRemote} -ne 1 ] ; then
+        ${SB_SUDO} lxc remote add --accept-certificate --public sb-server ${SB_SSH_HOST}
+        abortIfNonZero $? 'adding sb-server lxc remote image server=${SB_SSH_HOST} on $(hostname --fqdn)'
+    fi
+
+    ${SB_SUDO} cp -a ${USER}/.config /root/
+    abortIfNonZero $? "command 'cp -a ${USER}/.config /root/'"
+}
+
 function prepareNode() {
     # @param $1 $device to format and use for new mount.
     # @param $2 $lxcFs lxc filesystem to use (zfs, btrfs are both supported).
@@ -474,7 +531,6 @@ function prepareNode() {
     fi
 
     installLxc "${lxcFs}"
-
 
     fs=$(${SB_SUDO} df -T "${device}" | tail -n 1 | awk '{print $2}')
     test -z "${fs}" && echo "error: failed to determine FS type for ${device}" 1>&2 && exit 1
@@ -511,8 +567,12 @@ function prepareNode() {
             ${SB_SUDO} mount ${device}
             abortIfNonZero $? "command 'mount ${device}"
 
+            configureLxd "${lxcFs}"
+
         elif [ "${lxcFs}" = 'zfs' ] ; then
-            setupLxdWithZfs "${zfsPoolArg}" "${device}"
+            prepareZfs "${zfsPoolArg}" "${device}"
+
+            configureLxd "${lxcFs}"
 
             # Unmount all ZFS volumes.
             ${SB_SUDO} zfs umount -a
@@ -531,11 +591,6 @@ function prepareNode() {
             # Enable zfs snapshot listing.
             ${SB_SUDO} zpool set listsnapshots=on "${zfsPoolArg}"
             abortIfNonZero $? "command 'zpool set listsnapshots=on ${zfsPoolArg}'"
-
-            # Add zfsroot to lxc configuration.
-            test -z "$(${SB_SUDO} grep '^lxc.lxcpath *=' /etc/lxc/lxc.conf 2>/dev/null)" && echo "lxc.lxcpath = /${zfsPoolArg}/lxc" | ${SB_SUDO} tee -a /etc/lxc/lxc.conf || ${SB_SUDO} sed -i "s/^lxc.lxcpath *=.*/lxc.lxcpath = \/${zfsPoolArg}\/lxc/g" /etc/lxc/lxc.conf
-            test -z "$(${SB_SUDO} grep '^lxc.bdev.zfs.root *=' /etc/lxc/lxc.conf 2>/dev/null)" && echo "lxc.bdev.zfs.root = ${zfsPoolArg}/lxc" | ${SB_SUDO} tee -a /etc/lxc/lxc.conf || ${SB_SUDO} sed -i "s/^lxc.bdev.zfs.root *=.*/lxc.bdev.zfs.root = ${zfsPoolArg}\/lxc/g" /etc/lxc/lxc.conf
-            abortIfNonZero $? 'application of lxc zfsroot setting'
 
             # Remove any fstab entry for the ZFS device (ZFS will auto-mount one pool).
             ${SB_SUDO} sed -i "/.*$(echo "${device}" | sed 's/\//\\\//g').*/d" /etc/fstab
