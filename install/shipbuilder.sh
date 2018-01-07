@@ -14,6 +14,7 @@ export buildPackToInstall=
 
 function deployShipBuilder() {
     local OLD_SHELLOPTS
+    local deb
 
     # Builds and installs shipbuilder deb.
     OLD_SHELLOPTS="$(set +o)"

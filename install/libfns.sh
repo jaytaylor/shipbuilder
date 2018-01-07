@@ -190,8 +190,11 @@ function getSbServerPublicKeys() {
 
     echo "info: retrieving public-keys from shipbuilder server: ${sshHost}"
 
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' ${sshHost} "test -f ~/.ssh/id_rsa.pub || ssh-keygen -f ~/.ssh/id_rsa -t rsa -N \"\" && sudo -n bash -c 'set -o errexit && test -f /root/.ssh/id_rsa.pub || ssh-keygen -f /root/.ssh/id_rsa -t rsa -N \"\"'"
+    abortIfNonZero $? "Ensuring SSH public-keys exist on ssh-host=${sshHost}"
+
     pubKeys=$(ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' ${sshHost} 'cat ~/.ssh/id_rsa.pub && echo "." && sudo -n cat /root/.ssh/id_rsa.pub')
-    abortIfNonZero $? 'SSH public-key retrieval failed'
+    abortIfNonZero $? "SSH public-key retrieval failed for ssh-host=${sshHost}"
 
     export SB_UNPRIVILEGED_PUBKEY=$(echo "${pubKeys}" | grep --before 100 '^\.$' | grep -v '^\.$')
     export SB_ROOT_PUBKEY=$(echo "${pubKeys}" | grep --after 100 '^\.$' | grep -v '^\.$')
