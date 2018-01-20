@@ -51,8 +51,8 @@ function warnIfNonZero() {
 
 function autoDetectServer() {
     # Attempts to auto-detect the server host by reading the contents of ../env/SB_SSH_HOST.
-    if [ -r '../env/SB_SSH_HOST' ] ; then
-        export SB_SSH_HOST=$(head -n 1 ../env/SB_SSH_HOST)
+    if [ -r "$(dirname "$0")/../env/SB_SSH_HOST" ] ; then
+        export SB_SSH_HOST="$(head -n 1 "$(dirname "$0")/../env/SB_SSH_HOST")"
         test -z "${SB_SSH_HOST}" && echo 'error: autoDetectServer(): lxc filesystem auto-detection failed: ../env/SB_SSH_HOST file empty?' 1>&2 && exit 1
         echo "info: auto-detected shipbuilder host: ${SB_SSH_HOST}"
     else
@@ -62,8 +62,8 @@ function autoDetectServer() {
 
 function autoDetectFilesystem() {
     # Attempts to auto-detect the target filesystem type by reading the contents of ../env/LXC_FS.
-    if [ -r '../env/SB_LXC_FS' ] ; then
-        export SB_LXC_FS=$(head -n 1 ../env/SB_LXC_FS)
+    if [ -r "$(dirname "$0")/../env/SB_LXC_FS" ] ; then
+        export SB_LXC_FS="$(head -n 1 "$(dirname "$0")/../env/SB_LXC_FS")"
         test -z "${SB_LXC_FS}" && echo 'error: autoDetectFilesystem(): lxc filesystem auto-detection failed: ../env/SB_LXC_FS file empty?' 1>&2 && exit 1
         echo "info: auto-detected lxc filesystem: ${SB_LXC_FS}"
     else
@@ -75,8 +75,8 @@ function autoDetectZfsPool() {
     # When fs type is 'zfs', attempt to auto-detect the zfs pool name to create by reading the contents of ../env/ZFS_POOL.
     test -z "${SB_LXC_FS}" && autoDetectFilesystem # Attempt to ensure that the target filesystem type is available.
     if [ "${SB_LXC_FS}" = 'zfs' ] ; then
-        if [ -r '../env/SB_ZFS_POOL' ] ; then
-            export SB_ZFS_POOL="$(head -n 1 ../env/SB_ZFS_POOL)"
+        if [ -r "$(dirname "$0")/../env/SB_ZFS_POOL" ] ; then
+            export SB_ZFS_POOL="$(head -n 1 "$(dirname "$0")/../env/SB_ZFS_POOL")"
             test -z "${SB_ZFS_POOL}" && echo 'error: autoDetectZfsPool(): zfs pool auto-detection failed: ../env/SB_ZFS_POOL file empty?' 1>&2 && exit 1
             echo "info: auto-detected zfs pool: ${SB_ZFS_POOL}"
             # Validate to ensure zfs pool name won't conflict with typical ubuntu root-fs items.
@@ -90,9 +90,9 @@ function autoDetectZfsPool() {
 }
 
 function autoDetectVars() {
-    test -z "${SB_SSH_HOST:-}" && autoDetectServer
-    test -z "${SB_LXC_FS:-}" && autoDetectFilesystem
-    test -z "${SB_ZFS_POOL:-}" && autoDetectZfsPool
+    test -n "${SB_SSH_HOST:-}" || autoDetectServer
+    test -n "${SB_LXC_FS:-}" || autoDetectFilesystem
+    test -n "${SB_ZFS_POOL:-}" || autoDetectZfsPool
 }
 
 # dumpAutoDetectedVars is useful to pass auto-detected variables explicitly to a
@@ -132,7 +132,7 @@ function verifySshAndSudoForHosts() {
 
 function initSbServerKeys() {
     # @precondition $SB_SSH_HOST must not be empty.
-    test -z "${SB_SSH_HOST}" && echo 'error: initSbServerKeys(): required parameter $SB_SSH_HOST cannot be empty' 1>&2 && exit 1
+    test -z "${SB_SSH_HOST:-}" && echo 'error: initSbServerKeys(): required parameter $SB_SSH_HOST cannot be empty' 1>&2 && exit 1
 
     echo "info: checking SB server=${SB_SSH_HOST} SSH keys, will generate if missing"
 
@@ -241,38 +241,52 @@ function installAccessForSshHost() {
     # @param $1 SSH connection string (e.g. user@host)
     local sshHost=${1:-}
 
+    local remoteCommand
+
     test -z "${sshHost}" && echo 'error: installAccessForSshHost(): missing required parameter: SSH hostname' 1>&2 && exit 1
 
     if [ -z "${SB_UNPRIVILEGED_PUBKEY:-}" ] || [ -z "${SB_ROOT_PUBKEY:-}" ] ; then
-        getSbServerPublicKeys ${sshHost}
+        getSbServerPublicKeys ${SB_SSH_HOST}
     fi
 
     test -z "${sshHost}" && echo 'error: installAccessForSshHost(): missing required parameter: SSH hostname' 1>&2 && exit 1 || :
 
     echo "info: setting up remote access from build-server to host: ${sshHost}"
-    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' ${sshHost} '/bin/bash -c '"'"'
-    function abortIfNonZero() {
-        local rc=${1:-}
-        local what=${2:-}
-        test ${rc} -ne 0 && echo "remote: error: ${what} exited with non-zero status ${rc}" && exit ${rc} || :
-    }
-    echo "remote: checking main user.."
-    if [ -z "$(grep "'"${SB_UNPRIVILEGED_PUBKEY}"'" ~/.ssh/authorized_keys)" ] || [ -z "$(sudo -n grep "'"${SB_ROOT_PUBKEY}"'" ~/.ssh/authorized_keys)" ] ; then
-        echo -e "'"${SB_UNPRIVILEGED_PUBKEY}\n${SB_ROOT_PUBKEY}"'" >> ~/.ssh/authorized_keys
-        abortIfNonZero $? "appending public-keys to authorized_keys command"
-        chmod 600 ~/.ssh/authorized_keys
-        abortIfNonZero $? "chmod 600 ~/.ssh/authorized_keys command"
+
+    remoteCommand='/bin/bash -c '"'"'
+    set -x
+
+    set -o errexit
+    set -o pipefail
+    set -o nounset
+
+    echo "remote: checking keys for unprivileged user.."
+    if [ -z "$(grep "'"${SB_UNPRIVILEGED_PUBKEY}"'" ~/.ssh/authorized_keys)" ]; then
+        echo "'"${SB_UNPRIVILEGED_PUBKEY}"'" | tee -a ~/.ssh/authorized_keys >/dev/null
     fi
-    echo "remote: checking root user.."
-    if sudo -n test -z "$(sudo -n grep "'"${SB_UNPRIVILEGED_PUBKEY}"'" /root/.ssh/authorized_keys)" || sudo -n test -z "$(sudo -n grep "'"${SB_ROOT_PUBKEY}"'" /root/.ssh/authorized_keys)" ; then
-        echo -e "'"${SB_UNPRIVILEGED_PUBKEY}\n${SB_ROOT_PUBKEY}"'" | sudo -n tee -a /root/.ssh/authorized_keys >/dev/null
-        abortIfNonZero $? "appending public-keys to authorized_keys command"
-        sudo -n chmod 600 /root/.ssh/authorized_keys
-        abortIfNonZero $? "chmod 600 /root/.ssh/authorized_keys command"
+    if [ -z "$(sudo -n grep "'"${SB_ROOT_PUBKEY}"'" ~/.ssh/authorized_keys)" ] ; then
+        echo "'"${SB_ROOT_PUBKEY}"'" | tee -a ~/.ssh/authorized_keys >/dev/null
     fi
+
+    echo "remote: checking keys for root user.."
+    if [ -z "$(sudo -n grep "'"${SB_UNPRIVILEGED_PUBKEY}"'" /root/.ssh/authorized_keys)" ] ; then
+         echo "'"${SB_UNPRIVILEGED_PUBKEY}"'" | sudo -n tee -a /root/.ssh/authorized_keys >/dev/null
+    fi
+    if [ -z "$(sudo -n grep "'"${SB_ROOT_PUBKEY}"'" /root/.ssh/authorized_keys)" ] ; then
+        echo "'"${SB_ROOT_PUBKEY}"'" | sudo -n tee -a /root/.ssh/authorized_keys >/dev/null
+    fi
+
+    chmod 600 ~/.ssh/authorized_keys
+    sudo -n chmod 600 /root/.ssh/authorized_keys
+
     exit 0
     '"'"
+
+    echo "remoteCommand=${remoteCommand}"
+
+    ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' ${sshHost} "${remoteCommand}"
     abortIfNonZero $? "ssh access installation failed for host ${sshHost}"
+
     echo 'info: ssh access installation succeeded'
 }
 
