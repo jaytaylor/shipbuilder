@@ -24,7 +24,7 @@ import (
 const (
 	APP_DIR                            = "/app"
 	ENV_DIR                            = APP_DIR + "/env"
-	LXC_DIR                            = "/var/lib/lxd/containers" // "/var/lib/lxd/storage-pools/tank/containers" // "/tank/lxc" // "/var/lib/lxc"
+	LXC_DIR                            = "/var/snap/lxd/common/lxd/containers" // "/var/lib/lxd/containers" // "/var/lib/lxd/storage-pools/tank/containers" // "/tank/lxc" // "/var/lib/lxc"
 	ZFS_CONTAINER_MOUNT                = "tank/containers"
 	DIRECTORY                          = "/etc/shipbuilder"
 	BINARY                             = "shipbuilder"
@@ -513,7 +513,7 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 					return
 				}
 				err = e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+host,
-					`/bin/bash -c 'if [ "$(sudo systemctl status haproxy | grep --only-matching "Active: [^ ]\+" | cut -d " " -f 2)" = "inactive" ]; then sudo systemctl start haproxy ; else sudo systemctl reload haproxy ; fi'`,
+					`/bin/bash -c 'set -o errexit ; set -o pipefail ; if [ "$(sudo systemctl status haproxy | grep --only-matching "Active: [^ ]\+" | cut -d " " -f 2)" = "inactive" ] ; then sudo systemctl start haproxy ; else sudo systemctl reload haproxy ; fi'`,
 				)
 				if err != nil {
 					c <- err

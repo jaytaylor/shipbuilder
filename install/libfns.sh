@@ -9,6 +9,9 @@ export SB_SSH='ssh -o BatchMode=yes -o StrictHostKeyChecking=no'
 export goVersion='1.9.1'
 export lxcBaseImage='ubuntu:16.04'
 
+# Content of this variable is invoked during funtion RETURN traps.
+export __restorestates_trap='IFS=$'"'"'\n'"'"' ; for ss in $(echo -e "${setstates:-}" | sort --reverse -k3) ; do eval ${ss} 1>/dev/null 2>/dev/null ; done'
+
 # function backtrace () {
 #     local deptn=${#FUNCNAME[@]}
 
@@ -28,6 +31,18 @@ export lxcBaseImage='ubuntu:16.04'
 # }
 # set -o errtrace
 # trap 'trace_top_caller' ERR
+
+function checkUserPermissions() {
+    if [ "$(id -u)" -eq 0 ] ; then
+        echo 'error: must not be run as root' 1>&2
+        exit 1
+    fi
+    ${SB_SUDO} echo hi
+    if [ $? -ne 0 ] ; then
+        echo 'error: must be run by a user who has passwordless sudo access'
+        exit 1
+    fi
+}
 
 function abortIfNonZero() {
     # @param $1 command return code/exit status (e.g. $?, '0', '1').
@@ -53,10 +68,10 @@ function autoDetectServer() {
     # Attempts to auto-detect the server host by reading the contents of ../env/SB_SSH_HOST.
     if [ -r "$(dirname "$0")/../env/SB_SSH_HOST" ] ; then
         export SB_SSH_HOST="$(head -n 1 "$(dirname "$0")/../env/SB_SSH_HOST")"
-        test -z "${SB_SSH_HOST}" && echo 'error: autoDetectServer(): lxc filesystem auto-detection failed: ../env/SB_SSH_HOST file empty?' 1>&2 && exit 1
+        test -z "${SB_SSH_HOST}" && echo 'error: autoDetectServer(): lxc filesystem auto-detection failed: ../env/SB_SSH_HOST file empty?' 1>&2 && exit 1 || :
         echo "info: auto-detected shipbuilder host: ${SB_SSH_HOST}"
     else
-        echo 'warn: server auto-detection failed: no such file: ../env/SB_SSH_HOST' 1>&2
+        echo 'error: server auto-detection failed: no such file: ../env/SB_SSH_HOST' 1>&2 && exit 1 || :
     fi
 }
 
@@ -64,10 +79,10 @@ function autoDetectFilesystem() {
     # Attempts to auto-detect the target filesystem type by reading the contents of ../env/LXC_FS.
     if [ -r "$(dirname "$0")/../env/SB_LXC_FS" ] ; then
         export SB_LXC_FS="$(head -n 1 "$(dirname "$0")/../env/SB_LXC_FS")"
-        test -z "${SB_LXC_FS}" && echo 'error: autoDetectFilesystem(): lxc filesystem auto-detection failed: ../env/SB_LXC_FS file empty?' 1>&2 && exit 1
+        test -z "${SB_LXC_FS}" && echo 'error: autoDetectFilesystem(): lxc filesystem auto-detection failed: ../env/SB_LXC_FS file empty?' 1>&2 && exit 1 || :
         echo "info: auto-detected lxc filesystem: ${SB_LXC_FS}"
     else
-        echo 'error: autoDetectFilesystem(): lxc filesystem auto-detection failed: no such file: ../env/SB_LXC_FS' 1>&2 && exit 1
+        echo 'error: autoDetectFilesystem(): lxc filesystem auto-detection failed: no such file: ../env/SB_LXC_FS' 1>&2 && exit 1 || :
     fi
 }
 
@@ -77,14 +92,14 @@ function autoDetectZfsPool() {
     if [ "${SB_LXC_FS}" = 'zfs' ] ; then
         if [ -r "$(dirname "$0")/../env/SB_ZFS_POOL" ] ; then
             export SB_ZFS_POOL="$(head -n 1 "$(dirname "$0")/../env/SB_ZFS_POOL")"
-            test -z "${SB_ZFS_POOL}" && echo 'error: autoDetectZfsPool(): zfs pool auto-detection failed: ../env/SB_ZFS_POOL file empty?' 1>&2 && exit 1
+            test -z "${SB_ZFS_POOL}" && echo 'error: autoDetectZfsPool(): zfs pool auto-detection failed: ../env/SB_ZFS_POOL file empty?' 1>&2 && exit 1 || :
             echo "info: auto-detected zfs pool: ${SB_ZFS_POOL}"
             # Validate to ensure zfs pool name won't conflict with typical ubuntu root-fs items.
             for x in bin boot dev etc git home lib lib64 media mnt opt proc root run sbin selinux srv sys tmp usr var vmlinuz zfs-kstat ; do
-                test "${SB_ZFS_POOL}" = "${x}" && echo "error: invalid zfs pool name detected, '${x}' is a forbidden because it may conflict with a system directory" 1>&2 && exit 1
+                test "${SB_ZFS_POOL}" = "${x}" && echo "error: invalid zfs pool name detected, '${x}' is a forbidden because it may conflict with a system directory" 1>&2 && exit 1 || :
             done
         else
-            echo 'error: autoDetectZfsPool(): zfs pool auto-detection failed: no such file: ../env/SB_ZFS_POOL' 1>&2 && exit 1
+            echo 'error: autoDetectZfsPool(): zfs pool auto-detection failed: no such file: ../env/SB_ZFS_POOL' 1>&2 && exit 1 || :
         fi
     fi
 }
@@ -292,11 +307,15 @@ function installAccessForSshHost() {
 
 function installLxc() {
     # @param $1 $lxcFs lxc filesystem to use (zfs, btrfs are both supported).
+    # @param $2 $zfsPoolArg ZFS pool name.
     local lxcFs=${1:-}
+    local zfsPoolArg=${2:-}
 
     test -z "${lxcFs}" && echo 'error: installLxc() missing required parameter: $lxcFs' 1>&2 && exit 1 || :
+    test -z "${zfsPoolArg}" && echo 'error: installLxc() missing required parameter: $zfsPoolArg' 1>&2 && exit 1 || :
 
     local rc
+    local poolExists
     local fsPackages
     local required
     local recommended
@@ -323,11 +342,45 @@ function installLxc() {
     ${SB_SUDO} usermod -G lxd -a root
     abortIfNonZero $? "command 'usermod -G lxd -a root'"
 
-    ${SB_SUDO} snap install lxd
-    abortIfNonZero $? "command 'snap install lxd'"
+    if [ -z "$(snap list | sed '1d' | grep '^lxd ')" ] ; then
+        echo 'info: installing lxd via snap'
+
+            ${SB_SUDO} snap install lxd
+        abortIfNonZero $? "command 'snap install lxd'"
+    else
+        echo 'info: snap reports that lxd is already installed'
+    fi
+
+    # Attempt to safely ensure snap dir gets linked to /var/lib/lxd.
 
     ${SB_SUDO} systemctl restart snap.lxd.daemon
     abortIfNonZero $? "systemctl restart snap.lxd.daemon"
+
+    ${SB_SUDO} systemctl stop snap.lxd.daemon
+    abortIfNonZero $? "systemctl stop snap.lxd.daemon"
+
+    poolExists="$(${SB_SUDO} zpool list | sed '1d' | grep "${zfsPoolArg}")"
+
+    if [ -n "${poolExists}" ] ; then
+        ${SB_SUDO} zpool export "${zfsPoolArg}"
+        abortIfNonZero $? "command: 'zpool export ${zfsPoolArg}'"
+    fi
+
+    ${SB_SUDO} rm -rf /var/lib/lxd
+    abortIfNonZero $? "command: 'rm -rf /var/lib/lxd'"
+
+    ${SB_SUDO} ln -s /var/snap/lxd/common/lxd /var/lib/lxd
+    abortIfNonZero $? "command: 'ln -s /var/snap/lxd/common/lxd /var/lib/lxd'"
+
+    if [ -n "${poolExists}" ] ; then
+        ${SB_SUDO} zpool import "${zfsPoolArg}"
+        abortIfNonZero $? "command: 'zpool import ${zfsPoolArg}'"
+    fi
+
+    ${SB_SUDO} systemctl start snap.lxd.daemon
+    abortIfNonZero $? "command: 'systemctl start snap.lxd.daemon'"
+
+    # </Attempt>.
 
     echo "info: installed version of lxc=$(${SB_SUDO} lxc version) and lxd=$(${SB_SUDO} lxd --version) (all must be v2.21 or newer)"
 
@@ -414,6 +467,8 @@ function prepareZfsPoolDevice() {
 }
 
 function prepareZfsDirs() {
+    # local mvPath
+
     # Create lxc and git volumes and set mountpoints.
     for volume in git ; do
         #test -z "$(${SB_SUDO} zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" && ${SB_SUDO} zfs create -o compression=on "${zfsPoolArg}/${volume}" || :
@@ -432,6 +487,20 @@ function prepareZfsDirs() {
     # Mount remaining volumes under LXC base path (rather than $zfsPoolArg
     # [e.g. "/tank"]).
     lxcBasePath=/var/lib/lxd
+
+    # if [ -h "${lxcBasePath}" ] ; then
+    #     ${SB_SUDO} unlink "${lxcBasePath}"
+    #     abortIfNonZero $? "command 'unlink ${lxcBasePath}'"
+    # elif [ -d "${lxcBasePath}" ] ; then
+    #     mvPath="${lxcBasePath}-$(date +%Y%m%d)"
+    #     if [ -e "${mvPath}" ] ; then
+    #         abortWithError "Refusing to rename ${lxcBasePath} to ${mvPath} because ${mvPath} already exists"
+    #     fi
+    #     ${SB_SUDO} mv "${lxcBasePath}" "${mvPath}"
+    #     abortIfNonZero $? "command 'rmdir ${lxcBasePath}'"
+    # fi
+    # ${SB_SUDO} ln -s /var/snap/lxd/common/ "${lxcBasePath}"
+    # abortIfNonZero $? "symlinking /var/snap/lxd/common to ${lxcBasePath}"
 
     for volume in containers images snapshots ; do
         test -n "$(${SB_SUDO} zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" || ${SB_SUDO} zfs create -o compression=on "${zfsPoolArg}/${volume}"
@@ -460,7 +529,7 @@ function configureLxdNetworking() {
     ip addr show lxdbr0 1>/dev/null 2>/dev/null
     if [ $? -eq 0 ] ; then
         test -n "$(ip addr show lxdbr0 | grep ' inet ')" || ${SB_SUDO} lxc network delete lxdbr0
-        abortIfNonZero $? "lxc/lxd removal of non-ipv4 network bridge lxdbr0"
+        abortIfNonZero $? "lxc/lxd removal of non-ipv4 network bridge lxdbr0 (recommendation: reboot and re-run installer)"
     fi
 
     lxcNetExistsTest="$(${SB_SUDO} lxc network show lxdbr0 2>/dev/null)"
@@ -499,9 +568,10 @@ function configureLxdZfs() {
 
 function configureLxd() {
     # @precondition $SB_SSH_HOST must not be empty.
-    test -z "${SB_SSH_HOST}" && echo 'error: configureLxd(): required parameter $SB_SSH_HOST cannot be empty' 1>&2 && exit 1
+    test -z "${SB_SSH_HOST:-}" && echo 'error: configureLxd(): required parameter $SB_SSH_HOST cannot be empty' 1>&2 && exit 1
 
     local lxcFs=${1:-}
+    local isServer=${2:-}
 
     test -z "${lxcFs}" && echo 'configureLxd: missing required parameter: lxcFs' 1>&2 && exit 1 || :
 
@@ -523,24 +593,38 @@ function configureLxd() {
         configureLxdZfs
     fi
 
+    if [ -n "${isServer}" ] ; then
+        ${SB_SUDO} lxc config set core.https_address [::]:8443
+        abortIfNonZero $? "command 'lxc config set core.https_address [::]:8443'"
+    fi
+
     sbServerRemote=$(${SB_SUDO} lxc remote list | awk '{print $2}' | grep -v '^$' | sed 1d | grep '^sb-server$' | wc -l)
     if [ ${sbServerRemote} -ne 1 ] ; then
         ${SB_SUDO} lxc remote add --accept-certificate --public sb-server ${SB_SSH_HOST}
         abortIfNonZero $? "command 'lxc remote add --accept-certificate --public sb-server ${SB_SSH_HOST}' on $(hostname --fqdn)"
     fi
 
-    ${SB_SUDO} cp -a ${HOME}/.config /root/
-    abortIfNonZero $? "command 'cp -a ${HOME}/.config /root/'"
+    # TODO: Find out what cmd creates .config and run it to ensure the
+    # directory will exist.
+    if [ -d "${HOME}/.config" ] ; then
+        ${SB_SUDO} cp -a "${HOME}/.config" /root/
+        abortIfNonZero $? "command 'cp -a ${HOME}/.config /root/'"
+    else
+        echo 'info: no ${HOME}/.config directory found'
+    fi
 }
 
 function prepareNode() {
     # @param $1 $device to format and use for new mount.
     # @param $2 $lxcFs lxc filesystem to use (zfs, btrfs are both supported).
-    # @param $3 $swapDevice to format and use as for swap (optional).
+    # @param $3 $zfsPool ZFS pool name.
+    # @param $4 $swapDevice to format and use as for swap (optional).
+    # @param $5 $isServer (optional).
     local device=${1:-}
     local lxcFs=${2:-}
     local zfsPool=${3:-}
     local swapDevice=${4:-}
+    local isServer=${5:-}
 
     test -z "${device}" && echo 'error: prepareNode() missing required parameter: $device' 1>&2 && exit 1 || :
     test "${device}" = "${swapDevice}" && echo 'error: prepareNode() device & swapDevice must be different' 1>&2 && exit 1 || :
@@ -561,16 +645,16 @@ function prepareNode() {
         ${SB_SUDO} umount "${swapDevice}" 1>&2 2>/dev/null
     fi
 
-    installLxc "${lxcFs}"
+    # Strip leading '/' from $zfsPool, this is actually a compatibility update for 2017.
+    zfsPoolArg="$(echo "${zfsPool}" | sed 's/^\///')"
+
+    installLxc "${lxcFs}" "{zfsPoolArg}"
 
     fs=$(${SB_SUDO} df -T "${device}" | tail -n 1 | awk '{print $2}')
     test -z "${fs}" && echo "error: failed to determine FS type for ${device}" 1>&2 && exit 1 || :
 
     ${SB_SUDO} umount "${device}" 1>&2 2>/dev/null
     #abortIfNonZero $? "umounting device=${device}"
-
-    # Strip leading '/' from $zfsPool, this is actually a compatibility update for 2017.
-    zfsPoolArg="$(echo "${zfsPool}" | sed 's/^\///')"
 
     echo "info: existing fs type on ${device} is ${fs}"
     if [ "${fs}" = "${lxcFs}" ] ; then
@@ -599,12 +683,12 @@ function prepareNode() {
             ${SB_SUDO} mount ${device}
             abortIfNonZero $? "command 'mount ${device}"
 
-            configureLxd "${lxcFs}"
+            configureLxd "${lxcFs}" "${isServer}"
 
         elif [ "${lxcFs}" = 'zfs' ] ; then
             prepareZfsPoolDevice "${zfsPoolArg}" "${device}"
 
-            configureLxd "${lxcFs}"
+            configureLxd "${lxcFs}" "${isServer}"
 
             # Unmount all ZFS volumes.
             ${SB_SUDO} zfs umount -a
@@ -711,7 +795,11 @@ function prepareLoadBalancer() {
     local optional
 
     # @param $1 ssl certificate base filename (without path).
-    certFile=/tmp/$1
+    if [ -n "${1:-}" ] ; then
+        certFile="/tmp/${1}"
+    else
+        certFile=
+    fi
 
     version=$(lsb_release -a 2>/dev/null | grep "Release" | grep -o "[0-9\.]\+$")
 
@@ -753,7 +841,7 @@ net.core.wmem_max = 16777216' | ${SB_SUDO} tee /etc/sysctl.d/60-shipbuilder.conf
     ${SB_SUDO} apt install --yes ${optional}
     abortIfNonZero $? "command 'apt install --yes ${optional}'"
 
-    if [ -r "${certFile}" ] ; then
+    if [ -n "${certFile}" ] && [ -r "${certFile}" ] ; then
         if ! [ -d "/etc/haproxy/certs.d" ] ; then
             ${SB_SUDO} mkdir /etc/haproxy/certs.d 2>/dev/null
             abortIfNonZero $? "creating /etc/haproxy/certs.d directory"
@@ -786,7 +874,7 @@ function installGo() {
         echo "info: installing go v${goVersion}"
         downloadUrl="https://storage.googleapis.com/golang/go${goVersion}.linux-amd64.tar.gz"
         echo "info: downloading go binary distribution from url=${downloadUrl}"
-        curl --silent --fail "${downloadUrl}" > "go${goVersion}.tar.gz"
+        curl --silent --show-error -o "go${goVersion}.tar.gz" "${downloadUrl}"
         abortIfNonZero $? "downloading go-lang binary distribution"
         ${SB_SUDO} tar -C /usr/local -xzf "go${goVersion}.tar.gz"
         abortIfNonZero $? "decompressing and installing go binary distribution to /usr/local"
@@ -795,8 +883,8 @@ export GOROOT='/usr/local/go'
 export GOPATH="\${HOME}/go"
 export PATH="\${PATH}:\${GOROOT}/bin:\${GOPATH}/bin"
 EOF
-        abortIfNonZero $? "creating /etc/profile.d/Z99-go.sh"
-        source /etc/profile
+        abortIfNonZero $? "creating /etc/profile.d/Z99-golang.sh"
+        source /etc/profile.d/Z99-go.sh
         mkdir -p "${GOPATH}/bin" 2>/dev/null
         abortIfNonZero $? "creating directory ${GOPATH}/bin"
     else
@@ -835,6 +923,7 @@ function getContainerIp() {
 
     allowedAttempts=60
     i=0
+    ip=''
 
     echo "info: getting container ip-address for name '${container}'"
     while [ ${i} -lt ${allowedAttempts} ] ; do
@@ -1136,7 +1225,7 @@ function prepareServerPart1() {
     test "${device}" = "${swapDevice}" && echo 'error: prepareServerPart1() device & swapDevice must be different' 1>&2 && exit 1 || :
     test "${lxcFs}" = 'zfs' && test -z "${zfsPool}" && echo 'error: prepareServerPart1() missing required zfs parameter: $zfsPool' 1>&2 && exit 1 || :
 
-    prepareNode "${device}" "${lxcFs}" "${zfsPool}" "${swapDevice}"
+    prepareNode "${device}" "${lxcFs}" "${zfsPool}" "${swapDevice}" "1"
     abortIfNonZero $? 'prepareNode() failed'
 
     installGo

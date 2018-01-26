@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 
-# Don't `cd` because it can break the path-to-ssl-cert parameter.
-#cd "$(dirname "$0")"
-
 source "$(dirname "$0")/libfns.sh"
+
+checkUserPermissions
+
+export lbHost=
+export SB_SSH_HOST=
+export certFile=
 
 function main() {
     while getopts "H:S:c:h" OPTION; do
@@ -20,13 +23,13 @@ function main() {
                 exit 1
                 ;;
             H)
-                lbHost=${OPTARG}
+                export lbHost=${OPTARG}
                 ;;
             S)
                 export SB_SSH_HOST=${OPTARG}
                 ;;
             c)
-                certFile=${OPTARG}
+                export certFile=${OPTARG}
                 ;;
         esac
     done
@@ -40,24 +43,30 @@ function main() {
 
     # Validate required parameters.
     test -z "${SB_SSH_HOST:-}" && echo 'error: missing required parameter: -S [shipbuilder-host]' 1>&2 && exit 1
-    test -z "${lbHost:-}" && echo 'error: missing required parameter: -H [load-balancer-host]' 1>&2 && exit 1
+    test -z "${lbHost}" && echo 'error: missing required parameter: -H [load-balancer-host]' 1>&2 && exit 1
     #test -z "${action}" && echo 'error: missing required parameter: action' 1>&2 && exit 1
 
-    test -n "${certFile:-}" && test ! -r "${certFile}" && echo "error: unable to read ssl certificate file; verify that it exists and user has permission to read it: ${certFile}" 1>&2 && exit 1
-    test -z "${certFile:-}" && echo "warn: no ssl certificate file specified, ssl support will not be available (specify with '-c [path-to-ssl-cert]'" 1>&2
+    test -n "${certFile}" && test ! -r "${certFile}" && echo "error: unable to read ssl certificate file; verify that it exists and user has permission to read it: ${certFile}" 1>&2 && exit 1
+    test -z "${certFile}" && echo "warn: no ssl certificate file specified, ssl support will not be available (specify with '-c [path-to-ssl-cert]'" 1>&2
 
     verifySshAndSudoForHosts "${SB_SSH_HOST} ${lbHost}"
 
-    if [ "${action}" = "install" ]; then
+    if [ "${action}" = "install" ] ; then
         installAccessForSshHost "${lbHost}"
 
-        rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" "$(dirname "$0")/libfns.sh" "${certFile:-}" ${lbHost}:/tmp/
-        abortIfNonZero $? "rsyncing libfns.sh and certFile=${certFile:-} to host=${lbHost}"
+        rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" "$(dirname "$0")/libfns.sh" ${lbHost}:/tmp/
+        abortIfNonZero $? "rsyncing libfns.sh to host=${lbHost}"
+
+        if [ -n "${certFile}" ] ; then
+            rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" "${certFile}" ${lbHost}:/tmp/
+            abortIfNonZero $? "rsyncing certFile=${certFile} to host=${lbHost}"
+        fi
 
         ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' ${lbHost} "source /tmp/libfns.sh && prepareLoadBalancer $(basename "${certFile}")"
         abortIfNonZero $? "load-balancer preparation for host=${lbHost}"
 
-        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' ${lbHost} "sudo -n rm -rf /tmp/libfns.sh '/tmp/$(basename "${certFile}")'"
+        ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' ${lbHost} "sudo --non-interactive rm -rf /tmp/libfns.sh '/tmp/$(basename "${certFile}")'"
+        abortIfNonZero $? "rsyncd files cleanup"
 
     else
         echo 'unrecognized action: ${action}' 1>&2 && exit 1

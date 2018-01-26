@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-cd "$(dirname "$0")"
+source "$(dirname "$0")/libfns.sh"
 
-source libfns.sh
+checkUserPermissions
 
 export device=
 export SB_LXC_FS=
@@ -73,33 +73,37 @@ function main() {
 
     verifySshAndSudoForHosts "${SB_SSH_HOST} ${nodeHost}"
 
-    if [ "${action}" = "list-devices" ]; then
+    if [ "${action}" = "list-devices" ] ; then
         echo '----'
         ${SB_SSH} "${nodeHost}" "${SB_SUDO}"' find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
         abortIfNonZero $? "retrieving storage devices from host ${SB_SSH_HOST}"
         exit 0
 
-    elif [ "${action}" = "install" ]; then
+    elif [ "${action}" = "install" ] ; then
         test -z "${device}" && echo 'error: missing required parameter: -d [device]' 1>&2 && exit 1
         test -z "${SB_LXC_FS}" && echo 'error: missing required parameter: -f [lxc-filesystem]' 1>&2 && exit 1
 
         installAccessForSshHost "${nodeHost}"
 
-        rsync -azve "${SB_SSH}" libfns.sh "${nodeHost}:/tmp/"
-        abortIfNonZero $? 'rsync libfns.sh failed'
+        rsync -azve "${SB_SSH}" "$(dirname "$0")/libfns.sh" "${nodeHost}:/tmp/"
+        abortIfNonZero $? 'rsync libfns.sh to nodeHost=${nodeHost}'
 
 
-        rsync -azve "${SB_SSH}" "${HOME}/.config" "${nodeHost}:~/"
-        abortIfNonZero $? "rsync LXD HTTPS client key and cert from ~/.config over to host=${nodeHost}"
+        if [ -d "${HOME}/.config" ] ; then
+            rsync -azve "${SB_SSH}" "${HOME}/.config" "${nodeHost}:~/"
+            abortIfNonZero $? "rsync LXD HTTPS client key and cert from ~/.config over to host=${nodeHost}"
+        else
+            echo 'info: no ${HOME}/.config found'
+        fi
 
         ${SB_SSH} "${nodeHost}" "source /tmp/libfns.sh && $(dumpAutoDetectedVars) prepareNode ${device} ${SB_LXC_FS} ${SB_ZFS_POOL} ${swapDevice}"
         abortIfNonZero $? 'remote prepareNode() invocation'
         set +x
 
-        # ${SB_SSH} "${nodeHost}" "${SB_SUDO} lxc remote add --accept-certificate --public sb-server ${SB_SSH_HOST} && ${SB_SUDO}"' cp -a ${USER}/.config /root/'
-        # abortIfNonZero $? 'adding sb-server lxc remote image server to slave node'
+        ${SB_SSH} "${nodeHost}" "${SB_SUDO} lxc remote add --accept-certificate --public sb-server ${SB_SSH_HOST} && ${SB_SUDO}"' cp -a ${USER}/.config /root/'
+        abortIfNonZero $? 'adding sb-server lxc remote image server to slave node'
 
-        ${SB_SSH} "${nodeHost}" bash -c "set -o errexit && set -o pipefail && ${SB_SUDO} sed -i '/^[ \t]*net\.ipv4\.conf\.all\.route_localnet *=.*/d' /etc/sysctl.conf && sysctl -w $(echo 'net.ipv4.conf.all.route_localnet=1' | ${SB_SUDO} tee -a /etc/sysctl.conf)"
+        ${SB_SSH} "${nodeHost}" -- /bin/bash -c 'set -o errexit && set -o pipefail && sudo --non-interactive sed -i "/^[ \t]*net\.ipv4\.conf\.all\.route_localnet *=.*/d" /etc/sysctl.conf && sudo --non-interactive sysctl -w $(echo "net.ipv4.conf.all.route_localnet=1" | sudo --non-interactive tee -a /etc/sysctl.conf)'
         abortIfNonZero $? 'setting sysctl -w net.ipv4.conf.all.route_localnet=1 on slave node'
 
         if test -z "${denyRestart}"; then
