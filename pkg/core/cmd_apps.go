@@ -140,7 +140,7 @@ func (server *Server) Apps_Destroy(conn net.Conn, applicationName string) error 
 			e.Run("sudo", "rm", "-r", gitPath)
 		}
 
-		lxcContainerExists, err := PathExists(LXC_DIR + "/" + applicationName)
+		lxcContainerExists, err := e.ContainerExists(applicationName)
 		if err != nil {
 			return err
 		}

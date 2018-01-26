@@ -24,7 +24,8 @@ import (
 const (
 	APP_DIR                            = "/app"
 	ENV_DIR                            = APP_DIR + "/env"
-	LXC_DIR                            = "/var/snap/lxd/common/lxd/containers" // "/var/lib/lxd/containers" // "/var/lib/lxd/storage-pools/tank/containers" // "/tank/lxc" // "/var/lib/lxc"
+	LXC_DIR                            = "/var/lib/lxd/containers" // "/var/snap/lxd/common/lxd/containers" // "/var/lib/lxd/storage-pools/tank/containers" // "/tank/lxc" // "/var/lib/lxc"
+	LXC_BIN                            = "/snap/bin/lxc"
 	ZFS_CONTAINER_MOUNT                = "tank/containers"
 	DIRECTORY                          = "/etc/shipbuilder"
 	BINARY                             = "shipbuilder"
@@ -99,16 +100,19 @@ type Config struct {
 }
 
 func (app *Application) LxcDir() string {
-	return LXC_DIR + "/" + app.Name
+	panic("LxcDir is *DECPRECATED*, DISCONTINUE ALL USE")
 }
 func (app *Application) RootFsDir() string {
-	return LXC_DIR + "/" + app.Name + "/rootfs"
+	panic("RootFsDir is *DECPRECATED*, DISCONTINUE ALL USE")
 }
 func (app *Application) AppDir() string {
-	return app.RootFsDir() + APP_DIR
+	panic("AppDir is *DECPRECATED*, DISCONTINUE ALL USE")
 }
 func (app *Application) SrcDir() string {
-	return app.AppDir() + "/src"
+	panic("SrcDir is *DECPRECATED*, DISCONTINUE ALL USE")
+}
+func (app *Application) BareGitDir() string {
+	return GIT_DIRECTORY + "/" + app.Name
 }
 func (app *Application) LocalAppDir() string {
 	return APP_DIR
@@ -117,16 +121,16 @@ func (app *Application) LocalSrcDir() string {
 	return APP_DIR + "/src"
 }
 func (app *Application) SshDir() string {
-	return app.SrcDir() + "/.ssh"
+	panic("SshDir is *DECPRECATED*, DISCONTINUE ALL USE")
 }
 func (app *Application) SshPrivateKeyFilePath() string {
-	return app.SshDir() + "/id_rsa"
+	panic("SshPrivateKeyFilePath is *DECPRECATED*, DISCONTINUE ALL USE")
 }
 func (app *Application) BaseContainerName() string {
 	return "base-" + app.BuildPack
 }
 func (app *Application) GitDir() string {
-	return GIT_DIRECTORY + "/" + app.Name
+	panic("GitDir is *DECPRECATED*, DISCONTINUE ALL USE")
 }
 func (app *Application) LastDeployNumber() (int, error) {
 	return strconv.Atoi(strings.TrimPrefix(app.LastDeploy, "v"))

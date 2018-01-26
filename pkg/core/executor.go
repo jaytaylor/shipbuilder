@@ -36,7 +36,7 @@ func (exe *Executor) Run(name string, args ...string) error {
 
 // Run a pre-quoted bash command.
 func (exe *Executor) BashCmd(cmd string) error {
-	return exe.Run("sudo", "/bin/bash", "-c", "set -o errexit ; set -o pipefail ; set -o nounset ; "+cmd)
+	return exe.Run("/bin/bash", "-c", "set -o errexit ; set -o pipefail ; set -o nounset ; "+cmd)
 }
 
 // Run a bash command with fmt args.
@@ -72,7 +72,7 @@ func (exe *Executor) ContainerRunning(name string) (bool, error) {
 // lxcListJqCmd forms a command which filters `lxc list` JSON output against
 // the provided JQ query.
 func (exe *Executor) lxcListJqCmd(query string) *exec.Cmd {
-	cmd := logcmd(exec.Command("sudo", "/bin/bash", "-c", fmt.Sprintf(`set -o errexit ; set -o pipefail ; lxc list --format=json | jq -c '%v'`, query)))
+	cmd := logcmd(exec.Command("/bin/bash", "-c", fmt.Sprintf(`set -o errexit ; set -o pipefail ; %v list --format=json | jq -c '%v'`, LXC_BIN, query)))
 	return cmd
 }
 
@@ -88,7 +88,7 @@ func (exe *Executor) StartContainer(name string) error {
 			return fmt.Errorf("checking if container %q running: %s", name, err)
 		}
 		if !running {
-			return exe.Run("sudo", "lxc", "start", name)
+			return exe.Run(LXC_BIN, "start", name)
 		}
 	}
 	return ErrContainerNotFound // Don't operate on non-existent containers.
@@ -106,7 +106,7 @@ func (exe *Executor) StopContainer(name string) error {
 			return fmt.Errorf("checking if container %q running: %s", name, err)
 		}
 		if running {
-			return exe.Run("sudo", "lxc", "stop", "--force", name)
+			return exe.Run(LXC_BIN, "stop", "--force", name)
 		}
 	}
 	return ErrContainerNotFound // Don't operate on non-existent containers.
@@ -118,7 +118,7 @@ func (exe *Executor) RestartContainer(name string) error {
 		return err
 	}
 	if exists {
-		return exe.Run("sudo", "lxc", "restart", "--force", name)
+		return exe.Run(LXC_BIN, "restart", "--force", name)
 	}
 	return ErrContainerNotFound // Don't operate on non-existent containers.
 }
@@ -136,7 +136,7 @@ func (exe *Executor) DestroyContainer(name string) error {
 		if DefaultLXCFS == "zfs" {
 			return exe.zfsDestroyContainerAndChildren(name)
 		} else {
-			return exe.Run("sudo", "lxc", "delete", "--force", name)
+			return exe.Run(LXC_BIN, "delete", "--force", name)
 		}
 	}
 	return nil // Don't operate on non-existent containers.
@@ -144,16 +144,16 @@ func (exe *Executor) DestroyContainer(name string) error {
 
 // Clone a local container.
 func (exe *Executor) CloneContainer(oldName, newName string) error {
-	return exe.Run("sudo", "lxc", "copy", oldName, newName)
+	return exe.Run(LXC_BIN, "copy", oldName, newName)
 }
 
 // Run a command in a local container.
 func (exe *Executor) AttachContainer(name string, args ...string) *exec.Cmd {
-	// Add hosts entry for container name to avoid error upon entering shell: "sudo: unable to resolve host `name`".
-	err := logcmd(exec.Command("sudo", "/bin/bash", "-c", `echo "127.0.0.1`+"\t"+name+`" | sudo tee -a `+LXC_DIR+"/"+name+`/rootfs/etc/hosts`)).Run()
-	if err != nil {
-		fmt.Fprintf(exe.logger, "warn: host fix command failed for container '%v': %v\n", name, err)
-	}
+	// // Add hosts entry for container name to avoid error upon entering shell: "unable to resolve host `name`".
+	// err := logcmd(exec.Command("/bin/bash", "-c", `echo "127.0.0.1`+"\t"+name+`" | tee -a `+LXC_DIR+"/"+name+`/rootfs/etc/hosts`)).Run()
+	// if err != nil {
+	// 	fmt.Fprintf(exe.logger, "warn: host fix command failed for container '%v': %v\n", name, err)
+	// }
 	// Build command to be run, prefixing any .shipbuilder `bin` directories to the environment $PATH.
 	command := `export PATH="$(find /app/.shipbuilder -maxdepth 2 -type d -wholename '*bin'):${PATH}" && /usr/bin/envdir ` + ENV_DIR + " "
 	if len(args) == 0 {
@@ -162,12 +162,12 @@ func (exe *Executor) AttachContainer(name string, args ...string) *exec.Cmd {
 		command += strings.Join(args, " ")
 	}
 	prefixedArgs := []string{
-		"lxc", "exec", name, "--",
+		"exec", name, "--",
 		"sudo", "-u", "ubuntu", "-n", "-i", "--",
 		"/bin/bash", "-c", command,
 	}
-	log.Infof("AttachContainer name=%v, completeCommand=sudo %v", name, args)
-	return logcmd(exec.Command("sudo", prefixedArgs...))
+	log.Infof("AttachContainer name=%v, completeCommand=%v %v", name, LXC_BIN, args)
+	return logcmd(exec.Command(LXC_BIN, prefixedArgs...))
 }
 
 func (exe *Executor) ContainerFSMountpoint(name string) (string, error) {
@@ -176,7 +176,7 @@ func (exe *Executor) ContainerFSMountpoint(name string) (string, error) {
 	}
 	var (
 		path = "/" + exe.ZFSContainerName(name)
-		cmd  = logcmd(exec.Command("sudo", "zfs", "list", "-H", "-o", "mountpoint", path))
+		cmd  = logcmd(exec.Command("zfs", "list", "-H", "-o", "mountpoint", path))
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -197,7 +197,7 @@ func (exe *Executor) MountContainerFS(name string) error {
 	}
 	if !mounted {
 		path := exe.ZFSContainerName(name)
-		if err = exe.Run("sudo", "zfs", "mount", path); err != nil {
+		if err = exe.Run("zfs", "mount", path); err != nil {
 			return fmt.Errorf("mounting zfs path %q: %s", path, err)
 		}
 	}
@@ -219,7 +219,7 @@ func (exe *Executor) UnmountContainerFS(name string) error {
 		return err
 	}
 	if mounted {
-		exe.zfsRunAndResistDatasetIsBusy("sudo", "zfs", "umount", exe.ZFSContainerName(name))
+		exe.zfsRunAndResistDatasetIsBusy("zfs", "umount", exe.ZFSContainerName(name))
 	}
 	return nil
 }
@@ -229,7 +229,7 @@ func (exe *Executor) ContainerFSMounted(name string) (bool, error) {
 		return false, opNotSupportedOnFSErr()
 	}
 
-	cmd := logcmd(exec.Command("sudo", "zfs", "mount"))
+	cmd := logcmd(exec.Command("zfs", "mount"))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return false, fmt.Errorf("checking for existing zfs mount for %q: %s (out=%v)", name, err, out)
@@ -253,8 +253,8 @@ func (exe *Executor) zfsDestroyContainerAndChildren(name string) error {
 	}
 
 	// NB: This is not working yet, and may not be required.
-	/* fmt.Fprintf(exe.logger, "sudo /bin/bash -c \""+`zfs list -t snapshot | grep --only-matching '^`+DefaultZFSPool+`/`+name+`@[^ ]\+' | sed 's/^`+DefaultZFSPool+`\/`+name+`@//'`+"\"\n")
-	childrenBytes, err := logcmd(exec.Command("sudo", "/bin/bash", "-c", `zfs list -t snapshot | grep --only-matching '^`+DefaultZFSPool+`/`+name+`@[^ ]\+' | sed 's/^`+DefaultZFSPool+`\/`+name+`@//'`)).Output()
+	/* fmt.Fprintf(exe.logger, "/bin/bash -c \""+`zfs list -t snapshot | grep --only-matching '^`+DefaultZFSPool+`/`+name+`@[^ ]\+' | sed 's/^`+DefaultZFSPool+`\/`+name+`@//'`+"\"\n")
+	childrenBytes, err := logcmd(exec.Command("/bin/bash", "-c", `zfs list -t snapshot | grep --only-matching '^`+DefaultZFSPool+`/`+name+`@[^ ]\+' | sed 's/^`+DefaultZFSPool+`\/`+name+`@//'`)).Output()
 	if err != nil {
 		// Allude to one possible cause and rememdy for the failure.
 		return fmt.Errorf("zfs snapshot listing failed- check that 'listsnapshots' is enabled for "+DefaultZFSPool+" ('zpool set listsnapshots=on "+DefaultZFSPool+"'), error=%v", err)
@@ -266,17 +266,17 @@ func (exe *Executor) zfsDestroyContainerAndChildren(name string) error {
 		if len(child) > 0 {
 			exe.StopContainer(child)
 			exe.zfsDestroyContainerAndChildren(child)
-			exe.zfsRunAndResistDatasetIsBusy("sudo", "zfs", "destroy", "-R", DefaultZFSPool+"/"+name+"@"+child)
-			err = exe.zfsRunAndResistDatasetIsBusy("sudo", "lxc", "delete", "--force", child)
+			exe.zfsRunAndResistDatasetIsBusy("zfs", "destroy", "-R", DefaultZFSPool+"/"+name+"@"+child)
+			err = exe.zfsRunAndResistDatasetIsBusy(LXC_BIN, "delete", "--force", child)
 			//err := exe.zfsDestroyContainerAndChildren(child)
 			if err != nil {
 				return err
 			}
 		}
-		//exe.Run("sudo", "zfs", "destroy", DefaultZFSPool+"/"+name+"@"+child)
+		//exe.Run("zfs", "destroy", DefaultZFSPool+"/"+name+"@"+child)
 	}*/
-	//exe.zfsRunAndResistDatasetIsBusy("sudo", "zfs", "destroy", "-R", DefaultZFSPool+"/"+name)
-	if err := exe.zfsRunAndResistDatasetIsBusy("sudo", "lxc", "delete", "--force", name); err != nil {
+	//exe.zfsRunAndResistDatasetIsBusy("zfs", "destroy", "-R", DefaultZFSPool+"/"+name)
+	if err := exe.zfsRunAndResistDatasetIsBusy(LXC_BIN, "delete", "--force", name); err != nil {
 		return err
 	}
 

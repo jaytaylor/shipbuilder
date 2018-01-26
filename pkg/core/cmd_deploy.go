@@ -157,9 +157,9 @@ func (d *Deployment) createContainer() (err error) {
 		fmt.Fprintf(titleLogger, "App image container already exists\n")
 	}
 
-	if err = d.exe.MountContainerFS(d.Application.Name); err != nil {
-		return
-	}
+	// if err = d.exe.MountContainerFS(d.Application.Name); err != nil {
+	// 	return
+	// }
 	defer func() {
 		// Housekeeping.
 		running, checkErr := d.exe.ContainerRunning(d.Application.Name)
@@ -305,7 +305,7 @@ func (d *Deployment) initContainer() error {
 
 func (d *Deployment) hasDevice(name string) (bool, error) {
 	// TODO: This is a quick hack, do a proper check for error vs existence / non-existence.
-	if err := d.exe.BashCmdf(`test -n "$(lxc config device list %v | grep '^%v$')"`, d.Application.Name, name); err != nil {
+	if err := d.exe.BashCmdf(`test -n "$(%v config device list %v | grep '^%v$')"`, LXC_BIN, d.Application.Name, name); err != nil {
 		return false, nil
 	}
 	return true, nil
@@ -317,7 +317,7 @@ func (d *Deployment) addDevice(name string, hostPath string, containerPath strin
 		return err
 	}
 	if !hasDevice {
-		if err := d.exe.BashCmdf("lxc config device add %v %v disk source=%v path=%v", d.Application.Name, name, hostPath, containerPath); err != nil {
+		if err := d.exe.BashCmdf("%v config device add %v %v disk source=%v path=%v", LXC_BIN, d.Application.Name, name, hostPath, containerPath); err != nil {
 			return err
 		}
 	}
@@ -330,7 +330,7 @@ func (d *Deployment) removeDevice(name string) error {
 		return err
 	}
 	if hasDevice {
-		if err := d.exe.BashCmdf("lxc config device remove %v %v", d.Application.Name, name); err != nil {
+		if err := d.exe.BashCmdf("%v config device remove %v %v", LXC_BIN, d.Application.Name, name); err != nil {
 			return err
 		}
 	}
@@ -339,7 +339,7 @@ func (d *Deployment) removeDevice(name string) error {
 
 func (d *Deployment) gitClone() (err error) {
 	// LXD compat: map /git/repo to /git in the container.
-	if err = d.addDevice("git", d.Application.GitDir(), oslib.OsPath(string(os.PathSeparator)+"git")); err != nil {
+	if err = d.addDevice("git", d.Application.BareGitDir(), oslib.OsPath(string(os.PathSeparator)+"git")); err != nil {
 		return
 	}
 	defer func() {
@@ -427,7 +427,7 @@ func (d *Deployment) b64FileIntoContainer(src string, dst string, permissions st
 	cmd := exec.Command("sudo",
 		"/bin/bash", "-c",
 		fmt.Sprintf(
-			`set -o errexit ; set -o pipefail ; base64 < %[1]v | lxc exec -T %[2]v -- /bin/bash -c 'set -o errexit ; set -o pipefail ; base64 -d > %[3]v && chmod %[4]v %[3]v'`,
+			`set -o errexit ; set -o pipefail ; base64 < %[1]v | `+LXC_BIN+` exec -T %[2]v -- /bin/bash -c 'set -o errexit ; set -o pipefail ; base64 -d > %[3]v && chmod %[4]v %[3]v'`,
 			src,
 			d.Application.Name,
 			dst,
@@ -556,7 +556,7 @@ func (d *Deployment) prepareEnvironmentVariables() (err error) {
 func (d *Deployment) prepareShellEnvironment() error {
 	// Update the container's /etc/passwd file to use the `envdirbash` script and
 	// /app/src as the user's home directory.
-	if err := d.lxcExecf("usermod -d /app/src %v", DEFAULT_NODE_USERNAME); err != nil {
+	if err := d.lxcExecf("mkdir -p /app/src && ps -ef && usermod -d /app/src %v", DEFAULT_NODE_USERNAME); err != nil {
 		return err
 	}
 	// TODO: TRACK DOWN THE ENVDIR THING - IT DOESN'T APPEAR TO HAVE EVER EXISTED???
@@ -573,7 +573,7 @@ func (d *Deployment) prepareShellEnvironment() error {
 	// }
 
 	// Move /home/<user>/.ssh to the new home directory in /app/src
-	if err := d.lxcExecf("cp -a /home/%v/.[a-zA-Z0-9]* /app/src/", DEFAULT_NODE_USERNAME); err != nil {
+	if err := d.lxcExecf("test ! -d /home/%[1]v/.ssh || cp -a /home/%[1]v/.ssh /app/src/", DEFAULT_NODE_USERNAME); err != nil {
 		return err
 	}
 	return nil
@@ -671,10 +671,10 @@ func (d *Deployment) build() (err error) {
 		log.WithField("app", d.Application.Name).WithField("err", stopErr).Errorf("Problem stopping container (this can likely be ignored)")
 	}
 
-	if d.err = d.exe.MountContainerFS(d.Application.Name); d.err != nil {
-		err = d.err
-		return
-	}
+	// if d.err = d.exe.MountContainerFS(d.Application.Name); d.err != nil {
+	// 	err = d.err
+	// 	return
+	// }
 
 	if d.err = d.exe.StartContainer(d.Application.Name); d.err != nil {
 		err = d.err
@@ -759,8 +759,6 @@ func (d *Deployment) build() (err error) {
 		return
 	}
 
-	var f *os.File
-
 	// Create app system service.
 	if d.err = d.renderTemplateIntoContainer(systemdAppTpl, oslib.OsPath(string(os.PathSeparator)+"etc", "systemd", "system", "app.service"), "644"); d.err != nil {
 		d.err = fmt.Errorf("rendering app.service systemd template into container: %s", d.err)
@@ -780,24 +778,6 @@ func (d *Deployment) build() (err error) {
 		return
 	}
 
-	// // if f, err = os.OpenFile(oslib.OsPath(d.Application.RootFsDir(), "/etc/init/app.conf"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(int(0444))); err != nil {
-	// // 	return
-	// // }
-	// // if err = UPSTART.Execute(f, nil); err != nil {
-	// // 	err = fmt.Errorf("applying upstart template: %s", err)
-	// // 	return
-	// // }
-	// // if err = f.Close(); err != nil {
-	// // 	err = fmt.Errorf("closing file=%q: %s", f.Name(), err)
-	// // 	return
-	// // }
-
-	// // Create the build script.
-	// if f, d.err = os.OpenFile(oslib.OsPath(d.Application.RootFsDir(), APP_DIR, "run"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(int(0777))); d.err != nil {
-	// 	err = d.err
-	// 	return
-	// }
-
 	var bp domain.Buildpack
 	if bp, d.err = d.Server.BuildpacksProvider.New(d.Application.BuildPack); d.err != nil {
 		err = d.err
@@ -811,22 +791,11 @@ func (d *Deployment) build() (err error) {
 		return
 	}
 
-	// if d.err = tpl.Execute(f, nil); d.err != nil {
-	// 	d.err = fmt.Errorf("applying build-pack template: %s", d.err)
-	// 	err = d.err
-	// 	return
-	// }
-
 	if d.err = d.renderTemplateIntoContainer(tpl, oslib.OsPath(string(os.PathSeparator)+"app", "run"), "777"); d.err != nil {
 		d.err = fmt.Errorf("rendering /app/run template: %s", d.err)
 		err = d.err
 		return
 	}
-	// if d.err = f.Close(); d.err != nil {
-	// 	d.err = fmt.Errorf("closing file %q: %s", f.Name(), d.err)
-	// 	err = d.err
-	// 	return
-	// }
 
 	// Resart container to trigger the build.
 	if d.err = d.exe.RestartContainer(d.Application.Name); d.err != nil {
@@ -835,21 +804,28 @@ func (d *Deployment) build() (err error) {
 	}
 
 	// Connect to build output file.
-	outFilePath := oslib.OsPath(d.Application.AppDir(), "out")
-	if f, d.err = os.OpenFile(outFilePath, os.O_RDONLY, os.FileMode(0)); d.err != nil {
+	cmd := exec.Command(LXC_BIN, "exec", d.Application.Name, "--", "/bin/bash", "-c", "tail --follow --lines=+0 /app/out")
+
+	r, err := cmd.StdoutPipe()
+	if err != nil {
+		d.err = fmt.Errorf("getting out monitor pipe: %s", err)
+		err = d.err
+		return
+	}
+
+	if err = cmd.Start(); err != nil {
+		d.err = fmt.Errorf("monitoring /app/out: %s", err)
 		err = d.err
 		return
 	}
 	defer func() {
-		if closeErr := f.Close(); closeErr != nil {
-			if err == nil {
-				err = fmt.Errorf("closing file=%q: %s", f.Name(), closeErr)
-				if d.err == nil {
-					d.err = err
-				}
-			} else {
-				log.Errorf("Found pre-existing err=%q and encountered a problem closing file=%q: %s", err, f.Name(), closeErr)
+		if killErr := cmd.Process.Kill(); killErr != nil {
+			if err != nil {
+				log.Errorf("Problem killing process pid=%v: %s", cmd.Process.Pid, killErr)
+				return
 			}
+			d.err = fmt.Errorf("killing out monitor pid=%v: %s", cmd.Process.Pid, killErr)
+			err = d.err
 		}
 	}()
 
@@ -871,9 +847,9 @@ func (d *Deployment) build() (err error) {
 			default:
 			}
 
-			n, readErr := f.Read(buf)
+			n, readErr := r.Read(buf)
 			if readErr != nil {
-				log.WithField("file", outFilePath).Debugf("Unexpected read error while running pre-hook read: %s", readErr)
+				log.Debugf("Unexpected read error while running pre-hook read: %s", readErr)
 			}
 			if n > 0 {
 				dimLogger.Write(buf[:n])
@@ -938,14 +914,17 @@ func (d *Deployment) build() (err error) {
 }
 
 func (d *Deployment) lxcExec(cmd string) error {
-	if err := d.exe.BashCmdf("lxc exec -T %v -- %v", d.Application.Name, cmd); err != nil {
-		return err
+	c := exec.Command(LXC_BIN, "exec", "-T", d.Application.Name, "--", "/bin/bash", "-c", fmt.Sprintf("set -o errexit ; set -o pipefail ; %v", cmd))
+	if output, err := c.CombinedOutput(); err != nil {
+		return fmt.Errorf("%s (output=%v)", err, string(output))
 	}
 	return nil
 }
-func (d *Deployment) lxcExecf(format string, args ...interface{}) error {
-	if err := d.exe.BashCmdf("lxc exec -T %v -- %v", d.Application.Name, fmt.Sprintf(format, args...)); err != nil {
-		return err
+
+func (d *Deployment) lxcExecf(cmd string, args ...interface{}) error {
+	c := exec.Command(LXC_BIN, "exec", "-T", d.Application.Name, "--", "/bin/bash", "-c", fmt.Sprintf("set -o errexit ; set -o pipefail ; %v", fmt.Sprintf(cmd, args...)))
+	if output, err := c.CombinedOutput(); err != nil {
+		return fmt.Errorf("%s (output=%v)", err, string(output))
 	}
 	return nil
 }
@@ -964,7 +943,7 @@ func (d *Deployment) archive() error {
 			logger: NewLogger(os.Stdout, "[archive] "),
 		}
 		archiveName := fmt.Sprintf("/tmp/%v.tar.gz", versionedContainerName)
-		if err := e.BashCmd("tar --create --gzip --preserve-permissions --file " + archiveName + " " + d.Application.RootFsDir()); err != nil {
+		if err := e.BashCmdf(LXC_BIN+" image export %v - > %v", d.Application.BaseContainerName(), archiveName); err != nil {
 			return
 		}
 
@@ -1004,10 +983,8 @@ func (d *Deployment) extract(version string) error {
 		return err
 	}
 	if exists {
-		fmt.Fprintf(d.Logger, "Syncing local copy of %v\n", version)
-		// Rsync to versioned container to base app container.
-		rsyncCommand := "rsync --recursive --links --hard-links --devices --specials --acls --owner --group --perms --times --delete --xattrs --numeric-ids "
-		return d.exe.BashCmd(rsyncCommand + LXC_DIR + "/" + versionedAppContainer + "/rootfs/ " + d.Application.RootFsDir())
+		fmt.Fprintf(d.Logger, "Image v%v already exists locally\n", version)
+		return nil
 	}
 
 	// The requested app version doesn't exist locally, attempt to download it from
@@ -1039,11 +1016,9 @@ func extractAppFromS3(e *Executor, app *Application, version string) error {
 		return err
 	}
 
-	fmt.Fprintf(e.logger, "Extracting %v\n", localArchive)
-	if err := e.BashCmd("rm -rf " + app.RootFsDir() + "/*"); err != nil {
-		return err
-	}
-	if err := e.BashCmd("tar -C / --extract --gzip --preserve-permissions --file " + localArchive); err != nil {
+	fmt.Fprintf(e.logger, "Importing %v\n", localArchive)
+
+	if err := e.BashCmdf(LXC_BIN+" image import %v --public --alias %v", localArchive, app.Name+DYNO_DELIMITER+version); err != nil {
 		return err
 	}
 	return nil
@@ -1053,8 +1028,9 @@ func (d *Deployment) syncNode(node *Node) error {
 	logger := NewLogger(d.Logger, "["+node.Host+"] ")
 	bashCmds := fmt.Sprintf(`set -o errexit
 set -o pipefail
-test -n "$(lxc remote list | sed -e 1d -e 2d -e 3d | grep -v '^+' | awk '{print $2}' | grep %[1]v)" || lxc remote add --accept-certificate --public %[1]v https://%[1]v:8443
-lxc image copy --copy-aliases %[2]v local:`,
+test -n "$(%[1]v remote list | sed -e 1d -e 2d -e 3d | grep -v '^+' | awk '{print $2}' | grep %[2]v)" || %[1]v remote add --accept-certificate --public %[2]v https://%[2]v:8443
+%[1]v image copy --copy-aliases %[3]v local:`,
+		LXC_BIN,
 		DefaultSSHHost,
 		fmt.Sprintf("%v:%v", DefaultSSHHost, d.lxcImageName()),
 	)
@@ -1109,7 +1085,7 @@ func (d *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) (Dy
 
 func (d *Deployment) autoDetectRevision() error {
 	if len(d.Revision) == 0 {
-		revision, err := ioutil.ReadFile(d.Application.SrcDir() + "/.git/refs/heads/master")
+		revision, err := ioutil.ReadFile(d.Application.BareGitDir() + "/.git/refs/heads/master")
 		if err != nil {
 			return err
 		}
@@ -1255,21 +1231,23 @@ func (d *Deployment) startDynos(availableNodes []*Node, titleLogger io.Writer) (
 // Validate application's Procfile.
 // TODO: check for ignored errors.
 func (d *Deployment) validateProcfile() error {
-	// if err := d.lxcExec(`bash -c 'test -f /app/src/Procfile'`); err != nil {
-	// 	// log.WithField("app", d.Application.Name).Error("Procfile not found: %s", err)
-	// 	return fmt.Errorf(err.Error() + ", does this application have a \"Procfile\"?")
-	// }
-	f, err := os.Open(d.Application.SrcDir() + "/Procfile")
+	cmd := exec.Command("/bin/bash", "-c", fmt.Sprintf("set -o errexit ; cd %v/%v ; git show HEAD:Procfile ; cd - 2>&1 1>/dev/null", GIT_DIRECTORY, d.Application.Name))
+
+	r, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf(err.Error() + ", does this application have a \"Procfile\"?")
+		return fmt.Errorf("getting stdout pipe for procfile validation: %s", err)
 	}
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("retrieving procfile content: %s", err)
+	}
+
+	scanner := bufio.NewScanner(r)
 	processRe := regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]:.*`)
 	lineNo := 1
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		// Line not empty or commented out
+		// Only proceed if line isn't empty or commented out.
 		if len(line) > 0 && strings.Index(line, "#") != 0 && strings.Index(line, ";") != 0 {
 			if !processRe.MatchString(line) {
 				return fmt.Errorf("Procfile validation failed on line %v: \"%v\", must match regular expression \"%v\"", lineNo, line, processRe.String())
@@ -1409,7 +1387,7 @@ func (d *Deployment) postDeployHooks(err error) {
 
 // publish pushes the built image to the LXC image repository.
 func (d *Deployment) publish() error {
-	if err := d.exe.Run("lxc", "publish", "--force", "--force-local", "--public", d.Application.Name, "--alias", d.lxcImageName()); err != nil {
+	if err := d.exe.Run(LXC_BIN, "publish", "--force", "--force-local", "--public", d.Application.Name, "--alias", d.lxcImageName()); err != nil {
 		return err
 	}
 	return nil

@@ -79,7 +79,7 @@ done`
 # Preserves only the latest version (at very end of sequence), and finally
 # rejoins back to app-version format.
 
-containerLxcState="$(sudo -n lxc list --format=json)"
+containerLxcState="$(sudo -n ` + LXC_BIN + ` list --format=json)"
 containerPreserveVersionsRe=$(
     echo -n "${containerLxcState}" \
     | jq -r '.[] | select(.status == "Stopped") | .name' \
@@ -108,7 +108,7 @@ containerDestroyVersions=$(
 )
 
 
-imageLxcState="$(sudo lxc image list)"
+imageLxcState="$(sudo ` + LXC_BIN + ` image list)"
 imagePreserveVersionsRe=$(
     echo -n "${imageLxcState}" \
     | sed '1,2d' \
@@ -159,7 +159,7 @@ function destroyContainer() {
 
     #test $(find /var/lib/lxc/${name}/rootfs/ -maxdepth 1 | wc -l) -eq 1 && sudo -n rm -rf "/var/lib/lxc/${name}" #|| echo "FAILED TO DESTROY container=${name}"
 
-    lxc delete --force "${name}"
+    ` + LXC_BIN + ` delete --force "${name}"
 }
 # Export the fn so it can be used in a xargs .. bash -c '<here>'
 export -f destroyContainer
@@ -195,7 +195,7 @@ export -f destroyContainer
 
 # Destroy old app versions.
 function destroyOldAppVersions() {
-    for container in $(lxc list --format=csv | cut -d ',' -f 1) ; do
+    for container in $(` + LXC_BIN + ` list --format=csv | cut -d ',' -f 1) ; do
         for destroyVersion in ${destroyVersions} ; do
             if [[ "$container" =~ ^$destroyVersion ]] ; then
                 destroyContainer "${container}"
@@ -319,7 +319,10 @@ def portForward(action, ip, port):
                     continue
 
             if statusCode is 1:
-                # Rule needs to be added.
+                # Rule not found.
+                if action == 'remove':
+                    break
+                # Else the rule needs to be added.
                 child = newIpTablesCmd(actionLetter, fragment)
                 child.communicate()
                 statusCode = child.returncode
@@ -343,10 +346,11 @@ def portForward(action, ip, port):
 var POSTDEPLOY = `#!/usr/bin/python -u
 # -*- coding: utf-8 -*-
 
-import os, stat, subprocess, sys, time
+import os, re, stat, subprocess, sys, time
 
 defaultLxcFs='''` + DefaultLXCFS + `'''
 lxcDir='''` + LXC_DIR + `'''
+lxcBin='''` + LXC_BIN + `'''
 zfsContainerMount='''` + ZFS_CONTAINER_MOUNT + `'''
 dynoDelimiter = '''` + DYNO_DELIMITER + `'''
 defaultSshHost = '''` + DefaultSSHHost + `'''
@@ -357,8 +361,10 @@ log = lambda message: sys.stdout.write('[{0}] {1}\n'.format(container, message))
 ` + pyIptables + `
 
 def getIp(name):
-    with open(lxcDir + '/' + name + '/rootfs/app/ip') as f:
-        return f.read().split('/')[0]
+    out = subprocess.check_output((lxcBin + ''' list | sed 1d | sed 1d | sed 1d | grep '^[|] %s [|] ' | awk '{ print $6 }' ''' % (name,)).strip(), shell=True).strip()
+    if re.match(r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$', out):
+        return out
+    return ''
 
 def enableRouteLocalNet():
     '''
@@ -378,7 +384,7 @@ def cloneContainer(app, container, version, check=True):
     log('cloning container: {0}'.format(container))
     fn = subprocess.check_call if check else subprocess.call
     return fn(
-        ['/usr/bin/lxc', 'init', app + dynoDelimiter + version, container],
+        [lxcBin, 'init', app + dynoDelimiter + version, container],
         stdout=sys.stdout,
         stderr=sys.stderr,
     )
@@ -387,7 +393,7 @@ def startContainer(container, check=True):
     log('starting container: {}'.format(container))
     fn = subprocess.check_call if check else subprocess.call
     return fn(
-        ['/usr/bin/lxc', 'start', container],
+        [lxcBin, 'start', container],
         stdout=sys.stdout,
         stderr=sys.stderr,
     )
@@ -448,8 +454,8 @@ def main(argv):
     container, app, version, process, port = parseMainArgs(argv)
 
     # For safety, even though it's unlikely, try to kill/shutdown any existing container with the same name.
-    subprocess.call(['/usr/bin/lxc stop --force {0} 1>&2 2>/dev/null'.format(container)], shell=True)
-    subprocess.call(['/usr/bin/lxc delete --force {0} 1>&2 2>/dev/null'.format(container)], shell=True)
+    subprocess.call([lxcBin + ' stop --force {0} 1>&2 2>/dev/null'.format(container)], shell=True)
+    subprocess.call([lxcBin + ' delete --force {0} 1>&2 2>/dev/null'.format(container)], shell=True)
 
     # Clone the specified container.
     cloneContainer(app, container, version)
@@ -510,7 +516,7 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
 
     startContainer(container)
 
-    log('waiting for container to boot and report ip-address')
+    log('waiting for container to boot and report IP-address')
     numChecks = 45
     # Allow container to bootup.
     ip = None
@@ -519,7 +525,7 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
         try:
             ip = getIp(container)
             if ip:
-                # ip obtained!
+                # IP obtained!
                 break
         except:
             continue
@@ -564,6 +570,7 @@ var SHUTDOWN_CONTAINER = `#!/usr/bin/python -u
 
 import subprocess, sys, time
 
+lxcBin='''` + LXC_BIN + `'''
 DefaultLXCFS = '''` + DefaultLXCFS + `'''
 DefaultZFSPool = '''` + DefaultZFSPool + `'''
 dynoDelimiter = '''` + DYNO_DELIMITER + `'''
@@ -631,26 +638,26 @@ def main(argv):
     ip = subprocess.check_output([
         'bash',
         '-c',
-        '''set -o errexit ; set -o pipefail ; lxc list --format json | jq -r '.[] | select(.name == "{}").state.network.eth0.addresses[0].address' '''.format(container),
+        '''set -o errexit ; set -o pipefail ; ''' + lxcBin + ''' list --format json | jq -r '.[] | select(.name == "{}").state.network.eth0.addresses[0].address' '''.format(container),
     ]).strip()
 
     if not iptablesOnly:
         exists = len(ip) > 0 or container == subprocess.check_output([
             'bash',
             '-c',
-            '''set -o errexit ; set -o pipefail ; lxc list --format json | jq -r '.[] | select(.name == "{}").name' '''.format(container),
+            '''set -o errexit ; set -o pipefail ; ''' + lxcBin + ''' list --format json | jq -r '.[] | select(.name == "{}").name' '''.format(container),
         ]).strip()
 
         if exists:
             try:
                 # Stop and destroy the container.
                 log('stopping container: {}'.format(container))
-                subprocess.check_call(['/usr/bin/lxc', 'stop', '--force', container], stdout=sys.stdout, stderr=sys.stderr)
+                subprocess.check_call([lxcBin, 'stop', '--force', container], stdout=sys.stdout, stderr=sys.stderr)
             except Exception, e:
                 if not skipStop:
                     raise e # Otherwise ignore.
 
-            retriableCommand('/usr/bin/lxc', 'delete', '--force', container)
+            retriableCommand(lxcBin, 'delete', '--force', container)
 
     portForward('remove', ip, port)
 

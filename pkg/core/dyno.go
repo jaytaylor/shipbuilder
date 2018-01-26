@@ -70,7 +70,7 @@ func (dyno *Dyno) AttachAndExecute(exe *Executor, args ...string) error {
 		[]string{
 			DEFAULT_NODE_USERNAME + "@" + dyno.Host,
 			"sudo",
-			"lxc",
+			LXC_BIN,
 			"exec",
 			dyno.Container,
 			"--",
