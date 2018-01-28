@@ -1,15 +1,24 @@
 #!/bin/bash
 
+set -o nounset
+
+logfile=/app/out
+exec >> "${logfile}" 2>&1
+
 ##
-# Python dependencies hook.
+# Scala app dependencies build hook.
 #
 
 function abortIfNonZero() {
     # @param $1 command return code/exit status (e.g. $?, '0', '1').
     # @param $2 error message if exit status was non-zero.
-    local rc=$1
-    local what=$2
-    test $rc -ne 0 && echo "error: ${what} exited with non-zero status ${rc}" >> /app/out && exit $rc || :
+    local rc=${1:-}
+    local what=${2:-}
+    if [ ${rc} -ne 0 ] ; then
+        echo "error: ${what} exited with non-zero status ${rc}"
+        echo "RETURN_CODE: ${rc}"
+        exit ${rc}
+    }
 }
 
 cd /app/src
@@ -17,21 +26,22 @@ abortIfNonZero $? 'Changing directory to "/app/src"'
 
 dependenciesPath='/app/.shipbuilder'
 
-test ! -d "${dependenciesPath}" && mkdir "${dependenciesPath}"
+mkdir -p "${dependenciesPath}"
+abortIfNonZero $? 'Creating directory dependenciesPath=${dependenciesPath}'
 
 # Support sbt-assembly deployments, @see https://github.com/sbt/sbt-assembly for more information.
 if test -e 'assembly.sbt'; then
-    echo '--> sbt-assembly detected' >> /app/out
-    echo '--> fetching dependencies and building app jar' >> /app/out
-    stdbuf -o0 sbt assembly >> /app/out
+    echo '--> sbt-assembly detected'
+    echo '--> fetching dependencies and building app jar'
+    stdbuf -o0 sbt assembly
     rc=$?
-    abortIfNonZero $rc 'sbt-assembly build failed'
+    abortIfNonZero ${rc} 'sbt-assembly build failed'
 else
-    echo '--> fetching dependencies and compiling app' >> /app/out
-    stdbuf -o0 sbt compile >> /app/out
+    echo '--> fetching dependencies and compiling app'
+    stdbuf -o0 sbt compile
     rc=$?
-    abortIfNonZero $rc 'Project compilation failed'
+    abortIfNonZero ${rc} "Command 'stdbuf -o0 sbt compile'"
 fi
 
-echo "RETURN_CODE: ${rc}" >> /app/out
-exit $rc
+echo "RETURN_CODE: ${rc}"
+exit ${rc}
