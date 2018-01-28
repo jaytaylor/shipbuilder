@@ -716,7 +716,8 @@ global
 
     # Default ciphers to use on SSL-enabled listening sockets.
     # For more information, see ciphers(1SSL).
-    ssl-default-bind-ciphers kEECDH+aRSA+AES:kRSA+AES:+AES256:RC4-SHA:!kEDH:!LOW:!EXP:!MD5:!aNULL:!eNULL
+    ssl-default-bind-ciphers FIPS:!EDH:!ADH:!AEDH:!AECDH:!DHE:!3DES:!DES:!RC4:!PSK:!EXPORT:!MD5:!aNULL:!eNULL no-sslv3
+    tune.ssl.default-dh-param 2048
 
 defaults
     log global
