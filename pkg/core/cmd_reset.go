@@ -16,7 +16,15 @@ func (server *Server) Reset_App(conn net.Conn, applicationName string) error {
 			return err
 		}
 
-		fmt.Fprintf(dimLogger, "Destroyed base image for %v, dependencies will be refreshed upon next deploy\n", app.Name)
+		if err := e.BashCmdf("rm -rf %v/%v", GIT_DIRECTORY, app.Name); err != nil {
+			return fmt.Errorf("removing %v/%v: %s", GIT_DIRECTORY, app.Name, err)
+		}
+
+		if err := server.initAppGitRepo(conn, app.Name); err != nil {
+			return err
+		}
+
+		fmt.Fprintf(dimLogger, "Destroyed local git repository and image for %q, dependencies will be refreshed upon next deploy\n", app.Name)
 
 		return nil
 	})

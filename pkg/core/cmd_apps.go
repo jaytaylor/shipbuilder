@@ -45,35 +45,7 @@ func (server *Server) Apps_Create(conn net.Conn, applicationName string, buildPa
 			}
 		}
 
-		dimLogger := NewFormatter(NewTimeLogger(NewMessageLogger(conn)), DIM)
-		e := Executor{
-			logger: dimLogger,
-		}
-
-		for _, command := range []string{
-			"git init --bare " + GIT_DIRECTORY + "/" + applicationName, // Create git repo.
-			// "cd " + GIT_DIRECTORY + "/" + applicationName + " && git symbolic-ref HEAD refs/heads/not-a-real-branch", // Make master deletable.
-			"chmod -R 777 " + GIT_DIRECTORY + "/" + applicationName,
-		} {
-			if err := e.BashCmd(command); err != nil {
-				return err
-			}
-		}
-
-		// Add pre- and post- receive hooks.
-		if err := ioutil.WriteFile(
-			fmt.Sprintf("%[1]v%[2]v%[3]v%[2]vhooks/pre-receive", GIT_DIRECTORY, string(os.PathSeparator), applicationName),
-			[]byte(PRE_RECEIVE),
-			os.FileMode(int(0777)),
-		); err != nil {
-			return err
-		}
-
-		if err := ioutil.WriteFile(
-			fmt.Sprintf("%[1]v%[2]v%[3]v%[2]vhooks/post-receive", GIT_DIRECTORY, string(os.PathSeparator), applicationName),
-			[]byte(POST_RECEIVE),
-			os.FileMode(int(0777)),
-		); err != nil {
+		if err := server.initAppGitRepo(conn, applicationName); err != nil {
 			return err
 		}
 
@@ -92,6 +64,42 @@ func (server *Server) Apps_Create(conn net.Conn, applicationName string, buildPa
 		Logf(conn, "Your new application is ready\n")
 		return nil
 	})
+}
+
+func (server *Server) initAppGitRepo(conn net.Conn, applicationName string) error {
+	dimLogger := NewFormatter(NewTimeLogger(NewMessageLogger(conn)), DIM)
+	e := Executor{
+		logger: dimLogger,
+	}
+
+	for _, command := range []string{
+		"git init --bare " + GIT_DIRECTORY + "/" + applicationName, // Create git repo.
+		// "cd " + GIT_DIRECTORY + "/" + applicationName + " && git symbolic-ref HEAD refs/heads/not-a-real-branch", // Make master deletable.
+		"chmod -R 777 " + GIT_DIRECTORY + "/" + applicationName,
+	} {
+		if err := e.BashCmd(command); err != nil {
+			return fmt.Errorf("initializing local git repo for app=%q: %s", applicationName, err)
+		}
+	}
+
+	// Add pre- and post- receive hooks.
+	if err := ioutil.WriteFile(
+		fmt.Sprintf("%[1]v%[2]v%[3]v%[2]vhooks/pre-receive", GIT_DIRECTORY, string(os.PathSeparator), applicationName),
+		[]byte(PRE_RECEIVE),
+		os.FileMode(int(0777)),
+	); err != nil {
+		return fmt.Errorf("initializing pre-receive local git repo for app=%q: %s", applicationName, err)
+	}
+
+	if err := ioutil.WriteFile(
+		fmt.Sprintf("%[1]v%[2]v%[3]v%[2]vhooks/post-receive", GIT_DIRECTORY, string(os.PathSeparator), applicationName),
+		[]byte(POST_RECEIVE),
+		os.FileMode(int(0777)),
+	); err != nil {
+		return fmt.Errorf("initializing post-receive in local git repo for app=%q: %s", applicationName, err)
+	}
+
+	return nil
 }
 
 func (server *Server) Apps_Destroy(conn net.Conn, applicationName string) error {
