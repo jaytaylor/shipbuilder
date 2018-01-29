@@ -227,10 +227,76 @@ destroyOldAppVersions
 
 exit $?`
 
+	// LXDCompatScript updates the LXD systemd service definition to protect
+	// against /var/lib/lxd path conflicts between LXD and shipbuilder.
+	LXDCompatScript = `
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+This program modifies the LXD systemd definition to ensure two things:
+
+    1. The LXD service can safely start.
+
+    2. Path /var/lib/lxd remains usable for shipbuilder to reference as needed.
+
+This is needed because LXD fails to start due to mounting conflicts if
+/var/lib/lxd exists during service initialization.  After it starts, the
+temporary mounts are removed and /var/lib/lxd becoes available again for
+shipbuilder to use.
+"""
+
+import os
+import re
+import subprocess
+import sys
+
+systemd_file = '/etc/systemd/system/snap.lxd.daemon.service'
+
+pre = '''ExecStartPre=/bin/bash -c 'set -o errexit && test -e /var/lib/lxd && mv /var/lib/lxd /var/lib/lxd.starting' '''.strip()
+start = '''ExecStart=/usr/bin/snap run lxd.daemon'''
+post = '''ExecStartPost=/bin/bash -c 'set -o errexit && sleep 5 && test -e /var/lib/lxd.starting && mv /var/lib/lxd.starting /var/lib/lxd' '''.strip()
+
+start_expr = re.compile(r'''(.*\n)^(%s)$(\n.*)''' % (start,), re.M | re.S)
+
+prepost_expr = re.compile(r'''.*^%s$\n^%s$\n^%s$.*''' % (pre, start, post), re.M | re.S)
+
+def main():
+    # Require root user.
+    if os.environ.get('USER', '') != 'root':
+        print('FATAL: %s must be run under root user' % (sys.argv[0],))
+        return 1
+
+    with open(systemd_file, 'r') as fh:
+        contents = fh.read()
+
+    if prepost_expr.match(contents):
+        print('INFO: Nothing to be done; Pre- and Post- ExecStart customizations already exist in "%s"' % (systemd_file,))
+        return 0
+
+    if not start_expr.match(contents):
+        print('ERROR: No matching ExecStart block found in %s' % (systemd_file,))
+        return 2
+
+    revised = start_expr.sub(r'\1%s\n\2\n%s\3' % (pre, post), contents)
+    temp_file = '%s.tmp' % (systemd_file,)
+    with open(temp_file, 'w') as fh:
+        fh.write(revised)
+    os.rename(temp_file, systemd_file)
+    print('INFO: Applied Pre- and Post- ExecStart customizations to "%s"' % (systemd_file,))
+    subprocess.check_call('systemctl daemon-reload'.split(' '))
+    print('INFO: Successfully reloaded systemd')
+    return 0
+
+if __name__ == '__main__':
+    sys.exit(main())
+`
+
 	// pyIptables is a python fragment with a collection of functions used by
 	// postdeploy.py and shutdown.py.
 	pyIptables = `
-import re, shlex
+import re
+import shlex
 
 def newIpTablesCmd(actionLetter, commandFragment):
     command = '/sbin/iptables --table nat -' + actionLetter + ' ' + commandFragment
@@ -269,7 +335,7 @@ POSTROUTING -m addrtype --src-type LOCAL --dst-type UNICAST -j MASQUERADE       
         fragments = fragments[0:2]
     return fragments
 
-def portForward(action, ip, port):
+def portForward(action, container, ip, port):
     """
     Adds or removes a port forwarding rule for an IP / port combination.
 
@@ -341,12 +407,58 @@ def portForward(action, ip, port):
             else:
                 raise subprocess.CalledProcessError(statusCode, 'iptables failure; no handler for exit status code {0}'.format(statusCode))
 `
+
+	// AutoIPTablesScript is the automatic IP tables fixer script to allow
+	// containers running on slaves to survive reboots.
+	AutoIPTablesScript = `#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+` + pyIptables + `
+
+import os
+import subprocess
+import sys
+
+log = lambda message: sys.stdout.write('%s\n' % (message,))
+
+dynoDelimiter = '-'
+
+lsCmd = '''lxc list | sed 1,3d | grep -v '^+' | awk '$4 == "RUNNING" { print $2 " " $6 }' '''.strip()
+
+def main():
+    if os.environ.get('USER', '') != 'root':
+        print('FATAL: %s must be run under root user' % (sys.argv[0],))
+        return 1
+
+
+    #out = subprocess.check_output(['bash', '-c', '''set -o errexit && set -o pipefail && %s''' % (lsCmd,)], shell=True)
+    out = subprocess.check_output(['bash', '-c', '''set -o xtrace && set -o errexit && set -o pipefail && %s''' % (lsCmd,)]).strip()
+
+    print('----')
+    for line in out.split('\n'):
+        try:
+            container, ip = line.split(' ', 2)
+            app, version, process, port = container.rsplit(dynoDelimiter, 3) # Format is app-version-process-port.
+            portForward('add', container, ip, port)
+            print('app=%s v=%s process=%s ort=%s' % (app, version, process, port))
+        except ValueError:
+            print('WARNING: Ignoring unrecognized container/ip %s' % (line,))
+    print('----')
+
+if __name__ == '__main__':
+    sys.exit(main())
+`
 )
 
 var POSTDEPLOY = `#!/usr/bin/python -u
 # -*- coding: utf-8 -*-
 
-import os, re, stat, subprocess, sys, time
+import os
+import re
+import stat
+import subprocess
+import sys
+import time
 
 defaultLxcFs='''` + DefaultLXCFS + `'''
 lxcDir='''` + LXC_DIR + `'''
@@ -367,10 +479,10 @@ def getIp(name):
     return ''
 
 def enableRouteLocalNet():
-    '''
+    """
     Set sysctl -w net.ip4v.conf.all.route_localnet=1 to ensure iptables port
     forwarding rules work.
-    '''
+    """
     out = subprocess.check_output('sysctl --binary net.ipv4.conf.all.route_localnet'.split(' '))
     if out == '1':
         return
@@ -532,8 +644,8 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
 
     if ip:
         log('found ip: {0}'.format(ip))
-        portForward('remove', '', port)
-        portForward('add', ip, port)
+        portForward('remove', container, '', port)
+        portForward('add', container, ip, port)
 
         if process == 'web':
             log('waiting for web-server to start up')
@@ -568,7 +680,9 @@ main(sys.argv)`
 var SHUTDOWN_CONTAINER = `#!/usr/bin/python -u
 # -*- coding: utf-8 -*-
 
-import subprocess, sys, time
+import subprocess
+import sys
+impoer time
 
 lxcBin='''` + LXC_BIN + `'''
 DefaultLXCFS = '''` + DefaultLXCFS + `'''
@@ -659,7 +773,7 @@ def main(argv):
 
             retriableCommand(lxcBin, 'delete', '--force', container)
 
-    portForward('remove', ip, port)
+    portForward('remove', container, ip, port)
 
 main(sys.argv)`
 

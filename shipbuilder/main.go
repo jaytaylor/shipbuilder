@@ -248,6 +248,9 @@ func main() {
 				},
 			},
 
+			////////////////////////////////////////////////////////////////////
+			// Container meta-data commands
+
 			&cli.Command{
 				Name:        "container",
 				Aliases:     []string{"containers"},
@@ -272,6 +275,36 @@ func main() {
 						},
 					},
 				},
+			},
+
+			////////////////////////////////////////////////////////////////////
+			// Embedded script printer commands
+
+			&cli.Command{
+				Name:        "script",
+				Aliases:     []string{"scripts"},
+				Description: "Script printer (for accessing embdedded scripts",
+				Action: func(ctx *cli.Context) error {
+					if ctx.Args().Len() > 0 {
+						fmt.Printf("Error: Unrecognized script %q specified\n\n", ctx.Args().First())
+					}
+					fmt.Println("Available scripts:")
+					longestName := 0
+					for _, scriptCommand := range scriptSubcommands() {
+						if l := len(scriptCommand.Name); l > 0 {
+							longestName = l
+						}
+					}
+					for _, scriptCommand := range scriptSubcommands() {
+						aliases := ""
+						if len(scriptCommand.Aliases) > 0 {
+							aliases = fmt.Sprintf(" (aliases: %v)", strings.Join(scriptCommand.Aliases, ", "))
+						}
+						fmt.Printf(fmt.Sprintf("    %%-%vv%%v\n", longestName), scriptCommand.Name, aliases)
+					}
+					return nil
+				},
+				Subcommands: scriptSubcommands(),
 			},
 
 			////////////////////////////////////////////////////////////////////
@@ -1171,6 +1204,44 @@ func deferredMappedAppCommand(names []string, description string) *cli.Command {
 				return errors.New("invalid due to empty map of key/value parameters")
 			}
 			return (&core.Client{}).RemoteExec(names[len(names)-1], app, deferred, mapped)
+		},
+	}
+}
+
+func scriptSubcommands() []*cli.Command {
+	// genPrintAction generates a cli action function which prints the passed
+	// content.
+	genPrintAction := func(content string) func(*cli.Context) error {
+		return func(_ *cli.Context) error {
+			fmt.Fprint(os.Stdout, content)
+			return nil
+		}
+	}
+
+	return []*cli.Command{
+		&cli.Command{
+			Name:        "auto-iptables",
+			Aliases:     []string{"auto-iptables.py", "iptables", "iptables.py"},
+			Description: "Automatic IPTables fixer (should be cron'd to allow containers running on nodes to become accessible again after a reboot)",
+			Action:      genPrintAction(core.AutoIPTablesScript),
+		},
+		&cli.Command{
+			Name:        "postdeploy",
+			Aliases:     []string{"postdeploy.py"},
+			Description: "Container launcher",
+			Action:      genPrintAction(core.POSTDEPLOY),
+		},
+		&cli.Command{
+			Name:        "shutdown",
+			Aliases:     []string{"shutdown.py"},
+			Description: "Container terminator",
+			Action:      genPrintAction(core.SHUTDOWN_CONTAINER),
+		},
+		&cli.Command{
+			Name:        "lxd-systemd-patch",
+			Aliases:     []string{"lxd-systemd-patch.py", "lxd-compat", "lxd-compat.py"},
+			Description: "LXDCompatScript updates the LXD systemd service definition to protect against /var/lib/lxd path conflicts between LXD and shipbuilder",
+			Action:      genPrintAction(core.LXDCompatScript),
 		},
 	}
 }
