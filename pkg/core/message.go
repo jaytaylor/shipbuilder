@@ -57,7 +57,7 @@ func read(src io.Reader, args ...interface{}) (err error) {
 				return
 			}
 			if n > 9999999 {
-				log.Warnf("Suspiciously high value for number of bytes to read received: n=%s", n)
+				log.Warnf("Suspiciously high value for number of bytes to read received: n=%v", n)
 			}
 			bs := make([]byte, int(n))
 			if _, err = io.ReadAtLeast(src, bs, int(n)); err != nil {

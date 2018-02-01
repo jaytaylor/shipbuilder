@@ -32,7 +32,7 @@ func (d *Deployment) postDeployHooks(deployErr error) {
 	)
 
 	if len(hookURLs) == 0 {
-		log.Info("App %q doesn't have a SB_DEPLOYHOOKS_HTTP_URL set", d.Application.Name)
+		log.Infof("App %q doesn't have a SB_DEPLOYHOOKS_HTTP_URL set", d.Application.Name)
 		return
 	}
 

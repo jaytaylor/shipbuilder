@@ -392,7 +392,7 @@ func (d *Deployment) renderTemplateIntoContainer(tpl *template.Template, dst str
 	)
 
 	if file, err = os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(int(0755))); err != nil {
-		err = fmt.Errorf("opening file %q for writing: %s", filePath)
+		err = fmt.Errorf("opening file %q for writing: %s", filePath, err)
 		return
 	}
 	defer func() {

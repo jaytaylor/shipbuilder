@@ -539,7 +539,7 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 			}()
 			go func() {
 				time.Sleep(LOAD_BALANCER_SYNC_TIMEOUT_SECONDS * time.Second)
-				c <- fmt.Errorf("LB sync operation to $q timed out after %v seconds", host, LOAD_BALANCER_SYNC_TIMEOUT_SECONDS)
+				c <- fmt.Errorf("LB sync operation to %q timed out after %v seconds", host, LOAD_BALANCER_SYNC_TIMEOUT_SECONDS)
 			}()
 			// Block until chan has something, at which point syncChannel will be notified.
 			syncChannel <- LBSyncResult{host, <-c}

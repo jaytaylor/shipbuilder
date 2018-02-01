@@ -46,7 +46,7 @@ func (server *Server) Domains_Add(conn net.Conn, applicationName string, deferre
 		return err
 	}
 	if deferred {
-		fmt.Fprintf(dimLogger, "Load-balancer sync deferred at request of user for op=add domains=$+v\n", domains)
+		fmt.Fprintf(dimLogger, "Load-balancer sync deferred at request of user for op=add domains=%+v\n", domains)
 		return nil
 	}
 	e := &Executor{Logger: dimLogger}
@@ -92,7 +92,7 @@ func (server *Server) Domains_Remove(conn net.Conn, applicationName string, defe
 		return err
 	}
 	if deferred {
-		fmt.Fprintf(dimLogger, "Load-balancer sync deferred at request of user for op=add domains=$+v\n", domains)
+		fmt.Fprintf(dimLogger, "Load-balancer sync deferred at request of user for op=add domains=%+v\n", domains)
 		return nil
 	}
 	e := &Executor{Logger: dimLogger}

@@ -1076,15 +1076,15 @@ func (spec flagSpec) val(ctx *cli.Context, argsConsumed *int) (interface{}, erro
 // requiredError returns the "flag required" error message to present to user.
 func (spec flagSpec) requiredError() error {
 	if spec.required {
-		var plural string
-		if spec.typ == "slice" {
-			plural = "one or more "
-		}
+		// var plural string
+		// if spec.typ == "slice" {
+		// 	plural = "one or more "
+		// }
 		if spec.args {
 			if spec.typ == "slice" {
 				return fmt.Errorf("one or more %v arguments are required", spec.names[0])
 			}
-			return fmt.Errorf("%v argument is required", spec.names[0], plural)
+			return fmt.Errorf("%v argument is required", spec.names[0])
 		}
 		if spec.typ == "slice" {
 			return fmt.Errorf("one or more %v flags are required", spec.names[0])
