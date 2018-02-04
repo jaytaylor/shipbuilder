@@ -55,6 +55,17 @@ Example Procfile #3, python app with Flask and uWSGI:
 
 For more information on Procfiles, see the (Heroku Procfile documentation)[https://devcenter.heroku.com/articles/procfile].
 
+`Step 2a: Create a `.ppas` for your app and commit it to your repository`
+-----------------------------------------------------------------------
+
+To ensure any desired PPA repositories are added to your apps base image.  1 PPA repository per line.
+
+
+`Step 2b: Create a `.packages` for your app and commit it to your repository`
+---------------------------------------------------------------------------
+
+To ensure any desired apt packages are installed to your apps base image.  1 apt package name per line.
+
 
 `Step 3: Commit your Procfile to git`
 -----------------------------------

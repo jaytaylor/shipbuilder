@@ -3,6 +3,7 @@ package core
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"text/template"
 	"time"
 
@@ -591,6 +593,105 @@ func (d *Deployment) prepareAppFilePermissions() error {
 	// )
 }
 
+// installAppPPAs processes and acts upon an apps ".ppas" file.
+func (d *Deployment) installAppPPAs() error {
+	script := `
+function installPPAs() {
+    if [ -r .ppas ] ; then
+        while read line ; do
+            if [[ "${line}" =~ ^[#\;] ]] ; then
+                continue
+            fi
+
+            name=$(echo "${line}" | sed 's/^ppa://')
+            found=$(grep "${name}" /etc/apt/sources.list /etc/apt/sources.list.d/*)
+            if [ -z "${found}" ] ; then
+                echo "info: Installing PPA: ${name}"
+                sudo --non-interactive add-apt-repository -y "${line}"
+                rc=$?
+                if [ ${rc} -ne 0 ] ; then
+                    echo "error: Installing PPA ${name} exited with non-zero status code ${rc}"
+                    exit ${rc}
+                fi
+            fi
+        done < .ppas
+    fi
+}
+
+set -o errexit
+cd /app/src
+set +o errexit
+
+installPPAs
+`
+	file := "/tmp/ppas.sh"
+	if err := ioutil.WriteFile(file, []byte(script), os.FileMode(int(0777))); err != nil {
+		return err
+	}
+	if err := d.b64FileIntoContainer(file, file, "777"); err != nil {
+		return err
+	}
+	if err := d.lxcExec(file); err != nil {
+		return fmt.Errorf("installing app PPAs: %s", err)
+	}
+	if err := d.lxcExec("rm -f /tmp/ppas.sh"); err != nil {
+		return fmt.Errorf("cleaning up app PPAs script: %s", err)
+	}
+	return nil
+}
+
+// installAppPackages processes and acts upon an apps ".packages" file.
+func (d *Deployment) installAppPackages() error {
+	script := `
+function installPackages() {
+    if [ -r .packages ] ; then
+        needed=''
+
+        while read line ; do
+            if [[ "${line}" =~ ^[#\;] ]] ; then
+                continue
+            fi
+            installed=$(dpkg -s "${line}" 2>/dev/null | grep '^Status' | sed 's/^Status: //')
+            if [ "${installed}" != 'install ok installed' ] ; then
+                needed="${needed} ${line}"
+            fi
+        done < .packages
+
+        if [ -n "${needed}" ] ; then
+            echo "info: Installing packages: ${needed}"
+            sudo --non-interactive apt install -y ${needed}
+
+            rc=$?
+            if [ ${rc} -ne 0 ] ; then
+                echo "error: Installing packages \"${needed}\" exited with non-zero status code ${rc}"
+                exit ${rc}
+            fi
+        fi
+    fi
+}
+
+set -o errexit
+cd /app/src
+set +o errexit
+
+installPackages
+`
+	file := "/tmp/packages.sh"
+	if err := ioutil.WriteFile(file, []byte(script), os.FileMode(int(0777))); err != nil {
+		return err
+	}
+	if err := d.b64FileIntoContainer(file, file, "777"); err != nil {
+		return err
+	}
+	if err := d.lxcExec(file); err != nil {
+		return fmt.Errorf("installing app packages: %s", err)
+	}
+	if err := d.lxcExec("rm -f /tmp/packages.sh"); err != nil {
+		return fmt.Errorf("cleaning up app packages script: %s", err)
+	}
+	return nil
+}
+
 // PurgePackages is the list of packages to be purged from app containers.
 var PurgePackages = []string{
 	"dbus",
@@ -714,7 +815,7 @@ func (d *Deployment) build() (err error) {
 		return
 	}
 
-	if d.err = d.validateProcfile(); d.err != nil {
+	if d.err = d.Validate(); d.err != nil {
 		err = d.err
 		return
 	}
@@ -740,6 +841,12 @@ func (d *Deployment) build() (err error) {
 			return err
 		}
 		if err := d.prepareDisabledServices(); err != nil {
+			return err
+		}
+		if err := d.installAppPPAs(); err != nil {
+			return err
+		}
+		if err := d.installAppPackages(); err != nil {
 			return err
 		}
 		return nil
@@ -1168,7 +1275,7 @@ func (d *Deployment) syncNodes() ([]*Node, error) {
 	}
 
 	if len(availableNodes) == 0 {
-		return availableNodes, fmt.Errorf("No available nodes. This is probably very bad for all apps running on this deployment system.")
+		return availableNodes, fmt.Errorf("No available nodes. This is probably very bad for all apps running on this PaaS.")
 	}
 	return availableNodes, nil
 }
@@ -1228,34 +1335,157 @@ func (d *Deployment) startDynos(availableNodes []*Node, titleLogger io.Writer) (
 	return addDynos, nil
 }
 
-// Validate application's Procfile.
+// Validate performs high-level validation of content contained within in the
+// Deployment.
+func (d *Deployment) Validate() error {
+	errs := []error{
+		d.validateProcfile(),
+		d.validatePackages(),
+		d.validatePPAs(),
+	}
+
+	if err := errorlib.Merge(errs); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateProcfile performs validation on an apps Procfile.
 // TODO: check for ignored errors.
 func (d *Deployment) validateProcfile() error {
-	cmd := exec.Command("/bin/bash", "-c", fmt.Sprintf("set -o errexit ; cd %v/%v ; git show HEAD:Procfile ; cd - 2>&1 1>/dev/null", GIT_DIRECTORY, d.Application.Name))
-
-	r, err := cmd.StdoutPipe()
+	r, err := d.bareRepoContent("Procfile")
 	if err != nil {
-		return fmt.Errorf("getting stdout pipe for procfile validation: %s", err)
+		if err == os.ErrNotExist {
+			return errors.New("missing required file: Procfile")
+		}
+		return err
 	}
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("retrieving procfile content: %s", err)
+	var (
+		processExpr = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]:.*$`)
+		lineFilter  = func(line string) bool {
+			return len(line) > 0 && strings.Index(line, "#") != 0 && strings.Index(line, ";") != 0
+		}
+	)
+
+	if err := allLinesMatch(r, processExpr, lineFilter); err != nil {
+		return fmt.Errorf("Procfile %s", err)
 	}
 
-	scanner := bufio.NewScanner(r)
-	processRe := regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]:.*`)
-	lineNo := 1
+	return nil
+}
+
+// validatePackages validates an apps '.packages' file, if one exists.
+func (d *Deployment) validatePackages() error {
+	r, err := d.bareRepoContent(".packages")
+	if err != nil {
+		if err == os.ErrNotExist {
+			return nil
+		}
+		return err
+	}
+
+	var (
+		packageExpr = regexp.MustCompile(`^[a-zA-Z0-9:_.=~-]+$`)
+		lineFilter  = func(line string) bool {
+			return len(line) > 0 && strings.Index(line, "#") != 0 && strings.Index(line, ";") != 0
+		}
+	)
+
+	if err := allLinesMatch(r, packageExpr, lineFilter); err != nil {
+		return fmt.Errorf(".packages %s", err)
+	}
+
+	return nil
+}
+
+// validatePPAs validates an apps '.ppas' file, if one exists.
+func (d *Deployment) validatePPAs() error {
+	r, err := d.bareRepoContent(".ppas")
+	if err != nil {
+		if err == os.ErrNotExist {
+			return nil
+		}
+		return err
+	}
+
+	var (
+		packageExpr = regexp.MustCompile(`^ppa:[a-zA-Z0-9]+\/[a-zA-Z0-9:_.=~-]+$`)
+		lineFilter  = func(line string) bool {
+			return len(line) > 0 && strings.Index(line, "#") != 0 && strings.Index(line, ";") != 0
+		}
+	)
+
+	if err := allLinesMatch(r, packageExpr, lineFilter); err != nil {
+		return fmt.Errorf(".ppas %s", err)
+	}
+
+	return nil
+}
+
+// allLinesMatch is a helper for determining if each line contained in a reader
+// matches the given regular expression.
+//
+// lineFilterFuncs may optionally be used for additional control over which
+// lines are eligible for inspection or not.  If the all functions return true, the
+// line will be inspected, otherwise it will be skipped.
+func allLinesMatch(r io.Reader, expr *regexp.Regexp, lineFilterFuncs ...func(line string) bool) error {
+	var (
+		scanner = bufio.NewScanner(r)
+		lineNo  = 1
+	)
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		// Only proceed if line isn't empty or commented out.
-		if len(line) > 0 && strings.Index(line, "#") != 0 && strings.Index(line, ";") != 0 {
-			if !processRe.MatchString(line) {
-				return fmt.Errorf("Procfile validation failed on line %v: \"%v\", must match regular expression \"%v\"", lineNo, line, processRe.String())
+		if len(lineFilterFuncs) > 0 {
+			var skip bool
+			for _, filterFn := range lineFilterFuncs {
+				if !filterFn(line) {
+					skip = true
+					break
+				}
 			}
+			if skip {
+				continue
+			}
+		}
+		if !expr.MatchString(line) {
+			return fmt.Errorf("content validation failed at line %v: \"%v\", must match regular expression \"%v\"", lineNo, line, expr.String())
 		}
 		lineNo++
 	}
+
 	return nil
+}
+
+// bareRepoContent gets a file from the deployment apps' bare git repository.
+func (d *Deployment) bareRepoContent(file string) (io.Reader, error) {
+	cmd := exec.Command("/bin/bash", "-c", fmt.Sprintf("set -o errexit ; cd %v/%v ; git show HEAD:%v", GIT_DIRECTORY, d.Application.Name, file))
+
+	r, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("getting stdout pipe for app=%v %q content: %s", d.Application.Name, file, err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("starting command to check if app=%v git repo contains file %q: %s", d.Application.Name, file, err)
+	}
+
+	if err := cmd.Wait(); err != nil {
+		if exiterr, ok := err.(*exec.ExitError); ok {
+			// The program has exited with a non-zero exit status code.
+			if status, ok := exiterr.Sys().(syscall.WaitStatus); ok {
+				if status.ExitStatus() == 128 {
+					// File was not found.
+					return nil, os.ErrNotExist
+				}
+			}
+		}
+		return nil, fmt.Errorf("retrieving app=%v %q content: %s", d.Application.Name, file, err)
+	}
+
+	return r, nil
 }
 
 // Deploy and launch the container to nodes.
