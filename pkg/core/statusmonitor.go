@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const statusMonitorCheckCommand = `echo $(free -m | grep '^Mem:' | grep --only '[0-9]\+$') $(sudo lxc list --format json | jq -r '.[] | select(.status == "Running") | .name' | tr $'\n' ' ')`
+const statusMonitorCheckCommand = `echo $(free -m | grep '^Mem:' | grep --only '[0-9]\+$') $(sudo lxc list --format json | jq -r '.[] | select(.status == "Running") | "\(.name)` + DYNO_DELIMITER + `\(.status)"' | tr $'\n' ' ')`
 
 var nodeStatusRequestChannel = make(chan NodeStatusRequest)
 

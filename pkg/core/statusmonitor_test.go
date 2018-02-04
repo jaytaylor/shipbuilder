@@ -14,7 +14,7 @@ func TestNodeStatusParse(t *testing.T) {
 			numContainers: 0,
 		},
 		{
-			input:         "9638 fancypie-v5-web-10001 fancypie-v5-web-10002 fancypie-v5-web-10006",
+			input:         "9638 fancypie-v5-web-10001-Running fancypie-v5-web-10002-Running fancypie-v5-web-10006-Running",
 			numContainers: 3,
 		},
 	}
