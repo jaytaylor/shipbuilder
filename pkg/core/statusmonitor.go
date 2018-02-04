@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const statusMonitorCheckCommand = `echo $(free -m | sed '1,2d' | head -n1 | grep --only '[0-9]\+$') $(sudo lxc list --format json | jq -r '.[] | "\(.name)` + DYNO_DELIMITER + `\(.status)"' | tr $'\n' ' ')`
+const statusMonitorCheckCommand = `echo $(free -m | grep '^Mem:' | grep --only '[0-9]\+$') $(sudo lxc list --format json | jq -r '.[] | select(.status == "Running") | .name' | tr $'\n' ' ')`
 
 var nodeStatusRequestChannel = make(chan NodeStatusRequest)
 
@@ -17,7 +17,7 @@ type NodeStatus struct {
 	FreeMemoryMb int
 	Containers   []string
 	DeployMarker int
-	Ts           time.Time // No need to specify, will be automatically filled by `.ParseStatus()`.
+	Ts           time.Time // No need to specify, will be automatically filled by `.Parse()'.
 	Err          error
 }
 
@@ -26,7 +26,7 @@ type NodeStatusRequest struct {
 	resultChannel chan NodeStatus
 }
 
-func (ns *NodeStatus) ParseStatus(input string, err error) {
+func (ns *NodeStatus) Parse(input string, err error) {
 	if err != nil {
 		ns.Err = err
 		return
@@ -74,7 +74,7 @@ func checkServer(DefaultSSHHost string, currentDeployMarker int, ch chan NodeSta
 			DeployMarker: currentDeployMarker,
 			Err:          nil,
 		}
-		result.ParseStatus(RemoteCommand(DefaultSSHHost, statusMonitorCheckCommand))
+		result.Parse(RemoteCommand(DefaultSSHHost, statusMonitorCheckCommand))
 		done <- result
 	}()
 
