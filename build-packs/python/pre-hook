@@ -1,15 +1,23 @@
 #!/bin/bash
 
+logfile=/app/out
+exec >> "${logfile}" 2>&1
+
 ##
-# Python dependencies hook.
+# Python app dependencies and build hook.
 #
 
 function abortIfNonZero() {
     # @param $1 command return code/exit status (e.g. $?, '0', '1').
     # @param $2 error message if exit status was non-zero.
-    local rc=$1
-    local what=$2
-    test $rc -ne 0 && echo "error: ${what} exited with non-zero status ${rc}" >> /app/out && exit $rc || :
+    local rc=${1:-}
+    local what=${2:-}
+
+    if [ ${rc} -ne 0 ] ; then
+        echo "error: ${what} exited with non-zero status ${rc}"
+        echo "RETURN_CODE: ${rc}"
+        exit ${rc}
+    fi
 }
 
 cd /app/src
@@ -17,24 +25,34 @@ abortIfNonZero $? 'Changing directory to "/app/src"'
 
 dependenciesPath='/app/.shipbuilder'
 
-test ! -d "${dependenciesPath}" && mkdir "${dependenciesPath}"
+mkdir -p "${dependenciesPath}"
+abortIfNonZero $? 'Creating directory dependenciesPath=${dependenciesPath}'
 
-# Ensure virtualenv is avaiable.
-test ! -d "${dependenciesPath}/venv" && virtualenv "${dependenciesPath}/venv"
+# Ensure availability of virtualenv.
+if ! [ -d "${dependenciesPath}/venv" ] ; then
+    virtualenv "${dependenciesPath}/venv"
+fi
 
 . "${dependenciesPath}/venv/bin/activate"
 
 if [ -r 'requirements.txt' ]; then
-    echo '--> Installing requirements.txt' >> /app/out
-    stdbuf -o0 pip install -r requirements.txt 2>&1 >> /app/out
+    pip install --upgrade pip
+    abortIfNonZero $? "Command 'pip install --upgrade pip'"
 
-    echo '--> Precompiling python files' >> /app/out
-    stdbuf -o0 python -m compileall -q . 2>&1 >> /app/out
+    pip install --upgrade setuptools
+    abortIfNonZero $? "Command 'pip install --upgrade setuptools'"
+
+    echo '--> Installing requirements.txt'
+    stdbuf -o0 pip install -r requirements.txt 2>&1
+    abortIfNonZero $? "Command 'pip install -r requirements.txt'"
 else
-    echo 'warning: no "requirements.txt" file found' >> /app/out
-    rc=0
+    echo 'Warning: no "requirements.txt" file found, skipping pip dependencies retrieval'
 fi
 
+echo '--> Precompiling python files'
+stdbuf -o0 python -m compileall -q . 2>&1
 rc=$?
-echo "RETURN_CODE: ${rc}" >> /app/out
-exit $rc
+abortIfNonZero $? "Command 'python -m compileall -q .'"
+
+echo "RETURN_CODE: ${rc}"
+exit ${rc}
