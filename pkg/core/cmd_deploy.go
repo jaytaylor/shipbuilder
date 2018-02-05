@@ -1164,15 +1164,19 @@ func (d *Deployment) lxcImageName() string {
 
 func (d *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) (Dyno, error) {
 	var (
-		dyno   = dynoGenerator.Next(process)
-		logger = NewLogger(d.Logger, "["+dyno.Host+"] ")
-		e      = Executor{
+		dyno, err = dynoGenerator.Next(process)
+		logger    = NewLogger(d.Logger, "["+dyno.Host+"] ")
+		e         = Executor{
 			logger: logger,
 		}
 		done = make(chan struct{})
-		err  error
 		mu   sync.Mutex
 	)
+
+	if err != nil {
+		return dyno, err
+	}
+
 	go func() {
 		fmt.Fprint(logger, "Starting dyno")
 		mu.Lock()
@@ -1180,6 +1184,7 @@ func (d *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) (Dy
 		mu.Unlock()
 		done <- struct{}{}
 	}()
+
 	select {
 	case <-done: // implicitly break.
 	case <-time.After(DYNO_START_TIMEOUT_SECONDS * time.Second):
@@ -1187,6 +1192,7 @@ func (d *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) (Dy
 		err = fmt.Errorf("Timed out for dyno host %v", dyno.Host)
 		mu.Unlock()
 	}
+
 	return dyno, err
 }
 
@@ -1297,7 +1303,10 @@ func (d *Deployment) startDynos(availableNodes []*Node, titleLogger io.Writer) (
 
 	startDynoWrapper := func(dynoGenerator *DynoGenerator, process string) {
 		dyno, err := d.startDyno(dynoGenerator, process)
-		startedChannel <- StartResult{dyno, err}
+		startedChannel <- StartResult{
+			dyno: dyno,
+			err:  err,
+		}
 	}
 
 	numDesiredDynos := 0
@@ -1317,7 +1326,7 @@ func (d *Deployment) startDynos(availableNodes []*Node, titleLogger io.Writer) (
 			select {
 			case result := <-startedChannel:
 				if result.err != nil {
-					// Then attempt start it again.
+					// Then attempt to start it again.
 					fmt.Fprintf(titleLogger, "Retrying starting app dyno %v on host %v, failure reason: %v\n", result.dyno.Process, result.dyno.Host, result.err)
 					go startDynoWrapper(dynoGenerator, result.dyno.Process)
 				} else {

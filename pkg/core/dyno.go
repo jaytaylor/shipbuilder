@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jaytaylor/shipbuilder/pkg/appender"
+	"github.com/jaytaylor/shipbuilder/pkg/stringsutil"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -156,10 +157,18 @@ func (dpt *DynoPortTracker) Release(host string, port int) {
 
 // NB: Container name format is: appName-version-process-port
 func ContainerToDyno(host string, container string) (Dyno, error) {
-	tokens := strings.Split(container, DYNO_DELIMITER)
+	tokens := strings.SplitN(stringsutil.Reverse(container), DYNO_DELIMITER, 5)
+
 	if len(tokens) != 5 {
 		return Dyno{}, fmt.Errorf("unable to parse container string %q into 5 tokens", container)
 	}
+
+	// Un-reverse the things.
+	for i, j := 0, len(tokens)-1; i < j; i, j = i+1, j-1 {
+		tokens[i], tokens[j] = stringsutil.Reverse(tokens[j]), stringsutil.Reverse(tokens[i])
+	}
+	tokens[2] = stringsutil.Reverse(tokens[2])
+
 	if !strings.HasPrefix(tokens[1], "v") {
 		return Dyno{}, fmt.Errorf("invalid dyno version value %q, must begin with a 'v'", tokens[1])
 	}
@@ -258,12 +267,16 @@ func (server *Server) NewDynoGenerator(nodes []*Node, application string, versio
 
 }
 
-func (dg *DynoGenerator) Next(process string) Dyno {
+func (dg *DynoGenerator) Next(process string) (Dyno, error) {
 	nodeStatus := dg.statuses[dg.position%len(dg.statuses)].status
 	dg.position++
 	port := fmt.Sprint(dg.server.getNextPort(&nodeStatus, &dg.usedPorts))
-	dyno, _ := ContainerToDyno(nodeStatus.Host, dg.application+DYNO_DELIMITER+dg.version+DYNO_DELIMITER+process+DYNO_DELIMITER+port+DYNO_DELIMITER+DYNO_STATE_STOPPED)
-	return dyno
+	dyno, err := ContainerToDyno(nodeStatus.Host, dg.application+DYNO_DELIMITER+dg.version+DYNO_DELIMITER+process+DYNO_DELIMITER+port+DYNO_DELIMITER+DYNO_STATE_STOPPED)
+
+	// Don't lose the process type!  This field gets re-used externally when error
+	// is non-nil.
+	dyno.Process = process
+	return dyno, err
 }
 
 // NodeStatus sorting.
