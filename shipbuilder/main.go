@@ -620,20 +620,43 @@ func main() {
 
 			////////////////////////////////////////////////////////////////////
 			// logger
-			appCommand(
-				[]string{"logger", "Logger"},
-				"Logger command for apps to send logs back to shipbuilder",
-				flagSpec{
-					names:    []string{"host"},
-					usage:    "Slave node name (e.g. hostname)",
-					required: true,
+			&cli.Command{
+				Name:        "logger",
+				Aliases:     []string{"Logger"},
+				Description: "Logger command for apps to send logs back to shipbuilder",
+				Flags: []cli.Flag{
+					appFlag,
+					&cli.StringFlag{
+						Name:  "host",
+						Usage: "Logserver hostname",
+					},
+					&cli.StringFlag{
+						Name:    "process",
+						Aliases: []string{"p"},
+						Usage:   "App process ID name",
+					},
 				},
-				flagSpec{
-					names:    []string{"process", "p"},
-					usage:    "App process name",
-					required: true,
+				Action: func(ctx *cli.Context) error {
+					var (
+						host    = ctx.String("host")
+						app     = ctx.String("app")
+						process = ctx.String("process")
+					)
+
+					if len(host) == 0 {
+						return errors.New("host flag is required and must not be empty!")
+					}
+					if len(app) == 0 {
+						return errors.New("app flag is required and must not be empty!")
+					}
+					if len(process) == 0 {
+						return errors.New("process flag is required and must not be empty!")
+					}
+
+					(&core.Local{}).Logger(host, app, process)
+					return nil
 				},
-			),
+			},
 
 			////////////////////////////////////////////////////////////////////
 			// run
