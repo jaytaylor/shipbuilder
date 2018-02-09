@@ -362,7 +362,7 @@ func (*Server) ResolveLogServerIpAndPort() (string, error) {
 		return "", err
 	}
 	ip := ipAddr.IP.String()
-	port := strconv.Itoa(lslog.Port)
+	port := strconv.Itoa(lslog.DefaultPort)
 	return ip + ":" + port, nil
 }
 
