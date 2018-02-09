@@ -597,7 +597,14 @@ frontend frontend
     option forwardfor
     option http-server-close
 {{range $app := .Applications}}
-    {{if .Domains}}use_backend {{$app.Name}}{{if $app.Maintenance}}-maintenance{{end}} if { {{range .Domains}} hdr(host) -i {{.}} {{end}} }{{end}}
+    {{- range $i, $domain := .Domains }}
+    acl {{$i}}_{{$app.Name}} hdr(host) -i {{$domain}}
+    {{- end }}
+{{end}}
+{{range $app := .Applications}}
+    {{- range $i, $domain := .Domains }}
+    use_backend {{$app.Name}}{{if $app.Maintenance}}-maintenance{{end}} if {{$i}}_{{$app.Name}}
+    {{- end }}
 {{end}}
     {{if and .HaProxyStatsEnabled .HaProxyCredentials .LoadBalancers}}use_backend load_balancer if { {{range .LoadBalancers }} hdr(host) -i {{.}} {{end}} }{{end}}
 
