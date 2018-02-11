@@ -53,9 +53,15 @@ frontend frontend
     option http-pretend-keepalive
     option forwardfor
     option http-server-close
+
     {{- range $app := .Applications }}
-    {{- if .Domains }}
-    use_backend {{ $app.Name }}{{ if $app.Maintenance }}-maintenance{{ end }} if { {{ range .Domains }} hdr(host) -i {{ $context.DynHdrFlags }}-- {{ . }} {{ end }} }
+    {{- range $i, $domain := .Domains }}
+    acl {{ $i }}_{{ $app.Name }} hdr(host) -i {{ $context.DynHdrFlags }}-- {{ $domain }}
+    {{- end }}
+    {{- end }}
+    {{- range $app := .Applications }}
+    {{- range $i, $domain := .Domains }}
+    use_backend {{ $app.Name }}{{ if $app.Maintenance }}-maintenance{{ end }} if {{ $i }}_{{ $app.Name }}
     {{- end }}
     {{- end }}
 
@@ -67,8 +73,8 @@ frontend frontend
 {{- range $app := .Applications }}
 
 
-# app: {{.Name}}
-backend {{.Name}}
+# app: {{ .Name }}
+backend {{ .Name }}
     balance roundrobin
     reqadd X-Forwarded-Proto:\ https if { ssl_fc }
     option forwardfor
@@ -80,7 +86,7 @@ backend {{.Name}}
     {{- if and $context.HaProxyStatsEnabled $context.HaProxyCredentials }}
     stats enable
     stats uri /haproxy
-    stats auth {{$context.HaProxyCredentials}}
+    stats auth {{ $context.HaProxyCredentials }}
     {{- end }}
 
 backend {{ $app.Name }}-maintenance
