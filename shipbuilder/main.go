@@ -357,10 +357,14 @@ func main() {
 				},
 			),
 
-			// TODO: Add --force flag for `destroy'.
 			appCommand(
-				[]string{"destroy", "apps:destroy", "delete", "Apps_Destroy"},
+				[]string{"destroy", "apps:destroy", "delete", "del", "rm", "Apps_Destroy"},
 				"Destroy an app",
+				flagSpec{
+					names: []string{"force", "f"},
+					usage: "Force removal without confirmation prompt",
+					typ:   "bool",
+				},
 			),
 
 			command(
@@ -965,7 +969,7 @@ type flagSpec struct {
 	required    bool
 	allowedVals []string // Optional.
 	args        bool     // Use as os.Args based parameter instead of a flag.
-	typ         string   // NB: one of "", or "slice"; "" signifies a string flag.
+	typ         string   // NB: one of "", "bool", or "slice"; "" signifies a string flag.
 }
 
 func (spec flagSpec) flag() cli.Flag {
@@ -978,16 +982,25 @@ func (spec flagSpec) flag() cli.Flag {
 		allowedValsUsage = fmt.Sprintf("; allowed values: %v", strings.Join(spec.allowedVals, ", "))
 	}
 
+	var flag cli.Flag
+
 	switch spec.typ {
 	case "":
-		return &cli.StringFlag{
+		flag = &cli.StringFlag{
 			Name:    spec.names[0],
 			Aliases: spec.names[1:],
 			Usage:   spec.usage + allowedValsUsage,
 		}
 
+	case "bool":
+		flag = &cli.BoolFlag{
+			Name:    spec.names[0],
+			Aliases: spec.names[1:],
+			Usage:   spec.usage,
+		}
+
 	case "slice":
-		return &cli.StringSliceFlag{
+		flag = &cli.StringSliceFlag{
 			Name:    spec.names[0],
 			Aliases: spec.names[1:],
 			Usage:   spec.usage + allowedValsUsage,
@@ -996,6 +1009,8 @@ func (spec flagSpec) flag() cli.Flag {
 	default:
 		panic(fmt.Sprintf("unrecognized spec.typ: %v", spec.typ))
 	}
+
+	return flag
 }
 
 func (spec flagSpec) val(ctx *cli.Context, argsConsumed *int) (interface{}, error) {
@@ -1016,6 +1031,10 @@ func (spec flagSpec) val(ctx *cli.Context, argsConsumed *int) (interface{}, erro
 				return nil, spec.requiredError()
 			}
 		}
+		return val, nil
+
+	case "bool":
+		var val = ctx.Bool(spec.names[0])
 		return val, nil
 
 	case "slice":

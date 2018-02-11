@@ -102,22 +102,24 @@ func (server *Server) initAppGitRepo(conn net.Conn, applicationName string) erro
 	return nil
 }
 
-func (server *Server) Apps_Destroy(conn net.Conn, applicationName string) error {
+func (server *Server) Apps_Destroy(conn net.Conn, applicationName string, force bool) error {
 	err := server.validateAppName(applicationName)
 	if err != nil {
 		return err
 	}
 
-	Send(conn, Message{ReadLineRequest, "/!\\ Warning! This is a destructive action which cannot be undone /!\\\nPlease enter your app name if you are sure you want to continue: "})
-	message, err := Receive(conn)
-	if err != nil {
-		return err
-	}
-	if message.Type != ReadLineResponse {
-		return fmt.Errorf("Got unexpected message reponse type %q, wanted a `ReadLineResponse`", message.Type)
-	}
-	if strings.TrimSpace(message.Body) != applicationName {
-		return fmt.Errorf("Incorrect application name entered. Operation aborted.")
+	if !force {
+		Send(conn, Message{ReadLineRequest, "/!\\ Warning! This is a destructive action which cannot be undone /!\\\nPlease enter your app name if you are sure you want to continue: "})
+		message, err := Receive(conn)
+		if err != nil {
+			return err
+		}
+		if message.Type != ReadLineResponse {
+			return fmt.Errorf("Got unexpected message reponse type %q, wanted a `ReadLineResponse`", message.Type)
+		}
+		if strings.TrimSpace(message.Body) != applicationName {
+			return fmt.Errorf("Incorrect application name entered. Operation aborted.")
+		}
 	}
 
 	return server.WithPersistentConfig(func(cfg *Config) error {
