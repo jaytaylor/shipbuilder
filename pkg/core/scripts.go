@@ -682,7 +682,7 @@ var SHUTDOWN_CONTAINER = `#!/usr/bin/python -u
 
 import subprocess
 import sys
-impoer time
+import time
 
 lxcBin='''` + LXC_BIN + `'''
 DefaultLXCFS = '''` + DefaultLXCFS + `'''
