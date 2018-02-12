@@ -146,7 +146,7 @@ func (server *Server) Apps_Destroy(conn net.Conn, applicationName string, force 
 			return err
 		}
 		if gitPathExists {
-			fmt.Fprint(dimLogger, "Removing git path: %v\n", gitPath)
+			fmt.Fprintf(dimLogger, "Removing git path: %v\n", gitPath)
 			e.Run("sudo", "rm", "-r", gitPath)
 		}
 
