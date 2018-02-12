@@ -15,7 +15,7 @@ import (
 
 const (
 	bashSafeEnvSetup     = `set -o errexit ; set -o pipefail ; set -o nounset ; `
-	bashGrepIP           = `grep --only-matching '^\([0-9]\{1,3\}\.\)\{3\}[0-9]\{1,3\}$'`
+	bashGrepIP           = `grep --only-matching '\([0-9]\{1,3\}\.\)\{3\}[0-9]\{1,3\}'`
 	bashLXCIPWaitCommand = `set -o errexit ; set -o nounset ; ` + LXC_BIN + ` list | sed 1,3d | grep '^[|] %s \+[|] ' | awk '{ print $6 }' | (` + bashGrepIP + ` || true)`
 )
 

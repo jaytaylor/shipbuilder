@@ -814,36 +814,53 @@ def main(argv):
                 % (iptablesCommentPrefix('remote'), container,),
         ]).strip()
 
-    if not iptablesOnly:
-        exists = ip or container == subprocess.check_output([
-            'bash',
-            '-c',
-            '''` + bashSafeEnvSetup + `%(lxc)s list --format json | jq -r '.[] | select(.name == "%(container)s").name' '''.strip() \
-                % {'lxc': lxcBin, 'container': container},
-        ]).strip()
-
-        if exists:
-            # try:
-            #     # Stop and destroy the container.
-            #     log('stopping container: {}'.format(container))
-            #     subprocess.call([lxcBin, 'stop', '--force', container], stdout=sys.stdout, stderr=sys.stderr)
-            # except Exception, e:
-            #     if not skipStop:
-            #         raise e # Otherwise ignore.
-
-            subprocess.call([lxcBin, 'stop', '--force', container])
-            subprocess.check_call([
-                'bash',
-                '-c',
-                '''` + bashSafeEnvSetup + `test -z $(zfs mount | awk '{print $1}' | (grep '%(pool)s/%(container)s' || true)) || zfs umount '%(pool)s/%(container)s' '''.strip() \
-                    % {'pool': '` + ZFS_CONTAINER_MOUNT + `', 'container': container},
-            ])
-            retriableCommand(lxcBin, 'delete', '--force', container)
-
     if ip:
         portForward('remove', container, ip, port)
     else:
         sys.stderr.write('- warning: container IP not found, iptables rules were not able to be removed\n')
+
+    if not iptablesOnly:
+        try:
+            exists = container == subprocess.check_output([
+                'bash',
+                '-c',
+                '''` + bashSafeEnvSetup + `%(lxc)s list --format json | jq -r '.[] | select(.name == "%(container)s").name' '''.strip() \
+                    % {'lxc': lxcBin, 'container': container},
+            ]).strip()
+
+            if exists:
+                # try:
+                #     # Stop and destroy the container.
+                #     log('stopping container: {}'.format(container))
+                #     subprocess.call([lxcBin, 'stop', '--force', container], stdout=sys.stdout, stderr=sys.stderr)
+                # except Exception, e:
+                #     if not skipStop:
+                #         raise e # Otherwise ignore.
+
+                subprocess.call([lxcBin, 'stop', '--force', container])
+                subprocess.check_call([
+                    'bash',
+                    '-c',
+                    '''` + bashSafeEnvSetup + `test -z $(zfs mount | awk '{print $1}' | (grep '%(pool)s/%(container)s' || true)) || zfs umount '%(pool)s/%(container)s' '''.strip() \
+                        % {'pool': '` + ZFS_CONTAINER_MOUNT + `', 'container': container},
+                ])
+                retriableCommand(lxcBin, 'delete', '--force', container)
+        except subprocess.CalledProcessError as e:
+            sys.stderr.write('- warning: deletion of container "%s" failed: %s' % (container, e,))
+
+        try:
+            image = '%s%s%s' % (app, dynoDelimiter, version)
+            exists = subprocess.check_output([
+                'bash',
+                '-c',
+                '''` + bashSafeEnvSetup + `%(lxc)s image list --format json | jq -r '.[].aliases[] | select(.name == "%(container)s").name' '''.strip() \
+                    % {'lxc': lxcBin, 'container': container},
+            ]).strip()
+
+            if exists:
+                subprocess.check_call(lxcBin, 'image', 'delete', container)
+        except subprocess.CalledProcessError as e:
+            sys.stderr.write('- warning: deletion of image "%s" failed: %s' % (image, e,))
 
 main(sys.argv)`
 
