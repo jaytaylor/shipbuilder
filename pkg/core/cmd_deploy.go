@@ -166,16 +166,16 @@ func (d *Deployment) createContainer() (err error) {
 		// Housekeeping.
 		running, checkErr := d.exe.ContainerRunning(d.Application.Name)
 		if checkErr != nil {
-			log.Errorf("unexected error checking if container %q is running: %s", d.Application.Name, err)
+			log.Errorf("Unexected problem checking if container already running for app=%q: %s", d.Application.Name, err)
 			return
 		}
 		if running {
-			if stopErr := d.exe.StopContainer(d.Application.Name); stopErr != nil {
+			if stopErr := d.exe.StopContainer(d.Application.Name); stopErr != nil && stopErr != ErrContainerNotFound {
 				if err == nil {
 					err = stopErr
 					return
 				}
-				log.Errorf("Stopping container %q: %s (existing err: %s)", d.Application.Name, stopErr, err)
+				log.Errorf("Unexpected problem stopping container for app=%q: %s (existing err: %s)", d.Application.Name, stopErr, err)
 			}
 
 		}
@@ -768,7 +768,7 @@ func (d *Deployment) build() (err error) {
 	fmt.Fprint(titleLogger, "Building image\n")
 
 	// To be sure we are starting with a container in the stopped state.
-	if stopErr := d.exe.StopContainer(d.Application.Name); stopErr != nil {
+	if stopErr := d.exe.StopContainer(d.Application.Name); stopErr != nil && stopErr != ErrContainerNotFound {
 		log.WithField("app", d.Application.Name).WithField("err", stopErr).Errorf("Problem stopping container (this can likely be ignored)")
 	}
 
@@ -854,7 +854,7 @@ func (d *Deployment) build() (err error) {
 	if prepErr != nil {
 		err = prepErr
 		d.err = err
-		if err := d.exe.StopContainer(d.Application.Name); err != nil {
+		if err := d.exe.StopContainer(d.Application.Name); err != nil && err != ErrContainerNotFound {
 			log.WithField("app", d.Application.Name).Errorf("Unexpected error stopping container after prep failure: %s", err)
 		}
 		return
@@ -956,7 +956,8 @@ func (d *Deployment) build() (err error) {
 
 			n, readErr := r.Read(buf)
 			if readErr != nil {
-				log.Debugf("Unexpected read error while running pre-hook read: %s", readErr)
+				log.Errorf("Unexpected read error reading pre-hook script output: %s", readErr)
+				time.Sleep(time.Second) // TODO: Use exponential backoff.
 			}
 			if n > 0 {
 				dimLogger.Write(buf[:n])
@@ -1135,7 +1136,7 @@ func (d *Deployment) syncNode(node *Node) error {
 	logger := NewLogger(d.Logger, "["+node.Host+"] ")
 	bashCmds := fmt.Sprintf(`set -o errexit
 set -o pipefail
-test -n "$(%[1]v remote list | sed -e 1d -e 2d -e 3d | grep -v '^+' | awk '{print $2}' | grep %[2]v)" || %[1]v remote add --accept-certificate --public %[2]v https://%[2]v:8443
+test -n "$(%[1]v remote list | sed 1,3d | grep -v '^+' | awk '{print $2}' | grep %[2]v)" || %[1]v remote add --accept-certificate --public %[2]v https://%[2]v:8443
 %[1]v image copy --copy-aliases %[3]v local:`,
 		LXC_BIN,
 		DefaultSSHHost,
@@ -1146,12 +1147,7 @@ test -n "$(%[1]v remote list | sed -e 1d -e 2d -e 3d | grep -v '^+' | awk '{prin
 		return fmt.Errorf("sending image from host %v to %v: %s\n", DefaultSSHHost, node.Host, err)
 	}
 
-	err := d.exe.Run("rsync",
-		"-azve", "ssh "+DEFAULT_SSH_PARAMETERS,
-		"/tmp/postdeploy.py", "/tmp/shutdown_container.py",
-		"root@"+node.Host+":/tmp/",
-	)
-	if err != nil {
+	if err := d.exe.SyncContainerScripts("root@" + node.Host + ":/tmp/"); err != nil {
 		return err
 	}
 	return nil
@@ -1203,16 +1199,6 @@ func (d *Deployment) autoDetectRevision() error {
 			return err
 		}
 		d.Revision = strings.Trim(string(revision), "\n")
-	}
-	return nil
-}
-
-func writeDeployScripts() error {
-	if err := ioutil.WriteFile("/tmp/postdeploy.py", []byte(POSTDEPLOY), os.FileMode(int(0777))); err != nil {
-		return err
-	}
-	if err := ioutil.WriteFile("/tmp/shutdown_container.py", []byte(SHUTDOWN_CONTAINER), os.FileMode(int(0777))); err != nil {
-		return err
 	}
 	return nil
 }
@@ -1510,10 +1496,6 @@ func (d *Deployment) deploy() error {
 	)
 
 	d.autoDetectRevision()
-
-	if err := writeDeployScripts(); err != nil {
-		return err
-	}
 
 	removeDynos, allocatingNewDynos, err := d.calculateDynosToDestroy()
 	if err != nil {

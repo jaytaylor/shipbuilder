@@ -53,12 +53,16 @@ func (dyno *Dyno) Info() string {
 
 func (dyno *Dyno) Shutdown(e *Executor) error {
 	fmt.Fprintf(e.logger, "Shutting down dyno: %v\n", dyno.Info())
+	sshHost := DEFAULT_NODE_USERNAME + "@" + dyno.Host
+	if err := e.SyncContainerScripts(sshHost + ":/tmp/"); err != nil {
+		fmt.Fprintf(e.logger, "Warning: failed to sync container control scripts to %q (will continue shutdown attempt despite this): %s\n", sshHost, err)
+	}
 	if dyno.State == DYNO_STATE_RUNNING {
 		// Shutdown then destroy.
-		return e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+dyno.Host, "sudo", "/tmp/shutdown_container.py", dyno.Container)
+		return e.Run("ssh", sshHost, "sudo", "/tmp/shutdown_container.py", dyno.Container)
 	} else {
 		// Destroy only.
-		return e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+dyno.Host, "sudo", "/tmp/shutdown_container.py", dyno.Container, "destroy-only")
+		return e.Run("ssh", sshHost, "sudo", "/tmp/shutdown_container.py", dyno.Container, "destroy-only")
 	}
 }
 

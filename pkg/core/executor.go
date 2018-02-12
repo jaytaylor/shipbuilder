@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -11,8 +13,16 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	bashSafeEnvSetup     = `set -o errexit ; set -o pipefail ; set -o nounset ; `
+	bashGrepIP           = `grep --only-matching '^\([0-9]\{1,3\}\.\)\{3\}[0-9]\{1,3\}$'`
+	bashLXCIPWaitCommand = `set -o errexit ; set -o nounset ; ` + LXC_BIN + ` list | sed 1,3d | grep '^[|] %s \+[|] ' | awk '{ print $6 }' | (` + bashGrepIP + ` || true)`
+)
+
 var (
 	ErrContainerNotFound = errors.New("container not found")
+
+	containerIPWaitTimeout = 5 * time.Second
 )
 
 type Executor struct {
@@ -36,7 +46,7 @@ func (exe *Executor) Run(name string, args ...string) error {
 
 // Run a pre-quoted bash command.
 func (exe *Executor) BashCmd(cmd string) error {
-	return exe.Run("/bin/bash", "-c", "set -o errexit ; set -o pipefail ; set -o nounset ; "+cmd)
+	return exe.Run("/bin/bash", "-c", bashSafeEnvSetup+cmd)
 }
 
 // Run a bash command with fmt args.
@@ -72,7 +82,7 @@ func (exe *Executor) ContainerRunning(name string) (bool, error) {
 // lxcListJqCmd forms a command which filters `lxc list` JSON output against
 // the provided JQ query.
 func (exe *Executor) lxcListJqCmd(query string) *exec.Cmd {
-	cmd := logcmd(exec.Command("/bin/bash", "-c", fmt.Sprintf(`set -o errexit ; set -o pipefail ; %v list --format=json | jq -c '%v'`, LXC_BIN, query)))
+	cmd := logcmd(exec.Command("/bin/bash", "-c", fmt.Sprintf(`%v%v list --format=json | jq -c '%v'`, bashSafeEnvSetup, LXC_BIN, query)))
 	return cmd
 }
 
@@ -82,16 +92,23 @@ func (exe *Executor) StartContainer(name string) error {
 	if err != nil {
 		return err
 	}
-	if exists {
-		running, err := exe.ContainerRunning(name)
-		if err != nil {
-			return fmt.Errorf("checking if container %q running: %s", name, err)
+	if !exists {
+		// Don't attempt operation on non-existent containers.
+		return ErrContainerNotFound
+	}
+	running, err := exe.ContainerRunning(name)
+	if err != nil {
+		return err
+	}
+	if !running {
+		if err := exe.Run(LXC_BIN, "start", name); err != nil {
+			return fmt.Errorf("starting container=%q: %s", name, err)
 		}
-		if !running {
-			return exe.Run(LXC_BIN, "start", name)
+		if err := exe.waitForContainerIP(name); err != nil {
+			return err
 		}
 	}
-	return ErrContainerNotFound // Don't operate on non-existent containers.
+	return nil
 }
 
 // Stop a local container.
@@ -100,16 +117,20 @@ func (exe *Executor) StopContainer(name string) error {
 	if err != nil {
 		return err
 	}
-	if exists {
-		running, err := exe.ContainerRunning(name)
-		if err != nil {
-			return fmt.Errorf("checking if container %q running: %s", name, err)
-		}
-		if running {
-			return exe.Run(LXC_BIN, "stop", "--force", name)
+	if !exists {
+		// Don't attempt operation on non-existent containers.
+		return ErrContainerNotFound
+	}
+	running, err := exe.ContainerRunning(name)
+	if err != nil {
+		return err
+	}
+	if running {
+		if err := exe.Run(LXC_BIN, "stop", "--force", name); err != nil {
+			return fmt.Errorf("stopping container=%q: %s", name, err)
 		}
 	}
-	return ErrContainerNotFound // Don't operate on non-existent containers.
+	return nil
 }
 
 func (exe *Executor) RestartContainer(name string) error {
@@ -117,10 +138,48 @@ func (exe *Executor) RestartContainer(name string) error {
 	if err != nil {
 		return err
 	}
-	if exists {
-		return exe.Run(LXC_BIN, "restart", "--force", name)
+	if !exists {
+		// Don't attempt operation on non-existent containers.
+		return ErrContainerNotFound
 	}
-	return ErrContainerNotFound // Don't operate on non-existent containers.
+	if err := exe.Run(LXC_BIN, "restart", "--force", name); err != nil {
+		return err
+	}
+	if err := exe.waitForContainerIP(name); err != nil {
+		return err
+	}
+	return nil
+}
+
+// waitForContainerIP waits for the specified container to receive an IP
+// address.
+func (exe *Executor) waitForContainerIP(name string) error {
+	since := time.Now()
+
+	for {
+		if time.Now().Sub(since) > containerIPWaitTimeout {
+			return fmt.Errorf("timed out after %s waiting for container=%v to receive IP", containerIPWaitTimeout, name)
+		}
+
+		cmd := logcmd(exec.Command("/bin/bash", "-c", fmt.Sprintf(bashLXCIPWaitCommand, name)))
+
+		stderrPipe, err := cmd.StderrPipe()
+		if err != nil {
+			return fmt.Errorf("obtaining stderr pipe to check if container=%v has IP yet: %s", name, err)
+		}
+
+		if out, err := cmd.Output(); err != nil {
+			stderr, _ := ioutil.ReadAll(stderrPipe)
+			return fmt.Errorf("waiting for container=%v to receive IP: %s (stderr=%v)", name, err, string(stderr))
+		} else if len(out) > 0 {
+			log.Infof("detected IP=%v for container=%v", string(out), name)
+			fmt.Fprintf(exe.logger, "detected IP=%v for container=%v", string(out), name)
+			break
+		}
+
+		time.Sleep(time.Second)
+	}
+	return nil
 }
 
 // Destroy a local container.
@@ -212,7 +271,7 @@ func (exe *Executor) UnmountContainerFS(name string) error {
 		return err
 	}
 	if running {
-		return fmt.Errorf("refusing to unmount container filesystem for running container %q", name)
+		return fmt.Errorf("refusing to unmount container filesystem for running container=%q", name)
 	}
 	mounted, err := exe.ContainerFSMounted(name)
 	if err != nil {
@@ -232,7 +291,7 @@ func (exe *Executor) ContainerFSMounted(name string) (bool, error) {
 	cmd := logcmd(exec.Command("zfs", "mount"))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return false, fmt.Errorf("checking for existing zfs mount for %q: %s (out=%v)", name, err, out)
+		return false, fmt.Errorf("checking for existing zfs mount for container=%q: %s (out=%v)", name, err, out)
 	}
 	want := exe.ZFSContainerName(name)
 	for _, line := range strings.Split(string(out), "\n") {
@@ -306,6 +365,46 @@ func (exe *Executor) zfsRunAndResistDatasetIsBusy(cmd string, args ...string) er
 func (exe *Executor) ZFSContainerName(name string) string {
 	zfsName := strings.TrimLeft(ZFS_CONTAINER_MOUNT+"/"+name, "/")
 	return zfsName
+}
+
+// SyncContainerScripts sends the container control scripts to a destination of
+// the form username@target:/some/path/.
+func (exe *Executor) SyncContainerScripts(target string) error {
+	if err := exe.WriteDeployScripts("/tmp"); err != nil {
+		return err
+	}
+	if err := exe.Rsync(target, "/tmp/postdeploy.py", "/tmp/shutdown_container.py"); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Rsync one or more files to a destination.
+func (exe *Executor) Rsync(target string, files ...string) error {
+	if len(files) == 0 {
+		return fmt.Errorf("cannot rsync empty file set to %q", target)
+	}
+	err := exe.Run("rsync",
+		"-azve", "ssh "+DEFAULT_SSH_PARAMETERS,
+		"/tmp/postdeploy.py", "/tmp/shutdown_container.py",
+		target,
+	)
+	if err != nil {
+		return fmt.Errorf("rsync'ing file set=%+v to %q: %s", files, target, err)
+	}
+	return nil
+}
+
+// WriteDeployScripts writes out python container control scripts to the
+// specified local path.
+func (_ *Executor) WriteDeployScripts(path string) error {
+	if err := ioutil.WriteFile(fmt.Sprintf("%v/postdeploy.py", path), []byte(POSTDEPLOY), os.FileMode(int(0777))); err != nil {
+		return err
+	}
+	if err := ioutil.WriteFile(fmt.Sprintf("%v/shutdown_container.py", path), []byte(SHUTDOWN_CONTAINER), os.FileMode(int(0777))); err != nil {
+		return err
+	}
+	return nil
 }
 
 func opNotSupportedOnFSErr() error {

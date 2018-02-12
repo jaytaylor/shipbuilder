@@ -10,13 +10,13 @@ import (
 const (
 	PRE_RECEIVE = `#!/usr/bin/env bash
 
-set -x
+# set -x
 
 set -o errexit
 set -o pipefail
 set -o nounset
 
-whoami
+#whoami
 #ls -lah /git/test
 #find /git/test
 #rm -rf /tmp/test && cp -a /git/test /tmp/
@@ -30,7 +30,7 @@ done`
 
 	POST_RECEIVE = `#!/usr/bin/env bash
 
-set -x
+# set -x
 
 set -o errexit
 set -o pipefail
@@ -263,11 +263,14 @@ start_expr = re.compile(r'''(.*\n)^(%s)$(\n.*)''' % (start,), re.M | re.S)
 
 prepost_expr = re.compile(r'''.*^%s$\n^%s$\n^%s$.*''' % (pre, start, post), re.M | re.S)
 
-def main():
+def requireRoot(argv):
     # Require root user.
     if os.environ.get('USER', '') != 'root':
-        print('FATAL: %s must be run under root user' % (sys.argv[0],))
-        return 1
+        sys.stderr.write('FATAL: %s must be run under root user\n' % (argv[0],))
+        sys.exit(1)
+
+def main(argv):
+    requireRoot(argv)
 
     with open(systemd_file, 'r') as fh:
         contents = fh.read()
@@ -291,11 +294,11 @@ def main():
     return 0
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(main(sys.argv))
 `
 
 	// pyIptables is a python fragment with a collection of functions used by
-	// postdeploy.py and shutdown.py.
+	// postdeploy.py and shutdown_container.py.
 	pyIptables = `
 import re
 import shlex
@@ -309,6 +312,20 @@ def newIpTablesCmd(actionLetter, commandFragment):
         stdout=sys.stdout,
     )
     return p
+
+def iptablesCommentPrefix(name):
+    """
+    Generates the iptables comment prefix which corresponds with specified name.
+    """
+    if name == 'remote':
+        commentPrefix = 'Shipbuilder remote NAT for app-container='
+    elif name == 'local':
+        commentPrefix = 'Shipbuilder local NAT for app-container='
+    elif name == 'unicast':
+        commentPrefix = 'Shipbuilder local NAT unicast masquerade'
+    else:
+        raise Exception('Unrecognized iptables comment prefix "%s" requested' % (name,))
+    return commentPrefix
 
 def portForwardCommandFragments(includePostrouting, ip, port, container):
     """
@@ -328,11 +345,19 @@ def portForwardCommandFragments(includePostrouting, ip, port, container):
         ' +',
         ' ',
         '''
-PREROUTING  -m tcp      -p tcp --dport {port} -j DNAT --to-destination {ip}:{port}                            -m comment --comment 'Shipbuilder remote NAT for app-container={container}'
-OUTPUT      -m addrtype --src-type LOCAL --dst-type LOCAL -p tcp --dport {port} -j DNAT --to-destination {ip} -m comment --comment 'Shipbuilder local NAT for app-container={container}'
-POSTROUTING -m addrtype --src-type LOCAL --dst-type UNICAST -j MASQUERADE                                     -m comment --comment 'Shipbuilder local NAT unicast masquerade'
-        '''.strip(),
-    ).format(ip=ip, port=port, container=container).split('\n')
+PREROUTING  -m tcp      -p tcp --dport %(port)s -j DNAT --to-destination %(ip)s:%(port)s                          -m comment --comment '%(remote)s%(container)s'
+OUTPUT      -m addrtype --src-type LOCAL --dst-type LOCAL -p tcp --dport %(port)s -j DNAT --to-destination %(ip)s -m comment --comment '%(local)s%(container)s'
+POSTROUTING -m addrtype --src-type LOCAL --dst-type UNICAST -j MASQUERADE                                         -m comment --comment '%(unicast)s'
+        '''.strip()
+            % {
+                'ip': ip,
+                'port': port,
+                'container': container,
+                'remote': iptablesCommentPrefix('remote'),
+                'local': iptablesCommentPrefix('local'),
+                'unicast': iptablesCommentPrefix('unicast'),
+            },
+    ).split('\n')
     if not includePostrouting:
         fragments = fragments[0:2]
     return fragments
@@ -427,11 +452,14 @@ dynoDelimiter = '-'
 
 lsCmd = '''lxc list | sed 1,3d | grep -v '^+' | awk '$4 == "RUNNING" { print $2 " " $6 }' '''.strip()
 
-def main():
+def requireRoot(argv):
+    # Require root user.
     if os.environ.get('USER', '') != 'root':
-        print('FATAL: %s must be run under root user' % (sys.argv[0],))
-        return 1
+        sys.stderr.write('FATAL: %s must be run under root user\n' % (argv[0],))
+        sys.exit(1)
 
+def main(argv):
+    requireRoot(argv)
 
     #out = subprocess.check_output(['bash', '-c', '''set -o errexit && set -o pipefail && %s''' % (lsCmd,)], shell=True)
     out = subprocess.check_output(['bash', '-c', '''set -o xtrace && set -o errexit && set -o pipefail && %s''' % (lsCmd,)]).strip()
@@ -448,15 +476,15 @@ def main():
     print('----')
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(main(sys.argv))
 `
 )
 
+// TODO TODO TODO: ADD IPTABLES-BASED PORT CHECK TO THIS.
 var POSTDEPLOY = `#!/usr/bin/python -u
 # -*- coding: utf-8 -*-
 
 import os
-import re
 import stat
 import subprocess
 import sys
@@ -475,9 +503,13 @@ log = lambda message: sys.stdout.write('[{0}] {1}\n'.format(container, message))
 ` + pyIptables + `
 
 def getIp(name):
-    out = subprocess.check_output((lxcBin + ''' list | sed 1d | sed 1d | sed 1d | grep '^[|] %s [|] ' | awk '{ print $6 }' ''' % (name,)).strip(), shell=True).strip()
-    if re.match(r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$', out):
-        return out
+    ip = subprocess.check_output([
+        'bash',
+        '-c',
+        '''` + bashLXCIPWaitCommand + `''' % (name,),
+    ]).strip()
+    if ip:
+        return ip
     return ''
 
 def enableRouteLocalNet():
@@ -548,6 +580,12 @@ def showHelpAndExit(argv):
     print(message)
     sys.exit(0)
 
+def requireRoot(argv):
+    # Require root user.
+    if os.environ.get('USER', '') != 'root':
+        sys.stderr.write('FATAL: %s must be run under root user\n' % (argv[0],))
+        sys.exit(1)
+
 def validateMainArgs(argv):
     if len(argv) != 2:
         sys.stderr.write('{} error: missing required argument: container-name\n'.format(sys.argv))
@@ -564,6 +602,8 @@ def main(argv):
 
     if len(argv) > 1 and argv[1] in ('-h', '--help', 'help'):
         showHelpAndExit(argv)
+
+    requireRoot(argv)
 
     container, app, version, process, port = parseMainArgs(argv)
 
@@ -665,7 +705,7 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
                     break
 
                 except subprocess.CalledProcessError, e:
-                    if time.time() - startedTs > maxSeconds: # or attempts > maxAttempts:
+                    if time.time() - startedTs > maxSeconds:
                         sys.stderr.write('- error: curl http check failed, {0}\n'.format(e))
                         subprocess.check_call(['/tmp/shutdown_container.py', container, 'skip-stop'])
                         sys.exit(1)
@@ -673,7 +713,7 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
                         time.sleep(1)
 
     else:
-        sys.stderr.write('- error: failed to retrieve container ip')
+        sys.stderr.write('- error: failed to retrieve container ip\n')
         subprocess.check_call(['/tmp/shutdown_container.py', container, 'skip-stop'])
         sys.exit(1)
 
@@ -682,6 +722,7 @@ main(sys.argv)`
 var SHUTDOWN_CONTAINER = `#!/usr/bin/python -u
 # -*- coding: utf-8 -*-
 
+import os
 import subprocess
 import sys
 import time
@@ -731,6 +772,12 @@ def showHelpAndExit(argv, ok=True):
     print(message)
     sys.exit(0 if ok else 1)
 
+def requireRoot(argv):
+    # Require root user.
+    if os.environ.get('USER', '') != 'root':
+        sys.stderr.write('FATAL: %s must be run under root user\n' % (argv[0],))
+        sys.exit(1)
+
 def validateMainArgs(argv):
     if len(argv) < 2 or (len(argv) > 2 and not all(map(lambda arg: arg in ('skip-stop', 'iptables-only'), argv[2:]))):
         showHelpAndExit(argv, False)
@@ -747,6 +794,8 @@ def main(argv):
     if len(argv) > 1 and argv[1] in ('-h', '--help', 'help'):
         showHelpAndExit(argv, True)
 
+    requireRoot(argv)
+
     container, app, version, process, port = parseMainArgs(argv)
     skipStop = len(argv) > 2 and 'skip-stop' in argv[2:]
     iptablesOnly = len(argv) > 2 and 'iptables-only' in argv[2:]
@@ -754,28 +803,47 @@ def main(argv):
     ip = subprocess.check_output([
         'bash',
         '-c',
-        '''set -o errexit ; set -o pipefail ; ''' + lxcBin + ''' list --format json | jq -r '.[] | select(.name == "{}").state.network.eth0.addresses[0].address' '''.format(container),
+        '''` + bashSafeEnvSetup + `%(lxc)s list --format json | jq -r '.[] | select(.name == "%(container)s").state.network.eth0.addresses[0].address' '''.strip() \
+            % {'lxc': lxcBin, 'container': container},
     ]).strip()
-
-    if not iptablesOnly:
-        exists = len(ip) > 0 or container == subprocess.check_output([
+    if ip == 'null':
+        ip = subprocess.check_output([
             'bash',
             '-c',
-            '''set -o errexit ; set -o pipefail ; ''' + lxcBin + ''' list --format json | jq -r '.[] | select(.name == "{}").name' '''.format(container),
+            '''` + bashSafeEnvSetup + `iptables-save | (grep '%s%s' || true) | (` + bashGrepIP + ` || true)''' \
+                % (iptablesCommentPrefix('remote'), container,),
+        ]).strip()
+
+    if not iptablesOnly:
+        exists = ip or container == subprocess.check_output([
+            'bash',
+            '-c',
+            '''` + bashSafeEnvSetup + `%(lxc)s list --format json | jq -r '.[] | select(.name == "%(container)s").name' '''.strip() \
+                % {'lxc': lxcBin, 'container': container},
         ]).strip()
 
         if exists:
-            try:
-                # Stop and destroy the container.
-                log('stopping container: {}'.format(container))
-                subprocess.check_call([lxcBin, 'stop', '--force', container], stdout=sys.stdout, stderr=sys.stderr)
-            except Exception, e:
-                if not skipStop:
-                    raise e # Otherwise ignore.
+            # try:
+            #     # Stop and destroy the container.
+            #     log('stopping container: {}'.format(container))
+            #     subprocess.call([lxcBin, 'stop', '--force', container], stdout=sys.stdout, stderr=sys.stderr)
+            # except Exception, e:
+            #     if not skipStop:
+            #         raise e # Otherwise ignore.
 
+            subprocess.call([lxcBin, 'stop', '--force', container])
+            subprocess.check_call([
+                'bash',
+                '-c',
+                '''` + bashSafeEnvSetup + `test -z $(zfs mount | awk '{print $1}' | (grep '%(pool)s/%(container)s' || true)) || zfs umount '%(pool)s/%(container)s' '''.strip() \
+                    % {'pool': '` + ZFS_CONTAINER_MOUNT + `', 'container': container},
+            ])
             retriableCommand(lxcBin, 'delete', '--force', container)
 
-    portForward('remove', container, ip, port)
+    if ip:
+        portForward('remove', container, ip, port)
+    else:
+        sys.stderr.write('- warning: container IP not found, iptables rules were not able to be removed\n')
 
 main(sys.argv)`
 
@@ -848,7 +916,7 @@ exec start-stop-daemon --start --chuid ubuntu --exec /bin/sh -- -c "exec envdir 
 var (
 	// containerCodeTpl is invoked after `git clone` has been run in the container.
 	containerCodeTpl = template.Must(template.New("container-code").Parse(`#!/usr/bin/env bash
-set -x
+# set -x
 
 set -o errexit
 set -o pipefail
@@ -876,7 +944,7 @@ find . -regex '^.*\.git\(ignore\|modules\|attributes\)?$' -exec rm -rf {} \; 1>/
 
 	// preStartTpl is invoked by systemd before the app service is started.
 	preStartTpl = template.Must(template.New("container-code").Parse(`#!/usr/bin/env bash
-set -x
+# set -x
 
 set -o errexit
 set -o pipefail
