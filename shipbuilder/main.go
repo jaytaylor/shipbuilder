@@ -31,6 +31,13 @@ var (
 		Aliases: []string{"defer", "d"},
 		Usage:   "Defer app redeployment",
 	}
+	suffixes = map[string][]string{
+		"set":    []string{"set", "+"},
+		"add":    []string{"add", "+"},
+		"remove": []string{"remove", "rm", "delete", "del", "-"},
+		"list":   []string{"list", "ls"},
+		"status": []string{"status", "stat"},
+	} // Sets of common flag suffixes.
 )
 
 func main() {
@@ -358,7 +365,7 @@ func main() {
 			),
 
 			appCommand(
-				[]string{"destroy", "apps:destroy", "delete", "del", "rm", "Apps_Destroy"},
+				[]string{"destroy", "apps:destroy", "Apps_Destroy"},
 				"Destroy an app",
 				flagSpec{
 					names: []string{"force", "f"},
@@ -387,13 +394,13 @@ func main() {
 			////////////////////////////////////////////////////////////////////
 			// config:*
 			appCommand(
-				[]string{"config", "config:list", "Config_List"},
-				"Show the configuration for an app",
+				permuteCmds([]string{"config", "cfg"}, []string{"list", "ls"}, true, "Config_List"),
+				"Displays the entire configuration for an app",
 			),
 			&cli.Command{
-				Name:        "config:get",
-				Aliases:     []string{"config:show", "Config_Get"},
-				Description: "Get the value of a configuration parameter for an app",
+				Name:        permuteCmds([]string{"config", "cfg"}, []string{"get", "show"}, false, "Config_Get")[0],
+				Aliases:     permuteCmds([]string{"config", "cfg"}, []string{"get", "show"}, false, "Config_Get")[1:],
+				Description: "Get one or more configuration parameter values for an app (displays all if none specified)",
 				Flags: []cli.Flag{
 					appFlag,
 					&cli.StringFlag{
@@ -411,18 +418,18 @@ func main() {
 						return errors.New("app flag is required")
 					}
 					if len(key) == 0 {
-						return errors.New("key flag is required")
+						return (&core.Client{}).RemoteExec("Config_List", app)
 					}
 					return (&core.Client{}).RemoteExec("Config_Get", app, key)
 				},
 			},
 			deferredMappedAppCommand(
-				[]string{"set", "config:set", "Config_Set"},
+				append([]string{"set"}, permuteCmds([]string{"config", "cfg"}, suffixes["set"], false, "Config_Set")...),
 				"Set the value of one or more configuration parameters for an app in the form of FOO=bar BAZ=xy",
 			),
 			&cli.Command{
-				Name:        "config:remove",
-				Aliases:     []string{"config:rm", "Config_Remove"},
+				Name:        permuteCmds([]string{"config", "cfg"}, suffixes["remove"], false, "Config_Remove")[0],
+				Aliases:     permuteCmds([]string{"config", "cfg"}, suffixes["remove"], false, "Config_Remove")[1:],
 				Description: "Remove one or more configuration keys from an app",
 				Flags: []cli.Flag{
 					appFlag,
@@ -459,18 +466,14 @@ func main() {
 			////////////////////////////////////////////////////////////////////
 			// domains:*
 			appCommand(
-				[]string{"domains", "domains:list", "domain", "Domains_List"},
+				permuteCmds([]string{"domains", "domain"}, suffixes["list"], true, "Domains_List"),
 				"Show domain names associated with an app",
 				// TODO: Add sub-commands instead of ':' delimited pair
 				// clusters.
 			),
 			&cli.Command{
-				Name: "domains:add",
-				Aliases: []string{
-					"domain:a",
-					"domain:add", "domains:a",
-					"Domains_Add",
-				},
+				Name:        permuteCmds([]string{"domains"}, suffixes["add"], false, "Domains_Add")[0],
+				Aliases:     permuteCmds([]string{"domains"}, suffixes["add"], false, "Domains_Add")[1:],
 				Description: "Associate one or more domain names to an app",
 				Flags: []cli.Flag{
 					appFlag,
@@ -492,12 +495,8 @@ func main() {
 				},
 			},
 			&cli.Command{
-				Name: "domains:remove",
-				Aliases: []string{
-					"domains:rm", "domains:delete", "domains:r",
-					"domain:remove", "domain:rm", "domain:delete", "domain:r",
-					"Domains_Remove",
-				},
+				Name:        permuteCmds([]string{"domains"}, suffixes["remove"], false, "Domains_Remove")[0],
+				Aliases:     permuteCmds([]string{"domains"}, suffixes["remove"], false, "Domains_Remove")[1:],
 				Description: "Remove one or more domain names from an app",
 				Flags: []cli.Flag{
 					appFlag,
@@ -519,12 +518,8 @@ func main() {
 				},
 			},
 			&cli.Command{
-				Name: "domains:sync",
-				Aliases: []string{
-					"domains:s",
-					"domain:sync", "domain:s",
-					"Domains_Sync",
-				},
+				Name:        permuteCmds([]string{"domains"}, []string{"sync", "s"}, false, "Domains_Sync")[0],
+				Aliases:     permuteCmds([]string{"domains"}, []string{"sync", "s"}, false, "Domains_Sync")[1:],
 				Description: "Sync internal apps and domains state to physical LB configuration",
 				Action: func(ctx *cli.Context) error {
 					return (&core.Client{}).RemoteExec("Domains_Sync")
@@ -534,12 +529,12 @@ func main() {
 			////////////////////////////////////////////////////////////////////
 			// drains:*
 			appCommand(
-				[]string{"drains", "drains:list", "Drains_List"},
+				permuteCmds([]string{"drains", "drain"}, suffixes["list"], true, "Drains_List"),
 				"Show drains for an app",
 			),
 			&cli.Command{
-				Name:        "drains:add",
-				Aliases:     []string{"drain:add", "Drains_Add"},
+				Name:        permuteCmds([]string{"drains", "drain"}, suffixes["add"], false, "Drains_Add")[0],
+				Aliases:     permuteCmds([]string{"drains", "drain"}, suffixes["add"], false, "Drains_Add")[1:],
 				Description: "Add one or more drains to an app",
 				Flags: []cli.Flag{
 					appFlag,
@@ -559,8 +554,8 @@ func main() {
 				},
 			},
 			&cli.Command{
-				Name:        "drains:remove",
-				Aliases:     []string{"drain:remove", "Drains_Remove"},
+				Name:        permuteCmds([]string{"drains", "drain"}, suffixes["remove"], false, "Drains_Remove")[0],
+				Aliases:     permuteCmds([]string{"drains", "drain"}, suffixes["remove"], false, "Drains_Remove")[1:],
 				Description: "Remove one or more drains from an app",
 				Flags: []cli.Flag{
 					appFlag,
@@ -678,7 +673,7 @@ func main() {
 			////////////////////////////////////////////////////////////////////
 			// maint:*
 			appCommand(
-				[]string{"maintenance:url", "maint:url", "Maintenance_Url"},
+				permuteCmds([]string{"maintenance", "maint"}, []string{"url"}, false, "Maintenance_Url"),
 				"Set the maintenance redirect URL for an app",
 				flagSpec{
 					names:    []string{"url", "u"},
@@ -687,26 +682,26 @@ func main() {
 				},
 			),
 			appCommand(
-				[]string{"maintenance", "maintenance:status", "maint", "maint:status", "Maintenance_Status"},
+				permuteCmds([]string{"maintenance", "maint"}, suffixes["status"], true, "Maintenance_Status"),
 				"Show maintenance mode status for an app",
 			),
 			appCommand(
-				[]string{"maintenance:on", "maint:on", "Maintenance_On"},
+				permuteCmds([]string{"maintenance", "maint"}, []string{"on", "+"}, false, "Maintenance_On"),
 				"Activates maintenance mode for an app",
 			),
 			appCommand(
-				[]string{"maintenance:off", "maint:off", "Maintenance_Off"},
+				permuteCmds([]string{"maintenance", "maint"}, []string{"off", "-"}, false, "Maintenance_Off"),
 				"Deactivates maintenance mode for an app",
 			),
 
 			////////////////////////////////////////////////////////////////////
 			// privatekey:*
 			appCommand(
-				[]string{"privatekey", "privatekey:get", "PrivateKey_Get"},
+				permuteCmds([]string{"privatekey", "privkey"}, []string{"get"}, true, "PrivateKey_Get"),
 				"Show SSH private key to use for accessing and cloning protected repositories when checking out git submodules for app",
 			),
 			appCommand(
-				[]string{"privatekey:set", "PrivateKey_Set"},
+				permuteCmds([]string{"privatekey", "privkey"}, suffixes["set"], false, "PrivateKey_Set"),
 				"Set the maintenance redirect URL for an app",
 				flagSpec{
 					names:    []string{"private-key"},
@@ -715,14 +710,14 @@ func main() {
 				},
 			),
 			appCommand(
-				[]string{"privatekey:remove", "privatekey:rm", "privatekey:delete", "PrivateKey_Remove"},
+				permuteCmds([]string{"privatekey", "privkey"}, suffixes["remove"], false, "PrivateKey_Remove"),
 				"Remove existing SSH private key from app",
 			),
 
 			////////////////////////////////////////////////////////////////////
 			// ps:*
 			appCommand(
-				[]string{"ps", "ps:list", "Ps_List"},
+				permuteCmds([]string{"ps"}, suffixes["list"], true, "Ps_List"),
 				"Show running container processes for app",
 			),
 			deferredMappedAppCommand(
@@ -730,7 +725,7 @@ func main() {
 				"Scale app processes up or down",
 			),
 			argsOrFlagAppCommand(
-				[]string{"ps:status", "status", "Ps_Status"},
+				permuteCmds([]string{"ps"}, suffixes["status"], false, "Ps_Status"),
 				"Get the status of one or more container processes for an app",
 				[]string{"process-types"},
 				"Specify flag multiple times for multiple process types",
@@ -768,11 +763,11 @@ func main() {
 			////////////////////////////////////////////////////////////////////
 			// releases:*
 			appCommand(
-				[]string{"releases", "releases:list", "Releases_List"},
+				permuteCmds([]string{"releases", "release", "rls"}, suffixes["list"], true, "Releases_List"),
 				"Show app release history",
 			),
 			appCommand(
-				[]string{"releases:info", "release:info", "Releases_Info"},
+				permuteCmds([]string{"releases", "release", "rls"}, []string{"info", "detail", "details"}, false, "Releases_Info"),
 				"Show detailed release history information for a specific version",
 				flagSpec{
 					names: []string{"version", "v"},
@@ -784,6 +779,7 @@ func main() {
 			// Global system management commands                              //
 			////////////////////////////////////////////////////////////////////
 
+			// TODO: Not yet implemented.
 			command(
 				[]string{"health", "apps:health", "App_Health"},
 				"Show health report for all apps",
@@ -791,12 +787,12 @@ func main() {
 			////////////////////////////////////////////////////////////////////
 			// lb:*
 			command(
-				[]string{"lb", "lb:list", "LoadBalancer_List"},
+				permuteCmds([]string{"lb", "lbs"}, suffixes["list"], true, "LoadBalancer_List"),
 				"Show server load-balancers",
 			),
 			command(
-				[]string{"lb:add", "LoadBalancer_Add"},
-				"Add one or more load-balancers to the server",
+				permuteCmds([]string{"lb", "lbs"}, suffixes["add"], false, "LoadBalancer_Add"),
+				"Add one or more load-balancers to shipbuilder instance",
 				flagSpec{
 					names:    []string{"hostname", "hostnames"},
 					usage:    "Specify flag multiple times for multiple load-balancer hostnames",
@@ -806,8 +802,8 @@ func main() {
 				},
 			),
 			command(
-				[]string{"lb:remove", "LoadBalancer_Remove"},
-				"Remove one or more load-balancers from the server",
+				permuteCmds([]string{"lb", "lbs"}, suffixes["remove"], false, "LoadBalancer_Remove"),
+				"Disaassociate one or more load-balancers from the shipbuilder instance.",
 				flagSpec{
 					names:    []string{"hostname", "hostnames"},
 					usage:    "Specify flag multiple times for multiple load-balancer hostnames",
@@ -820,12 +816,12 @@ func main() {
 			////////////////////////////////////////////////////////////////////
 			// nodes:*
 			command(
-				[]string{"nodes", "nodes:list", "slaves:list", "Node_List"},
+				permuteCmds([]string{"nodes", "node", "slaves", "slave"}, suffixes["list"], true, "Node_List"),
 				"Show server slave nodes",
 			),
 			command(
-				[]string{"nodes:add", "slaves:add", "slave:add", "Node_Add"},
-				"Add one or more slave nodes to the server",
+				permuteCmds([]string{"nodes", "node", "slaves", "slave"}, suffixes["add"], false, "Node_Add"),
+				"Associate one or more slave nodes to the shipbuilder instance",
 				flagSpec{
 					names:    []string{"hostname", "hostnames"},
 					usage:    "Specify flag multiple times for multiple slave node hostnames",
@@ -835,8 +831,8 @@ func main() {
 				},
 			),
 			command(
-				[]string{"nodes:remove", "slaves:remove", "slave:remove", "Node_Remove"},
-				"Remove one or more slave nodes from the server",
+				permuteCmds([]string{"nodes", "node", "slaves", "slave"}, suffixes["remove"], false, "Node_Remove"),
+				"Disassociate one or more slave nodes from the shipbuilder instance",
 				flagSpec{
 					names:    []string{"hostname", "hostnames"},
 					usage:    "Specify flag multiple times for multiple slave node hostnames",
@@ -1333,6 +1329,26 @@ func buildpackSubcommands() []*cli.Command {
 	}
 
 	return cmds
+}
+
+// permuteCmds takes a set of prefixes and suffixes and generates all
+// combinations.
+func permuteCmds(prefixes []string, suffixes []string, suffixOptional bool, funcName string) []string {
+	out := []string{}
+
+	if suffixOptional {
+		out = append(out, prefixes...)
+	}
+
+	for _, suffix := range suffixes {
+		for _, prefix := range prefixes {
+			out = append(out, fmt.Sprintf("%v:%v", prefix, suffix))
+		}
+	}
+
+	out = append(out, funcName)
+
+	return out
 }
 
 func initLogging(ctx *cli.Context) error {
