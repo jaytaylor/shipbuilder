@@ -945,7 +945,7 @@ func releasesProvider(ctx *cli.Context) (provider domain.ReleasesProvider, err e
 	requested := ctx.String("releases-provider")
 
 	switch requested {
-	case "aws":
+	case "s3", "aws":
 		provider = releases.NewAWSS3ReleasesProvider(core.DefaultAWSKey, core.DefaultAWSSecret, core.DefaultS3BucketName, core.DefaultAWSRegion)
 		return
 
