@@ -1135,7 +1135,11 @@ func extractAppFromS3(e *Executor, app *Application, version string) error {
 
 func (d *Deployment) syncNode(node *Node) error {
 	logger := NewLogger(d.Logger, "["+node.Host+"] ")
-	bashCmds := fmt.Sprintf(`set -o errexit
+	fmt.Fprint(logger, "Syncing slave node..\n")
+	// NB: The leading ":" below is a no-op to prevent extraneous useless bash
+	// output.
+	bashCmds := fmt.Sprintf(`:
+set -o errexit
 set -o pipefail
 test -n "$(%[1]v remote list | sed 1,3d | grep -v '^+' | awk '{print $2}' | grep %[2]v)" || %[1]v remote add --accept-certificate --public %[2]v https://%[2]v:8443
 %[1]v image copy --copy-aliases %[3]v local:`,
@@ -1145,12 +1149,14 @@ test -n "$(%[1]v remote list | sed 1,3d | grep -v '^+' | awk '{print $2}' | grep
 	)
 	if err := d.exe.Run("ssh", "root@"+node.Host, "/bin/bash", "-c", bashCmds); err != nil {
 		fmt.Fprintf(logger, "Problem sending image from host %v to %v: %s\n", DefaultSSHHost, node.Host, err)
-		return fmt.Errorf("sending image from host %v to %v: %s\n", DefaultSSHHost, node.Host, err)
+		return fmt.Errorf("sending image from host %v to %v: %s", DefaultSSHHost, node.Host, err)
 	}
 
 	if err := d.exe.SyncContainerScripts("root@" + node.Host + ":/tmp/"); err != nil {
 		return err
 	}
+
+	fmt.Fprint(logger, "Sync succesful\n")
 	return nil
 }
 
