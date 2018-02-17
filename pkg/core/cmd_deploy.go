@@ -1037,7 +1037,6 @@ func (d *Deployment) lxcExecf(cmd string, args ...interface{}) error {
 	return nil
 }
 
-// TODO: check for ignored errors.
 func (d *Deployment) archive() error {
 	versionedContainerName := d.Application.Name + DYNO_DELIMITER + d.Version
 
@@ -1047,35 +1046,57 @@ func (d *Deployment) archive() error {
 
 	// Compress & persist the container image.
 	go func() {
-		e := Executor{
-			logger: NewLogger(os.Stdout, "[archive] "),
-		}
-		archiveName := fmt.Sprintf("/tmp/%v.tar.gz", versionedContainerName)
-		if err := e.BashCmdf(LXC_BIN+" image export %v - > %v", d.Application.BaseContainerName(), archiveName); err != nil {
-			return
-		}
+		var (
+			archive    = fmt.Sprintf("/tmp/%v.tar.gz", versionedContainerName)
+			logContext = log.WithField("app", d.Application).WithField("version", d.Version).WithField("archive", archive)
+			e          = Executor{
+				logger: NewLogger(os.Stdout, "[archiver] "),
+			}
+		)
 
-		h, err := os.Open(archiveName)
-		if err != nil {
-			return
-		}
-		defer func(archiveName string, e Executor) {
-			fmt.Fprintf(e.logger, "Closing filehandle and removing archive file %q\n", archiveName)
-			h.Close()
-			e.BashCmd("rm -f " + archiveName)
-		}(archiveName, e)
+		err := func() error {
+			// NB: LXC (rather annoyingly) automatically appends '.tar.gz' to whatever
+			// argument is specified for the output filename.
+			if err := e.BashCmdf(LXC_BIN+" image export %v-%v %v", d.Application.Name, d.Version, strings.TrimSuffix(archive, ".tar.gz")); err != nil {
+				return fmt.Errorf("exporting image: %s; operation aborted", err)
+			}
 
-		stat, err := h.Stat()
-		if err != nil {
-			log.Errorf("Problem stat'ing archive %q; operation aborted: %s", archiveName, err)
-			return
+			h, err := os.Open(archive)
+			if err != nil {
+				return fmt.Errorf("unable to open archive: %s; operation aborted", err)
+			}
+			defer func() {
+				fmt.Fprintf(e.logger, "[archiver] Closing filehandle and removing archive file %q\n", archive)
+				logContext.Debugf("[archiver] Closing filehandle and removing archive file %q\n", archive)
+				if closeErr := h.Close(); closeErr != nil {
+					logContext.Errorf("[archiver] Problem closing archive filehandle: %s", closeErr)
+				}
+				if rmErr := e.BashCmd("rm -f " + archive); rmErr != nil {
+					logContext.Errorf("[archiver] Problem removing archive: %s", rmErr)
+				}
+			}()
+
+			stat, err := h.Stat()
+			if err != nil {
+				return fmt.Errorf("unable to stat archive: %s; operation aborted", err)
+			}
+			if err := d.Server.ReleasesProvider.Store(d.Application.Name, d.Version, h, stat.Size()); err != nil {
+				return fmt.Errorf("storing release - operation failed: %s", err)
+			}
+
+			return nil
+		}()
+
+		if err == nil {
+			logContext.Info("[archiver] Successfully stored release")
+		} else {
+			logContext.Errorf("[archiver] Archival failed: %s", err)
 		}
-		if err := d.Server.ReleasesProvider.Store(d.Application.Name, d.Version, h, stat.Size()); err != nil {
-			log.WithField("app", d.Application.Name).WithField("version", d.Version).Errorf("Problem persisting release; operation probably failed: %s", err)
-			return
-		}
-		log.WithField("app", d.Application.Name).WithField("version", d.Version).Info("Successfully stored release")
+		// TODO: CLEAN UP OLD LOCAL AND REMOTE LXC IMAGES.
+		// TODO: Also ensure that old / unused images slave nodes get purged
+		//       regularly.
 	}()
+
 	return nil
 }
 
@@ -1665,24 +1686,24 @@ func (d *Deployment) Deploy() error {
 
 	if !d.ScalingOnly {
 		if err = d.createContainer(); err != nil {
-			return err
+			return fmt.Errorf("initializing: %s", err)
 		}
 
 		if err = d.build(); err != nil {
-			return err
+			return fmt.Errorf("building: %s", err)
 		}
 
 		if err = d.publish(); err != nil {
-			return err
+			return fmt.Errorf("publishing: %s", err)
 		}
 
 		if err = d.archive(); err != nil {
-			return err
+			return fmt.Errorf("archiving: %s", err)
 		}
 	}
 
 	if err = d.deploy(); err != nil {
-		return err
+		return fmt.Errorf("deploying: %s", err)
 	}
 
 	return nil
