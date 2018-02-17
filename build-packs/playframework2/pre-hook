@@ -1,7 +1,35 @@
 #!/bin/bash
+
+set -o nounset
+
+logfile=/app/out
+exec > "${logfile}" 2>&1
+
+##
+# Play framework app dependencies build hook.
+#
+
+function abortIfNonZero() {
+    # @param $1 command return code/exit status (e.g. $?, '0', '1').
+    # @param $2 error message if exit status was non-zero.
+    local rc=${1:-}
+    local what=${2:-}
+    if [ ${rc} -ne 0 ] ; then
+        echo "error: ${what} exited with non-zero status ${rc}"
+        echo "RETURN_CODE: ${rc}"
+        exit ${rc}
+    fi
+}
+
 cd /app/src
+abortIfNonZero $? 'Changing directory to "/app/src"'
+
 export _JAVA_OPTIONS='-Xmx5000m -XX:-UseConcMarkSweepGC'
-stdbuf -o0 play compile >> /app/out
+
+stdbuf -o0 play compile 2>&1
 rc=$?
-echo "RETURN_CODE: ${rc}" >> /app/out
-exit $rc
+abortIfNonZero ${rc} "Command 'stdbuf -o0 play compile'"
+
+echo "RETURN_CODE: ${rc}"
+
+exit ${rc}
