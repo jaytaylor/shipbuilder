@@ -915,7 +915,7 @@ func (d *Deployment) build() (err error) {
 
 	r, err := cmd.StdoutPipe()
 	if err != nil {
-		d.err = fmt.Errorf("getting out monitor pipe: %s", err)
+		d.err = fmt.Errorf("getting stdout monitor pipe: %s", err)
 		err = d.err
 		return
 	}
@@ -1071,9 +1071,10 @@ func (d *Deployment) archive() error {
 			return
 		}
 		if err := d.Server.ReleasesProvider.Store(d.Application.Name, d.Version, h, stat.Size()); err != nil {
-			log.Errorf("Problem persisting release for app=%v version=%v; operation probably failed: %s", d.Application.Name, d.Version, err)
+			log.WithField("app", d.Application.Name).WithField("version", d.Version).Errorf("Problem persisting release; operation probably failed: %s", err)
 			return
 		}
+		log.WithField("app", d.Application.Name).WithField("version", d.Version).Info("Successfully stored release")
 	}()
 	return nil
 }
@@ -1535,8 +1536,10 @@ func (d *Deployment) deploy() error {
 			releases = releases[:15]
 		}
 		if err := d.Server.ReleasesProvider.Set(d.Application.Name, releases); err != nil {
+			log.WithField("app", d.Application.Name).Errorf("Problem setting releases: %s", err)
 			return err
 		}
+		log.WithField("app", d.Application.Name).Debug("Successfully set releases")
 	} else {
 		// Trigger old dynos to shutdown.
 		for _, removeDyno := range removeDynos {

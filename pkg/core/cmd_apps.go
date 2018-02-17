@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/jaytaylor/shipbuilder/pkg/domain"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func (server *Server) validateAppName(applicationName string) error {
@@ -59,8 +61,10 @@ func (server *Server) Apps_Create(conn net.Conn, applicationName string, buildPa
 			Maintenance: false,
 		})
 		if err := server.ReleasesProvider.Set(applicationName, []domain.Release{}); err != nil {
+			log.WithField("app", applicationName).Errorf("Problem setting initial releases: %s", err)
 			return err
 		}
+		log.WithField("app", applicationName).Debug("Successfully set initial releases")
 		Logf(conn, `Your new application is ready!
 
 Next, add the git remote:
