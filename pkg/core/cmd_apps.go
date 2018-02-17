@@ -61,7 +61,18 @@ func (server *Server) Apps_Create(conn net.Conn, applicationName string, buildPa
 		if err := server.ReleasesProvider.Set(applicationName, []domain.Release{}); err != nil {
 			return err
 		}
-		Logf(conn, "Your new application is ready\n")
+		Logf(conn, `Your new application is ready!
+
+Next, add the git remote:
+
+    $ git remote add sb ssh://%s%s/%s
+
+Then you can deploy with the command:
+
+    $ git push sb
+
+Hope you enjoy using Shipbuilder 2!
+`, DefaultSSHHost, GIT_DIRECTORY, applicationName)
 		return nil
 	})
 }
