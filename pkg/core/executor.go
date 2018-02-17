@@ -16,13 +16,13 @@ import (
 const (
 	bashSafeEnvSetup     = `set -o errexit ; set -o pipefail ; set -o nounset ; `
 	bashGrepIP           = `grep --only-matching '\([0-9]\{1,3\}\.\)\{3\}[0-9]\{1,3\}'`
-	bashLXCIPWaitCommand = `set -o errexit ; set -o nounset ; ` + LXC_BIN + ` list | sed 1,3d | grep '^[|] %s \+[|] ' | awk '{ print $6 }' | (` + bashGrepIP + ` || true)`
+	bashLXCIPWaitCommand = `set -o errexit ; set -o nounset ; ` + LXC_BIN + ` list | sed 1,3d | grep '^[|] %s \+[|] ' | awk '{ print $6 }' | (` + bashGrepIP + ` || true) | tr -d $'\n'`
 )
 
 var (
 	ErrContainerNotFound = errors.New("container not found")
 
-	containerIPWaitTimeout = 5 * time.Second
+	containerIPWaitTimeout = 10 * time.Second
 )
 
 type Executor struct {
@@ -179,7 +179,7 @@ func (exe *Executor) waitForContainerIP(name string) error {
 			return fmt.Errorf("waiting for container=%v to receive IP: %s (stderr=%v)", name, err, string(stderr))
 		} else if len(out) > 0 {
 			log.Infof("detected IP=%v for container=%v", string(out), name)
-			fmt.Fprintf(exe.logger, "detected IP=%v for container=%v", string(out), name)
+			fmt.Fprintf(exe.logger, "detected IP=%v for container=%v\n", string(out), name)
 			break
 		}
 

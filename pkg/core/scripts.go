@@ -506,7 +506,7 @@ def getIp(name):
     ip = subprocess.check_output([
         'bash',
         '-c',
-        '''` + bashLXCIPWaitCommand + `''' % (name,),
+        ''' ` + bashLXCIPWaitCommand + ` '''.strip() % (name,),
     ]).strip()
     if ip:
         return ip
