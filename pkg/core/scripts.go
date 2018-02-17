@@ -806,7 +806,7 @@ def main(argv):
         '''` + bashSafeEnvSetup + `%(lxc)s list --format json | jq -r '.[] | select(.name == "%(container)s").state.network.eth0.addresses[0].address' '''.strip() \
             % {'lxc': lxcBin, 'container': container},
     ]).strip()
-    if ip == 'null':
+    if not ip or ip == 'null':
         ip = subprocess.check_output([
             'bash',
             '-c',
