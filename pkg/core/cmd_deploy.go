@@ -1242,6 +1242,9 @@ func (d *Deployment) syncNodes() ([]*Node, error) {
 		err  error
 	}
 
+	d.exe.SuppressOutput = true
+	defer func() { d.exe.SuppressOutput = false }()
+
 	syncStep := make(chan NodeSyncResult)
 	for _, node := range d.Config.Nodes {
 		go func(node *Node) {
@@ -1492,7 +1495,7 @@ func (d *Deployment) deploy() error {
 	var (
 		titleLogger = NewFormatter(d.Logger, GREEN)
 		dimLogger   = NewFormatter(d.Logger, DIM)
-		e           = Executor{dimLogger}
+		e           = Executor{logger: dimLogger}
 	)
 
 	d.autoDetectRevision()

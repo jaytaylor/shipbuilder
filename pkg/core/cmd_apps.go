@@ -135,7 +135,7 @@ func (server *Server) Apps_Destroy(conn net.Conn, applicationName string, force 
 
 	return server.WithPersistentConfig(func(cfg *Config) error {
 		titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
-		e := Executor{dimLogger}
+		e := Executor{logger: dimLogger}
 
 		if len(applicationName) == 0 {
 			return fmt.Errorf("Cannot delete application with empty name")

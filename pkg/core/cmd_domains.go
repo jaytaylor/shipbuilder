@@ -51,7 +51,7 @@ func (server *Server) Domains_Add(conn net.Conn, applicationName string, deferre
 		fmt.Fprintf(dimLogger, "Load-balancer sync deferred at request of user for op=add domains=$+v\n", domains)
 		return nil
 	}
-	e := &Executor{dimLogger}
+	e := &Executor{logger: dimLogger}
 	return server.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
 }
 
@@ -97,7 +97,7 @@ func (server *Server) Domains_Remove(conn net.Conn, applicationName string, defe
 		fmt.Fprintf(dimLogger, "Load-balancer sync deferred at request of user for op=add domains=$+v\n", domains)
 		return nil
 	}
-	e := &Executor{dimLogger}
+	e := &Executor{logger: dimLogger}
 	return server.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
 }
 
@@ -106,7 +106,7 @@ func (server *Server) Domains_Remove(conn net.Conn, applicationName string, defe
 func (server *Server) domainsSync(conn net.Conn, applicationName string) error {
 	var (
 		dimLogger = NewFormatter(server.getLogger(conn), DIM)
-		e         = &Executor{dimLogger}
+		e         = &Executor{logger: dimLogger}
 	)
 	if err := server.SyncLoadBalancers(e, []Dyno{}, []Dyno{}); err != nil {
 		return err

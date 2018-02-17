@@ -8,7 +8,7 @@ import (
 func (server *Server) Reset_App(conn net.Conn, applicationName string) error {
 	return server.WithApplication(applicationName, func(app *Application, cfg *Config) error {
 		titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
-		e := Executor{dimLogger}
+		e := Executor{logger: dimLogger}
 
 		fmt.Fprintf(titleLogger, "=== Resetting %v\n", app.Name)
 

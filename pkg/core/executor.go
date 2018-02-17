@@ -26,7 +26,8 @@ var (
 )
 
 type Executor struct {
-	logger io.Writer
+	logger         io.Writer
+	SuppressOutput bool
 }
 
 func (exe *Executor) Run(name string, args ...string) error {
@@ -34,8 +35,13 @@ func (exe *Executor) Run(name string, args ...string) error {
 		// Automatically inject ssh parameters.
 		args = append(defaultSshParametersList, args...)
 	}
+
 	log.Debugf("Running command: " + name + " " + fmt.Sprint(args))
-	io.WriteString(exe.logger, "$ "+name+" "+strings.Join(args, " ")+"\n")
+
+	if !exe.SuppressOutput {
+		io.WriteString(exe.logger, "$ "+name+" "+strings.Join(args, " ")+"\n")
+	}
+
 	cmd := logcmd(exec.Command(name, args...))
 	cmd.Stdout = exe.logger
 	cmd.Stderr = exe.logger

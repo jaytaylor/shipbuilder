@@ -51,7 +51,7 @@ func (server *Server) pruneDynos(nodeStatus NodeStatus, hostStatusMap *map[strin
 		}
 	}
 
-	e := &Executor{logger}
+	e := &Executor{logger: logger}
 
 	dynos, err := NodeStatusToDynos(&nodeStatus)
 	if err != nil {
