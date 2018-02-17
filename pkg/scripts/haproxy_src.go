@@ -44,8 +44,10 @@ defaults
 frontend frontend
     bind 0.0.0.0:80
     {{- if gt (len .SSLForwardingDomains) 0 }}
-    # Require SSL
-    http-request redirect scheme https code 301 if !{ ssl_fc } { {{ range $i, $d := .SSLForwardingDomains }}{{ if gt $i 0 }} OR {{ end }}hdr(host) -i {{ $context.DynHdrFlags }}-- {{ $d }}{{ end }} }
+    # SSL redirect.
+    {{- range $domain := .SSLForwardingDomains }}
+    http-request redirect scheme https code 301 if !{ ssl_fc } { hdr(host) -i {{ $context.DynHdrFlags }}-- {{ $domain }} }
+    {{- end }}
     bind 0.0.0.0:443 ssl crt /etc/haproxy/certs.d no-sslv3
     {{- end }}
     maxconn 32000
