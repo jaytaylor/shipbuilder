@@ -42,6 +42,10 @@ const (
 	DEFAULT_SSH_PARAMETERS             = "-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30" // NB: Notice 30s connect timeout.
 )
 
+const (
+	bashHAProxyReloadCommand = `/bin/bash -c 'set -o errexit ; set -o pipefail ; if [ "$(sudo systemctl status haproxy | grep --only-matching "Active: [^ ]\+" | cut -d " " -f 2)" = "inactive" ] ; then sudo systemctl start haproxy ; else sudo systemctl reload haproxy ; fi'`
+)
+
 var defaultSshParametersList = strings.Split(DEFAULT_SSH_PARAMETERS, " ")
 
 // Global configuration.
@@ -487,13 +491,24 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 	}
 
 	// Save it to the load balancer
-	f, err := os.OpenFile("/tmp/haproxy.cfg", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(int(0666)))
+	hapFileLoc := "/tmp/haproxy.cfg"
+	f, err := os.OpenFile(hapFileLoc, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(int(0666)))
 	if err != nil {
 		return err
 	}
-	defer os.Remove("/tmp/haproxy.cfg")
+
+	defer func() {
+		if rmErr := os.Remove(hapFileLoc); rmErr != nil {
+			log.Warnf("Unexpected problem during cleanup removal of %q: %s", hapFileLoc, rmErr)
+		}
+	}()
+
 	err = HAPROXY_CONFIG.Execute(f, lbSpec)
-	f.Close()
+
+	if closeErr := f.Close(); closeErr != nil {
+		log.Warnf("Unexpected problem closing %q: %s", hapFileLoc, closeErr)
+	}
+
 	if err != nil {
 		return err
 	}
@@ -516,10 +531,7 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 					c <- err
 					return
 				}
-				err = e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+host,
-					`/bin/bash -c 'set -o errexit ; set -o pipefail ; if [ "$(sudo systemctl status haproxy | grep --only-matching "Active: [^ ]\+" | cut -d " " -f 2)" = "inactive" ] ; then sudo systemctl start haproxy ; else sudo systemctl reload haproxy ; fi'`,
-				)
-				if err != nil {
+				if err = e.Run("ssh", DEFAULT_NODE_USERNAME+"@"+host, bashHAProxyReloadCommand); err != nil {
 					c <- err
 					return
 				}
@@ -527,7 +539,7 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 			}()
 			go func() {
 				time.Sleep(LOAD_BALANCER_SYNC_TIMEOUT_SECONDS * time.Second)
-				c <- fmt.Errorf("LB sync operation to '%v' timed out after %v seconds", host, LOAD_BALANCER_SYNC_TIMEOUT_SECONDS)
+				c <- fmt.Errorf("LB sync operation to $q timed out after %v seconds", host, LOAD_BALANCER_SYNC_TIMEOUT_SECONDS)
 			}()
 			// Block until chan has something, at which point syncChannel will be notified.
 			syncChannel <- LBSyncResult{host, <-c}
@@ -547,7 +559,7 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 	// If all LB updates failed, abort with error.
 	if nLoadBalancers > 0 && len(errors) == nLoadBalancers {
 		err = fmt.Errorf("error: all load-balancer updates failed: %v", errors)
-		fmt.Fprintf(e.Logger, "%v", err)
+		fmt.Fprintf(e.Logger, "%s\n", err)
 		return err
 	}
 
@@ -557,9 +569,6 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 		return err
 	}
 	server.currentLoadBalancerConfig = cfgBuffer.String()
-
-	// Pause briefly to ensure HAProxy has time to complete it's reload.
-	time.Sleep(time.Second * 1)
 
 	return nil
 }

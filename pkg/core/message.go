@@ -2,11 +2,8 @@ package core
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
-	"runtime/debug"
-	"strings"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -51,25 +48,6 @@ func write(dst io.Writer, args ...interface{}) error {
 	return nil
 }
 func read(src io.Reader, args ...interface{}) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			msg := fmt.Sprintf(`Recovered from panic: %s
-
-Stack trace:
-%s
-
-WARNING: This panic was likely caused by an RPC method with improperly type or args mapping in cmd.go
-`, r, string(debug.Stack()))
-			if err != nil {
-				for _, line := range strings.Split(msg, "\n") {
-					log.Error(line)
-				}
-			} else {
-				err = errors.New(msg)
-			}
-		}
-	}()
-
 	for _, arg := range args {
 		switch val := arg.(type) {
 		// Read strings as length prefixed byte arrays
@@ -77,6 +55,9 @@ WARNING: This panic was likely caused by an RPC method with improperly type or a
 			var n uint64
 			if err = read(src, &n); err != nil {
 				return
+			}
+			if n > 9999999 {
+				log.Warnf("Suspiciously high value for number of bytes to read received: n=%s", n)
 			}
 			bs := make([]byte, int(n))
 			if _, err = io.ReadAtLeast(src, bs, int(n)); err != nil {

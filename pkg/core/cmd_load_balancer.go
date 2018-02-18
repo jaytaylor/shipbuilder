@@ -63,11 +63,9 @@ func (server *Server) LoadBalancer_Remove(conn net.Conn, addresses []string) err
 func (server *Server) LoadBalancer_Sync(conn net.Conn) error {
 	if err := server.loadBalancerSync(conn); err != nil {
 		log.Errorf("Problem syncing load-balancer configuration: %s", err)
-		fmt.Fprintf(conn, "Problem syncing load-balancer configuration: %s\n", err)
 		return err
 	}
 	log.Infof("Succeeded syncing load-balancer configuration")
-	fmt.Fprint(conn, "Succeeded syncing load-balancer configuration\n")
 	return nil
 }
 

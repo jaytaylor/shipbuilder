@@ -63,6 +63,9 @@ func (*Client) send(msg Message, disableTunnel bool) error {
 	for {
 		msg, err := Receive(conn)
 		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			return err
 		}
 		switch msg.Type {
