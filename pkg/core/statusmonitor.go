@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const statusMonitorCheckCommand = `echo $(free -m | grep '^Mem:' | grep --only '[0-9]\+$') $(sudo lxc list --format json | jq -r '.[] | select(.status == "Running") | "\(.name)` + DYNO_DELIMITER + `\(.status)"' | tr $'\n' ' ')`
@@ -121,7 +123,9 @@ func (server *Server) monitorNodes() {
 		case result := <-nodeStatusChan:
 			if deployLock.validateLatest(result.DeployMarker) {
 				hostStatusMap[result.Host] = result
-				server.pruneDynos(result, &hostStatusMap)
+				if err := server.pruneDynos(result, &hostStatusMap); err != nil {
+					log.Errorf("Problem pruning dynos: %s", err)
+				}
 			}
 
 		case request := <-nodeStatusRequestChannel:
