@@ -52,10 +52,10 @@ func (dyno *Dyno) Info() string {
 }
 
 func (dyno *Dyno) Shutdown(e *Executor) error {
-	fmt.Fprintf(e.logger, "Shutting down dyno: %v\n", dyno.Info())
+	fmt.Fprintf(e.Logger, "Shutting down dyno: %v\n", dyno.Info())
 	sshHost := "root@" + dyno.Host
 	if err := e.SyncContainerScripts(sshHost + ":/tmp/"); err != nil {
-		fmt.Fprintf(e.logger, "Warning: failed to sync container control scripts to %q (will continue shutdown attempt despite this): %s\n", sshHost, err)
+		fmt.Fprintf(e.Logger, "Warning: failed to sync container control scripts to %q (will continue shutdown attempt despite this): %s\n", sshHost, err)
 	}
 	if dyno.State == DYNO_STATE_RUNNING {
 		// Shutdown then destroy.
@@ -86,22 +86,22 @@ func (dyno *Dyno) AttachAndExecute(exe *Executor, args ...string) error {
 }
 
 func (dyno *Dyno) RestartService(e *Executor) error {
-	fmt.Fprintf(e.logger, "Restarting app service for dyno %v\n", dyno.Info())
+	fmt.Fprintf(e.Logger, "Restarting app service for dyno %v\n", dyno.Info())
 	return dyno.AttachAndExecute(e, "service", "app", "restart")
 }
 
 func (dyno *Dyno) StartService(e *Executor) error {
-	fmt.Fprintf(e.logger, "Starting app service for dyno %v\n", dyno.Info())
+	fmt.Fprintf(e.Logger, "Starting app service for dyno %v\n", dyno.Info())
 	return dyno.AttachAndExecute(e, "service", "app", "start")
 }
 
 func (dyno *Dyno) StopService(e *Executor) error {
-	fmt.Fprintf(e.logger, "Stopping app service for dyno %v\n", dyno.Info())
+	fmt.Fprintf(e.Logger, "Stopping app service for dyno %v\n", dyno.Info())
 	return dyno.AttachAndExecute(e, "service", "app", "stop")
 }
 
 func (dyno *Dyno) GetServiceStatus(e *Executor) error {
-	fmt.Fprintf(e.logger, "Getting app service status for dyno %v\n", dyno.Info())
+	fmt.Fprintf(e.Logger, "Getting app service status for dyno %v\n", dyno.Info())
 	return dyno.AttachAndExecute(e, "service", "app", "status")
 }
 

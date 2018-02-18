@@ -84,7 +84,7 @@ Hope you enjoy using Shipbuilder 2!
 func (server *Server) initAppGitRepo(conn net.Conn, applicationName string) error {
 	dimLogger := NewFormatter(NewTimeLogger(NewMessageLogger(conn)), DIM)
 	e := Executor{
-		logger: dimLogger,
+		Logger: dimLogger,
 	}
 
 	for _, command := range []string{
@@ -139,7 +139,7 @@ func (server *Server) Apps_Destroy(conn net.Conn, applicationName string, force 
 
 	return server.WithPersistentConfig(func(cfg *Config) error {
 		titleLogger, dimLogger := server.getTitleAndDimLoggers(conn)
-		e := Executor{logger: dimLogger}
+		e := Executor{Logger: dimLogger}
 
 		if len(applicationName) == 0 {
 			return fmt.Errorf("Cannot delete application with empty name")

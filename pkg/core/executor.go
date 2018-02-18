@@ -26,7 +26,7 @@ var (
 )
 
 type Executor struct {
-	logger         io.Writer
+	Logger         io.Writer
 	SuppressOutput bool
 }
 
@@ -39,12 +39,12 @@ func (exe *Executor) Run(name string, args ...string) error {
 	log.Debugf("Running command: " + name + " " + fmt.Sprint(args))
 
 	if !exe.SuppressOutput {
-		io.WriteString(exe.logger, "$ "+name+" "+strings.Join(args, " ")+"\n")
+		io.WriteString(exe.Logger, "$ "+name+" "+strings.Join(args, " ")+"\n")
 	}
 
 	cmd := logcmd(exec.Command(name, args...))
-	cmd.Stdout = exe.logger
-	cmd.Stderr = exe.logger
+	cmd.Stdout = exe.Logger
+	cmd.Stderr = exe.Logger
 	err := cmd.Run()
 	log.Debug("Done with " + name)
 	return err
@@ -179,7 +179,7 @@ func (exe *Executor) waitForContainerIP(name string) error {
 			return fmt.Errorf("waiting for container=%v to receive IP: %s (stderr=%v)", name, err, string(stderr))
 		} else if len(out) > 0 {
 			log.Infof("detected IP=%v for container=%v", string(out), name)
-			fmt.Fprintf(exe.logger, "detected IP=%v for container=%v\n", string(out), name)
+			fmt.Fprintf(exe.Logger, "detected IP=%v for container=%v\n", string(out), name)
 			break
 		}
 

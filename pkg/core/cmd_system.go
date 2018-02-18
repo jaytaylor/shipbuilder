@@ -43,7 +43,7 @@ func (server *Server) sysPerformZfsMaintenance(logger io.Writer) error {
 		return err
 	}
 
-	e := Executor{logger: logger}
+	e := Executor{Logger: logger}
 
 	err = server.WithConfig(func(cfg *Config) error {
 		for _, node := range cfg.Nodes {
@@ -74,7 +74,7 @@ func (server *Server) sysRemoveOrphanedReleaseSnapshots(logger io.Writer) error 
 	deployLock.start()
 	defer deployLock.finish()
 
-	e := Executor{logger: logger}
+	e := Executor{Logger: logger}
 
 	err := e.BashCmd(`sudo find /tmp -xdev -mmin +120 -size +25M -wholename '*_v*.tar.gz' -exec  rm -f {} \;`)
 
@@ -129,7 +129,7 @@ func (server *Server) sysSyncNtp(logger io.Writer) error {
 	}
 
 	// Special case (no SSH required): Run locally on SB server.
-	e := Executor{logger: NewLogger(logger, "[localhost] ")}
+	e := Executor{Logger: NewLogger(logger, "[localhost] ")}
 	err = e.BashCmd(ntpSyncCommand)
 	syncResult := SyncResult{"localhost", err}
 

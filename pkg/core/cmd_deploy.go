@@ -64,7 +64,7 @@ func NewDeployment(options DeploymentOptions) *Deployment {
 			Version:     options.Version,
 			ScalingOnly: options.ScalingOnly,
 			exe: &Executor{
-				logger: dimLogger,
+				Logger: dimLogger,
 			},
 		}
 	)
@@ -1050,7 +1050,7 @@ func (d *Deployment) archive() error {
 			archive    = fmt.Sprintf("/tmp/%v.tar.gz", versionedContainerName)
 			logContext = log.WithField("app", d.Application).WithField("version", d.Version).WithField("archive", archive)
 			e          = Executor{
-				logger: NewLogger(os.Stdout, "[archiver] "),
+				Logger: NewLogger(os.Stdout, "[archiver] "),
 			}
 		)
 
@@ -1066,7 +1066,7 @@ func (d *Deployment) archive() error {
 				return fmt.Errorf("unable to open archive: %s; operation aborted", err)
 			}
 			defer func() {
-				fmt.Fprintf(e.logger, "[archiver] Closing filehandle and removing archive file %q\n", archive)
+				fmt.Fprintf(e.Logger, "[archiver] Closing filehandle and removing archive file %q\n", archive)
 				logContext.Debugf("[archiver] Closing filehandle and removing archive file %q\n", archive)
 				if closeErr := h.Close(); closeErr != nil {
 					logContext.Errorf("[archiver] Problem closing archive filehandle: %s", closeErr)
@@ -1127,7 +1127,7 @@ func (d *Deployment) extract(version string) error {
 
 // TODO: check for ignored errors.
 func extractAppFromS3(e *Executor, app *Application, version string) error {
-	fmt.Fprintf(e.logger, "Downloading release %v from S3\n", version)
+	fmt.Fprintf(e.Logger, "Downloading release %v from S3\n", version)
 	r, err := getS3Bucket().GetReader("/releases/" + app.Name + "/" + version + ".tar.gz")
 	if err != nil {
 		return err
@@ -1146,7 +1146,7 @@ func extractAppFromS3(e *Executor, app *Application, version string) error {
 		return err
 	}
 
-	fmt.Fprintf(e.logger, "Importing %v\n", localArchive)
+	fmt.Fprintf(e.Logger, "Importing %v\n", localArchive)
 
 	if err := e.BashCmdf(LXC_BIN+" image import %v --public --alias %v", localArchive, app.Name+DYNO_DELIMITER+version); err != nil {
 		return err
@@ -1191,7 +1191,7 @@ func (d *Deployment) startDyno(dynoGenerator *DynoGenerator, process string) (Dy
 		dyno, err = dynoGenerator.Next(process)
 		logger    = NewLogger(d.Logger, "["+dyno.Host+"] ")
 		e         = Executor{
-			logger: logger,
+			Logger: logger,
 		}
 		done = make(chan struct{})
 		mu   sync.Mutex
@@ -1523,7 +1523,7 @@ func (d *Deployment) deploy() error {
 	var (
 		titleLogger = NewFormatter(d.Logger, GREEN)
 		dimLogger   = NewFormatter(d.Logger, DIM)
-		e           = Executor{logger: dimLogger}
+		e           = Executor{Logger: dimLogger}
 	)
 
 	d.autoDetectRevision()
@@ -1573,7 +1573,7 @@ func (d *Deployment) deploy() error {
 			fmt.Fprintf(titleLogger, "Shutting down dyno: %v\n", removeDyno.Container)
 			go func(rd Dyno) {
 				e := &Executor{
-					logger: os.Stdout,
+					Logger: os.Stdout,
 				}
 				rd.Shutdown(e)
 			}(removeDyno)
@@ -1885,7 +1885,7 @@ func (server *Server) ManageProcessState(action string, conn net.Conn, app *Appl
 	}
 	logger := NewLogger(NewTimeLogger(NewMessageLogger(conn)), fmt.Sprintf("[ps:%v] ", action))
 	executor := &Executor{
-		logger: logger,
+		Logger: logger,
 	}
 	for _, dyno := range dynos {
 		if dyno.Process == processType {

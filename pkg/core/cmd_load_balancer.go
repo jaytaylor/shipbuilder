@@ -29,7 +29,7 @@ func (server *Server) LoadBalancer_Add(conn net.Conn, addresses []string) error 
 	if err != nil {
 		return err
 	}
-	e := &Executor{logger: NewLogger(NewMessageLogger(conn), "[lb:add] ")}
+	e := &Executor{Logger: NewLogger(NewMessageLogger(conn), "[lb:add] ")}
 	return server.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
 }
 
@@ -54,7 +54,7 @@ func (server *Server) LoadBalancer_Remove(conn net.Conn, addresses []string) err
 	if err != nil {
 		return err
 	}
-	e := &Executor{logger: NewLogger(NewMessageLogger(conn), "[lb:remove] ")}
+	e := &Executor{Logger: NewLogger(NewMessageLogger(conn), "[lb:remove] ")}
 	return server.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
 }
 
@@ -76,7 +76,7 @@ func (server *Server) LoadBalancer_Sync(conn net.Conn) error {
 func (server *Server) loadBalancerSync(conn net.Conn) error {
 	var (
 		dimLogger = NewFormatter(server.getLogger(conn), DIM)
-		e         = &Executor{logger: dimLogger}
+		e         = &Executor{Logger: dimLogger}
 	)
 	if err := server.SyncLoadBalancers(e, []Dyno{}, []Dyno{}); err != nil {
 		return err

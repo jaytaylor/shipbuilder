@@ -541,13 +541,13 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 		if syncResult.err != nil {
 			errors = append(errors, syncResult.err)
 		}
-		fmt.Fprintf(e.logger, "%v/%v load-balancer sync finished (%v succeeded, %v failed, %v outstanding)\n", i, nLoadBalancers, i-len(errors), len(errors), nLoadBalancers-i)
+		fmt.Fprintf(e.Logger, "%v/%v load-balancer sync finished (%v succeeded, %v failed, %v outstanding)\n", i, nLoadBalancers, i-len(errors), len(errors), nLoadBalancers-i)
 	}
 
 	// If all LB updates failed, abort with error.
 	if nLoadBalancers > 0 && len(errors) == nLoadBalancers {
 		err = fmt.Errorf("error: all load-balancer updates failed: %v", errors)
-		fmt.Fprintf(e.logger, "%v", err)
+		fmt.Fprintf(e.Logger, "%v", err)
 		return err
 	}
 

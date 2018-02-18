@@ -21,7 +21,7 @@ func (server *Server) Console(conn net.Conn, applicationName string, args []stri
 
 		Send(conn, Message{Hijack, ""})
 
-		e := Executor{logger: conn}
+		e := Executor{Logger: conn}
 
 		// If the primary application container is missing for some reason, attempt to create it by
 		// pulling the most recent release from S3.
