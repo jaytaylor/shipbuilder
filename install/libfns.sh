@@ -1,6 +1,11 @@
-set -x
-
 set -o nounset
+
+if [[ "$(echo "${SB_DEBUG:-}" | tr '[:upper:]' '[:lower:]')" =~ ^1|true|t|yes|y$ ]] ; then
+    echo 'INFO: debug mode enabled'
+    export SB_DEBUG_BASH='set -x'
+else
+    export SB_DEBUG_BASH=':'
+fi
 
 export SB_REPO_PATH="${GOPATH:-${HOME}/go}/src/github.com/jaytaylor/shipbuilder"
 export SB_SUDO='sudo --non-interactive'
@@ -37,7 +42,7 @@ function checkUserPermissions() {
         echo 'error: must not be run as root' 1>&2
         exit 1
     fi
-    ${SB_SUDO} echo hi
+    ${SB_SUDO} bash -c ':'
     if [ $? -ne 0 ] ; then
         echo 'error: must be run by a user who has passwordless sudo access'
         exit 1
@@ -269,7 +274,7 @@ function installAccessForSshHost() {
     echo "info: setting up remote access from build-server to host: ${sshHost}"
 
     remoteCommand='/bin/bash -c '"'"'
-    set -x
+    '"${SB_DEBUG_BASH}"'
 
     set -o errexit
     set -o pipefail
@@ -1015,21 +1020,21 @@ function lxcConfigContainer() {
 
     echo "info: updating apt repositories in container=${container}"
     # ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "${SB_SUDO} apt update"
-    ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "set -x && set -o errexit && DEBIAN_FRONTEND=noninteractive apt update"
+    ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "${SB_DEBUG_BASH} && set -o errexit && DEBIAN_FRONTEND=noninteractive apt update"
     abortIfNonZero $? "container=${container} apt update"
 
     packages='daemontools git-core curl unzip'
     echo "info: installing packages to container=${container}: ${packages}"
-    ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "set -x && set -o errexit && DEBIAN_FRONTEND=noninteractive apt install --yes ${packages}"
+    ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "${SB_DEBUG_BASH} && set -o errexit && DEBIAN_FRONTEND=noninteractive apt install --yes ${packages}"
     abortIfNonZero $? "container=${container} apt install --yes ${packages}"
 
     echo "info: removing $(shipbuilder containers list-purge-packages | tr $'\n' ' ') packages"
-    ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "set -x && set -o errexit && DEBIAN_FRONTEND=noninteractive apt purge --yes $(shipbuilder containers list-purge-packages | tr $'\n' ' ')"
+    ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "${SB_DEBUG_BASH} && set -o errexit && DEBIAN_FRONTEND=noninteractive apt purge --yes $(shipbuilder containers list-purge-packages | tr $'\n' ' ')"
     abortIfNonZero $? "container=${container} apt purge --yes $(shipbuilder containers list-purge-packages | tr $'\n' ' ')"
 
     echo "info: disabling unnecessary system services - $(shipbuilder containers list-disable-services | tr $'\n' ' ')"
     shipbuilder containers list-disable-services | ${SB_SUDO} lxc exec -T "${container}" -- \
-        /bin/bash -c "set -x && set -o errexit && xargs -n 1 -IX /bin/bash -c 'systemctl is-enabled X 1>/dev/null ; test \$? -ne 0 && return 0 ; systemctl stop X ; set -o errexit ; systemctl disable X'"
+        /bin/bash -c "${SB_DEBUG_BASH} && set -o errexit && xargs -n 1 -IX /bin/bash -c 'systemctl is-enabled X 1>/dev/null ; test \$? -ne 0 && return 0 ; systemctl stop X ; set -o errexit ; systemctl disable X'"
     abortIfNonZero $? "container=${container} disabling unnecessary system services - $(shipbuilder containers list-disable-services | tr $'\n' ' ')"
 
     echo "info: stopping container=${container}"
