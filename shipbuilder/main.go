@@ -40,6 +40,9 @@ var (
 	} // Sets of common flag suffixes.
 )
 
+// TODO: Generic command outputs for slice, map[string]interface{}.
+//       Then add options like output-format=text,json,yaml, etc..
+
 func main() {
 	app := &cli.App{
 		Name:        "shipbuilder",
@@ -517,14 +520,6 @@ func main() {
 					return (&core.Client{}).RemoteExec("Domains_Remove", app, deferred, domains)
 				},
 			},
-			&cli.Command{
-				Name:        permuteCmds([]string{"domains"}, []string{"sync", "s"}, false, "Domains_Sync")[0],
-				Aliases:     permuteCmds([]string{"domains"}, []string{"sync", "s"}, false, "Domains_Sync")[1:],
-				Description: "Sync internal apps and domains state to physical LB configuration",
-				Action: func(ctx *cli.Context) error {
-					return (&core.Client{}).RemoteExec("Domains_Sync")
-				},
-			},
 
 			////////////////////////////////////////////////////////////////////
 			// drains:*
@@ -811,6 +806,10 @@ func main() {
 					args:     true,
 					typ:      "slice",
 				},
+			),
+			command(
+				permuteCmds([]string{"lb", "lbs"}, []string{"sync"}, false, "LoadBalancer_Sync"),
+				"Sync internal apps and domains state to physical LB configuration",
 			),
 
 			////////////////////////////////////////////////////////////////////

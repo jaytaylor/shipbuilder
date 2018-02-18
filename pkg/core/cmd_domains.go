@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net"
 	"strings"
-
-	log "github.com/sirupsen/logrus"
 )
 
 func (server *Server) Domains_Add(conn net.Conn, applicationName string, deferred bool, domains []string) error {
@@ -99,30 +97,4 @@ func (server *Server) Domains_Remove(conn net.Conn, applicationName string, defe
 	}
 	e := &Executor{logger: dimLogger}
 	return server.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
-}
-
-// domainsSync Attmpts to sync all HAProxy load-balancer configurations
-// across the fleet.
-func (server *Server) domainsSync(conn net.Conn, applicationName string) error {
-	var (
-		dimLogger = NewFormatter(server.getLogger(conn), DIM)
-		e         = &Executor{logger: dimLogger}
-	)
-	if err := server.SyncLoadBalancers(e, []Dyno{}, []Dyno{}); err != nil {
-		return err
-	}
-	return nil
-}
-
-// Domains_Sync is the public interface for syncing all HAProxy load-balancer
-// configurations across the fleet.
-func (server *Server) Domain_Sync(conn net.Conn, applicationName string) error {
-	if err := server.domainsSync(conn, applicationName); err != nil {
-		log.Errorf("Problem syncing load-balancer configuration: %s", err)
-		fmt.Fprintf(conn, "Problem syncing load-balancer configuration: %s\n", err)
-		return err
-	}
-	log.Infof("Succeeded syncing load-balancer configuration")
-	fmt.Fprint(conn, "Succeeded syncing load-balancer configuration\n")
-	return nil
 }

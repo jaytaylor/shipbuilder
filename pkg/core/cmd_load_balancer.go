@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // Replaces any occurrences of '127.0.0.1' or 'localhost' with the actual system IP-address.
@@ -54,4 +56,30 @@ func (server *Server) LoadBalancer_Remove(conn net.Conn, addresses []string) err
 	}
 	e := &Executor{logger: NewLogger(NewMessageLogger(conn), "[lb:remove] ")}
 	return server.SyncLoadBalancers(e, []Dyno{}, []Dyno{})
+}
+
+// LoadBalancer_Sync is the public interface for syncing all HAProxy
+// load-balancer configurations across the fleet.
+func (server *Server) LoadBalancer_Sync(conn net.Conn) error {
+	if err := server.loadBalancerSync(conn); err != nil {
+		log.Errorf("Problem syncing load-balancer configuration: %s", err)
+		fmt.Fprintf(conn, "Problem syncing load-balancer configuration: %s\n", err)
+		return err
+	}
+	log.Infof("Succeeded syncing load-balancer configuration")
+	fmt.Fprint(conn, "Succeeded syncing load-balancer configuration\n")
+	return nil
+}
+
+// loadBalancerSync attmpts to sync all HAProxy load-balancer configurations
+// across the fleet.
+func (server *Server) loadBalancerSync(conn net.Conn) error {
+	var (
+		dimLogger = NewFormatter(server.getLogger(conn), DIM)
+		e         = &Executor{logger: dimLogger}
+	)
+	if err := server.SyncLoadBalancers(e, []Dyno{}, []Dyno{}); err != nil {
+		return err
+	}
+	return nil
 }

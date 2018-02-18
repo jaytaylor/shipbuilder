@@ -1162,7 +1162,7 @@ func (d *Deployment) syncNode(node *Node) error {
 	bashCmds := fmt.Sprintf(`:
 set -o errexit
 set -o pipefail
-test -n "$(%[1]v remote list | sed 1,3d | grep -v '^+' | awk '{print $2}' | grep %[2]v)" || %[1]v remote add --accept-certificate --public %[2]v https://%[2]v:8443
+test -n "$(%[1]v remote list | sed '1,3d' | grep -v '^+' | awk '{print $2}' | grep %[2]v)" || %[1]v remote add --accept-certificate --public %[2]v https://%[2]v:8443
 %[1]v image copy --copy-aliases %[3]v local:`,
 		LXC_BIN,
 		DefaultSSHHost,
