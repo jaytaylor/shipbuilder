@@ -167,37 +167,45 @@ func (server *Server) handleCall(conn net.Conn, body string) error {
 				values[i+1] = reflect.ValueOf(args[i])
 			}
 			defer func() {
-				// reflect can panic so recover here
+				// Reflect can panic, so recover here.
 				if r := recover(); r != nil {
-					Errorf(conn, "error running command: %v, %v", args, r)
+					Errorf(conn, "Error: intercepted panic while running command with args=%v: %v", args, r)
 				}
 			}()
 			// For any application specific write commands we lock
-			//   based on the application name
+			// based on the application name.
 			needsLock := cmd.AppWrite
 			if !needsLock {
-				// also lock these, lock is based on git directory
+				// Also lock these to ensure safe operation on the git storage
+				// directory.
 				needsLock = cmd.LongName == "pre-receive" || cmd.LongName == "post-receive"
 			}
-			if needsLock && args[1] != "" {
+			if needsLock {
 				globalLock.Lock()
-				active, ok := appLocks[args[1].(string)]
-				if ok && active {
+				if len(args) > 1 && args[1] != "" {
+					app := args[1].(string)
+					active, ok := appLocks[app]
+					if ok && active {
+						globalLock.Unlock()
+						return fmt.Errorf("a command is already running for app=%q", app)
+					}
+					appLocks[app] = true
+					// Remove lock when we're done.
+					defer func() {
+						globalLock.Lock()
+						delete(appLocks, app)
+						globalLock.Unlock()
+					}()
 					globalLock.Unlock()
-					return fmt.Errorf("a command is already running for this application")
+				} else {
+					defer func() {
+						globalLock.Unlock()
+					}()
 				}
-				appLocks[args[1].(string)] = true
-				globalLock.Unlock()
-				// Remove lock when we're done
-				defer func() {
-					globalLock.Lock()
-					delete(appLocks, args[1].(string))
-					globalLock.Unlock()
-				}()
 			}
 			values = method.Func.Call(values)
 
-			// Handle an error being returned
+			// Handle an error being returned.
 			if len(values) >= 0 && values[0].CanInterface() {
 				err, ok = values[0].Interface().(error)
 				if ok {

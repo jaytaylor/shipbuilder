@@ -2,8 +2,13 @@ package core
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
+	"runtime/debug"
+	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -45,28 +50,43 @@ func write(dst io.Writer, args ...interface{}) error {
 	}
 	return nil
 }
-func read(src io.Reader, args ...interface{}) error {
-	var err error
+func read(src io.Reader, args ...interface{}) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprintf(`Recovered from panic: %s
+
+Stack trace:
+%s
+
+WARNING: This panic was likely caused by an RPC method with improperly type or args mapping in cmd.go
+`, r, string(debug.Stack()))
+			if err != nil {
+				for _, line := range strings.Split(msg, "\n") {
+					log.Error(line)
+				}
+			} else {
+				err = errors.New(msg)
+			}
+		}
+	}()
+
 	for _, arg := range args {
 		switch val := arg.(type) {
 		// Read strings as length prefixed byte arrays
 		case *string:
 			var n uint64
-			err = read(src, &n)
-			if err != nil {
-				return err
+			if err = read(src, &n); err != nil {
+				return
 			}
 			bs := make([]byte, int(n))
-			_, err = io.ReadAtLeast(src, bs, int(n))
-			if err != nil {
-				return err
+			if _, err = io.ReadAtLeast(src, bs, int(n)); err != nil {
+				return
 			}
 			*val = string(bs)
 			// Any other types are handle with binary
 		default:
-			err := binary.Read(src, binary.BigEndian, val)
-			if err != nil {
-				return err
+			if err = binary.Read(src, binary.BigEndian, val); err != nil {
+				return
 			}
 		}
 	}

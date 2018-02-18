@@ -3,8 +3,6 @@ package core
 import (
 	"fmt"
 	"strings"
-
-	"github.com/jaytaylor/shipbuilder/pkg/cliutil"
 )
 
 const (
@@ -232,6 +230,7 @@ func init() {
 		writer("domains:remove", "domains:remove", "Domains_Remove",
 			required("app"), list("domains"),
 		),
+		writer("domains:sync", "domains:sync", "LoadBalancer_Sync"),
 
 		////////////////////////////////////////////////////////////////////////
 		// drains:*
@@ -260,7 +259,7 @@ func init() {
 		global("lb:remove", "lb:remove", "LoadBalancer_Remove",
 			list("addresses"),
 		),
-		writer(cliutil.PermuteCmds([]string{"lb", "lbs"}, []string{"sync"}, "Domains_Sync")...),
+		global("lb:sync", "lb:sync", "LoadBalancer_Sync"),
 
 		////////////////////////////////////////////////////////////////////////
 		// logger

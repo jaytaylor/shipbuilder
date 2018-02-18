@@ -63,7 +63,7 @@ func (*Client) send(msg Message, disableTunnel bool) error {
 	for {
 		msg, err := Receive(conn)
 		if err != nil {
-			break
+			return err
 		}
 		switch msg.Type {
 		case ReadLineRequest:
