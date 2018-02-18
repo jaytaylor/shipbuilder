@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/jaytaylor/shipbuilder/pkg/bindata_buildpacks"
+	"github.com/jaytaylor/shipbuilder/pkg/cliutil"
 	"github.com/jaytaylor/shipbuilder/pkg/core"
 	"github.com/jaytaylor/shipbuilder/pkg/domain"
 	"github.com/jaytaylor/shipbuilder/pkg/releases"
@@ -397,12 +398,12 @@ func main() {
 			////////////////////////////////////////////////////////////////////
 			// config:*
 			appCommand(
-				permuteCmds([]string{"config", "cfg"}, []string{"list", "ls"}, true, "Config_List"),
+				cliutil.PermuteCmds([]string{"config", "cfg"}, []string{"list", "ls"}, true, "Config_List"),
 				"Displays the entire configuration for an app",
 			),
 			&cli.Command{
-				Name:        permuteCmds([]string{"config", "cfg"}, []string{"get", "show"}, false, "Config_Get")[0],
-				Aliases:     permuteCmds([]string{"config", "cfg"}, []string{"get", "show"}, false, "Config_Get")[1:],
+				Name:        cliutil.PermuteCmds([]string{"config", "cfg"}, []string{"get", "show"}, false, "Config_Get")[0],
+				Aliases:     cliutil.PermuteCmds([]string{"config", "cfg"}, []string{"get", "show"}, false, "Config_Get")[1:],
 				Description: "Get one or more configuration parameter values for an app (displays all if none specified)",
 				Flags: []cli.Flag{
 					appFlag,
@@ -427,12 +428,12 @@ func main() {
 				},
 			},
 			deferredMappedAppCommand(
-				append([]string{"set"}, permuteCmds([]string{"config", "cfg"}, suffixes["set"], false, "Config_Set")...),
+				append([]string{"set"}, cliutil.PermuteCmds([]string{"config", "cfg"}, suffixes["set"], false, "Config_Set")...),
 				"Set the value of one or more configuration parameters for an app in the form of FOO=bar BAZ=xy",
 			),
 			&cli.Command{
-				Name:        permuteCmds([]string{"config", "cfg"}, suffixes["remove"], false, "Config_Remove")[0],
-				Aliases:     permuteCmds([]string{"config", "cfg"}, suffixes["remove"], false, "Config_Remove")[1:],
+				Name:        cliutil.PermuteCmds([]string{"config", "cfg"}, suffixes["remove"], false, "Config_Remove")[0],
+				Aliases:     cliutil.PermuteCmds([]string{"config", "cfg"}, suffixes["remove"], false, "Config_Remove")[1:],
 				Description: "Remove one or more configuration keys from an app",
 				Flags: []cli.Flag{
 					appFlag,
@@ -469,14 +470,14 @@ func main() {
 			////////////////////////////////////////////////////////////////////
 			// domains:*
 			appCommand(
-				permuteCmds([]string{"domains", "domain"}, suffixes["list"], true, "Domains_List"),
+				cliutil.PermuteCmds([]string{"domains", "domain"}, suffixes["list"], true, "Domains_List"),
 				"Show domain names associated with an app",
 				// TODO: Add sub-commands instead of ':' delimited pair
 				// clusters.
 			),
 			&cli.Command{
-				Name:        permuteCmds([]string{"domains"}, suffixes["add"], false, "Domains_Add")[0],
-				Aliases:     permuteCmds([]string{"domains"}, suffixes["add"], false, "Domains_Add")[1:],
+				Name:        cliutil.PermuteCmds([]string{"domains"}, suffixes["add"], false, "Domains_Add")[0],
+				Aliases:     cliutil.PermuteCmds([]string{"domains"}, suffixes["add"], false, "Domains_Add")[1:],
 				Description: "Associate one or more domain names to an app",
 				Flags: []cli.Flag{
 					appFlag,
@@ -498,8 +499,8 @@ func main() {
 				},
 			},
 			&cli.Command{
-				Name:        permuteCmds([]string{"domains"}, suffixes["remove"], false, "Domains_Remove")[0],
-				Aliases:     permuteCmds([]string{"domains"}, suffixes["remove"], false, "Domains_Remove")[1:],
+				Name:        cliutil.PermuteCmds([]string{"domains"}, suffixes["remove"], false, "Domains_Remove")[0],
+				Aliases:     cliutil.PermuteCmds([]string{"domains"}, suffixes["remove"], false, "Domains_Remove")[1:],
 				Description: "Remove one or more domain names from an app",
 				Flags: []cli.Flag{
 					appFlag,
@@ -524,12 +525,12 @@ func main() {
 			////////////////////////////////////////////////////////////////////
 			// drains:*
 			appCommand(
-				permuteCmds([]string{"drains", "drain"}, suffixes["list"], true, "Drains_List"),
+				cliutil.PermuteCmds([]string{"drains", "drain"}, suffixes["list"], true, "Drains_List"),
 				"Show drains for an app",
 			),
 			&cli.Command{
-				Name:        permuteCmds([]string{"drains", "drain"}, suffixes["add"], false, "Drains_Add")[0],
-				Aliases:     permuteCmds([]string{"drains", "drain"}, suffixes["add"], false, "Drains_Add")[1:],
+				Name:        cliutil.PermuteCmds([]string{"drains", "drain"}, suffixes["add"], false, "Drains_Add")[0],
+				Aliases:     cliutil.PermuteCmds([]string{"drains", "drain"}, suffixes["add"], false, "Drains_Add")[1:],
 				Description: "Add one or more drains to an app",
 				Flags: []cli.Flag{
 					appFlag,
@@ -549,8 +550,8 @@ func main() {
 				},
 			},
 			&cli.Command{
-				Name:        permuteCmds([]string{"drains", "drain"}, suffixes["remove"], false, "Drains_Remove")[0],
-				Aliases:     permuteCmds([]string{"drains", "drain"}, suffixes["remove"], false, "Drains_Remove")[1:],
+				Name:        cliutil.PermuteCmds([]string{"drains", "drain"}, suffixes["remove"], false, "Drains_Remove")[0],
+				Aliases:     cliutil.PermuteCmds([]string{"drains", "drain"}, suffixes["remove"], false, "Drains_Remove")[1:],
 				Description: "Remove one or more drains from an app",
 				Flags: []cli.Flag{
 					appFlag,
@@ -668,7 +669,7 @@ func main() {
 			////////////////////////////////////////////////////////////////////
 			// maint:*
 			appCommand(
-				permuteCmds([]string{"maintenance", "maint"}, []string{"url"}, false, "Maintenance_Url"),
+				cliutil.PermuteCmds([]string{"maintenance", "maint"}, []string{"url"}, false, "Maintenance_Url"),
 				"Set the maintenance redirect URL for an app",
 				flagSpec{
 					names:    []string{"url", "u"},
@@ -677,26 +678,26 @@ func main() {
 				},
 			),
 			appCommand(
-				permuteCmds([]string{"maintenance", "maint"}, suffixes["status"], true, "Maintenance_Status"),
+				cliutil.PermuteCmds([]string{"maintenance", "maint"}, suffixes["status"], true, "Maintenance_Status"),
 				"Show maintenance mode status for an app",
 			),
 			appCommand(
-				permuteCmds([]string{"maintenance", "maint"}, []string{"on", "+"}, false, "Maintenance_On"),
+				cliutil.PermuteCmds([]string{"maintenance", "maint"}, []string{"on", "+"}, false, "Maintenance_On"),
 				"Activates maintenance mode for an app",
 			),
 			appCommand(
-				permuteCmds([]string{"maintenance", "maint"}, []string{"off", "-"}, false, "Maintenance_Off"),
+				cliutil.PermuteCmds([]string{"maintenance", "maint"}, []string{"off", "-"}, false, "Maintenance_Off"),
 				"Deactivates maintenance mode for an app",
 			),
 
 			////////////////////////////////////////////////////////////////////
 			// privatekey:*
 			appCommand(
-				permuteCmds([]string{"privatekey", "privkey"}, []string{"get"}, true, "PrivateKey_Get"),
+				cliutil.PermuteCmds([]string{"privatekey", "privkey"}, []string{"get"}, true, "PrivateKey_Get"),
 				"Show SSH private key to use for accessing and cloning protected repositories when checking out git submodules for app",
 			),
 			appCommand(
-				permuteCmds([]string{"privatekey", "privkey"}, suffixes["set"], false, "PrivateKey_Set"),
+				cliutil.PermuteCmds([]string{"privatekey", "privkey"}, suffixes["set"], false, "PrivateKey_Set"),
 				"Set the maintenance redirect URL for an app",
 				flagSpec{
 					names:    []string{"private-key"},
@@ -705,14 +706,14 @@ func main() {
 				},
 			),
 			appCommand(
-				permuteCmds([]string{"privatekey", "privkey"}, suffixes["remove"], false, "PrivateKey_Remove"),
+				cliutil.PermuteCmds([]string{"privatekey", "privkey"}, suffixes["remove"], false, "PrivateKey_Remove"),
 				"Remove existing SSH private key from app",
 			),
 
 			////////////////////////////////////////////////////////////////////
 			// ps:*
 			appCommand(
-				permuteCmds([]string{"ps"}, suffixes["list"], true, "Ps_List"),
+				cliutil.PermuteCmds([]string{"ps"}, suffixes["list"], true, "Ps_List"),
 				"Show running container processes for app",
 			),
 			deferredMappedAppCommand(
@@ -720,7 +721,7 @@ func main() {
 				"Scale app processes up or down",
 			),
 			argsOrFlagAppCommand(
-				permuteCmds([]string{"ps"}, suffixes["status"], false, "Ps_Status"),
+				cliutil.PermuteCmds([]string{"ps"}, suffixes["status"], false, "Ps_Status"),
 				"Get the status of one or more container processes for an app",
 				[]string{"process-types"},
 				"Specify flag multiple times for multiple process types",
@@ -758,11 +759,11 @@ func main() {
 			////////////////////////////////////////////////////////////////////
 			// releases:*
 			appCommand(
-				permuteCmds([]string{"releases", "release", "rls"}, suffixes["list"], true, "Releases_List"),
+				cliutil.PermuteCmds([]string{"releases", "release", "rls"}, suffixes["list"], true, "Releases_List"),
 				"Show app release history",
 			),
 			appCommand(
-				permuteCmds([]string{"releases", "release", "rls"}, []string{"info", "detail", "details"}, false, "Releases_Info"),
+				cliutil.PermuteCmds([]string{"releases", "release", "rls"}, []string{"info", "detail", "details"}, false, "Releases_Info"),
 				"Show detailed release history information for a specific version",
 				flagSpec{
 					names: []string{"version", "v"},
@@ -782,11 +783,11 @@ func main() {
 			////////////////////////////////////////////////////////////////////
 			// lb:*
 			command(
-				permuteCmds([]string{"lb", "lbs"}, suffixes["list"], true, "LoadBalancer_List"),
+				cliutil.PermuteCmds([]string{"lb", "lbs"}, suffixes["list"], true, "LoadBalancer_List"),
 				"Show server load-balancers",
 			),
 			command(
-				permuteCmds([]string{"lb", "lbs"}, suffixes["add"], false, "LoadBalancer_Add"),
+				cliutil.PermuteCmds([]string{"lb", "lbs"}, suffixes["add"], false, "LoadBalancer_Add"),
 				"Add one or more load-balancers to shipbuilder instance",
 				flagSpec{
 					names:    []string{"hostname", "hostnames"},
@@ -797,7 +798,7 @@ func main() {
 				},
 			),
 			command(
-				permuteCmds([]string{"lb", "lbs"}, suffixes["remove"], false, "LoadBalancer_Remove"),
+				cliutil.PermuteCmds([]string{"lb", "lbs"}, suffixes["remove"], false, "LoadBalancer_Remove"),
 				"Disaassociate one or more load-balancers from the shipbuilder instance.",
 				flagSpec{
 					names:    []string{"hostname", "hostnames"},
@@ -808,18 +809,18 @@ func main() {
 				},
 			),
 			command(
-				permuteCmds([]string{"lb", "lbs"}, []string{"sync"}, false, "LoadBalancer_Sync"),
+				cliutil.PermuteCmds([]string{"lb", "lbs"}, []string{"sync"}, false, "LoadBalancer_Sync"),
 				"Sync internal apps and domains state to physical LB configuration",
 			),
 
 			////////////////////////////////////////////////////////////////////
 			// nodes:*
 			command(
-				permuteCmds([]string{"nodes", "node", "slaves", "slave"}, suffixes["list"], true, "Node_List"),
+				cliutil.PermuteCmds([]string{"nodes", "node", "slaves", "slave"}, suffixes["list"], true, "Node_List"),
 				"Show server slave nodes",
 			),
 			command(
-				permuteCmds([]string{"nodes", "node", "slaves", "slave"}, suffixes["add"], false, "Node_Add"),
+				cliutil.PermuteCmds([]string{"nodes", "node", "slaves", "slave"}, suffixes["add"], false, "Node_Add"),
 				"Associate one or more slave nodes to the shipbuilder instance",
 				flagSpec{
 					names:    []string{"hostname", "hostnames"},
@@ -830,7 +831,7 @@ func main() {
 				},
 			),
 			command(
-				permuteCmds([]string{"nodes", "node", "slaves", "slave"}, suffixes["remove"], false, "Node_Remove"),
+				cliutil.PermuteCmds([]string{"nodes", "node", "slaves", "slave"}, suffixes["remove"], false, "Node_Remove"),
 				"Disassociate one or more slave nodes from the shipbuilder instance",
 				flagSpec{
 					names:    []string{"hostname", "hostnames"},
@@ -1328,26 +1329,6 @@ func buildpackSubcommands() []*cli.Command {
 	}
 
 	return cmds
-}
-
-// permuteCmds takes a set of prefixes and suffixes and generates all
-// combinations.
-func permuteCmds(prefixes []string, suffixes []string, suffixOptional bool, funcName string) []string {
-	out := []string{}
-
-	if suffixOptional {
-		out = append(out, prefixes...)
-	}
-
-	for _, suffix := range suffixes {
-		for _, prefix := range prefixes {
-			out = append(out, fmt.Sprintf("%v:%v", prefix, suffix))
-		}
-	}
-
-	out = append(out, funcName)
-
-	return out
 }
 
 func initLogging(ctx *cli.Context) error {
