@@ -69,15 +69,15 @@ func (server *Server) pruneDynos(nodeStatus NodeStatus, hostStatusMap *map[strin
 				appVersionNumber, err := app.LastDeployNumber()
 				if err != nil {
 					// Not that bad
-					fmt.Fprintf(logger, "error: failed to parse last deploy version number for app '%v'/'%v', ignoring..\n", app.Name, app.LastDeploy)
+					fmt.Fprintf(logger, "error: failed to parse last deploy version number for app %q/%q, ignoring..\n", app.Name, app.LastDeploy)
 				}
 				// If dyno is more than 5 revisions behind the latest, kill it.
 				if dyno.VersionNumber+5 < appVersionNumber {
-					fmt.Fprintf(logger, "stopped app container '%v' is more than 5 versions behind the latest, terminating it (latest version=%v)\n", dyno.Container, app.LastDeploy)
+					fmt.Fprintf(logger, "stopped app container %q is more than 5 versions behind the latest, terminating it (latest version=%v)\n", dyno.Container, app.LastDeploy)
 					destroy = true
 				}
 			} else {
-				fmt.Fprintf(logger, "warning: unrecognized application '%v', ignoring..\n", dyno.Application)
+				fmt.Fprintf(logger, "warning: unrecognized application %q, ignoring..\n", dyno.Application)
 			}
 
 		} else if dyno.State == DYNO_STATE_RUNNING {
@@ -93,17 +93,17 @@ func (server *Server) pruneDynos(nodeStatus NodeStatus, hostStatusMap *map[strin
 							return err
 						}
 						if dyno.Version != app.LastDeploy && numAtCurrentVersion > 0 {
-							fmt.Fprintf(logger, "app container '%v' looks like an old version, terminating it (%v dynos running at latest version=%v)\n", dyno.Container, numAtCurrentVersion, app.LastDeploy)
+							fmt.Fprintf(logger, "app container %q looks like an old version, terminating it (%v dynos running at latest version=%v)\n", dyno.Container, numAtCurrentVersion, app.LastDeploy)
 							destroy = true
 						} else {
-							fmt.Fprintf(logger, "app for container '%v' doesn't appear to have any dynos running at latest version=%v, refusing to take any action\n", dyno.Container, app.LastDeploy)
+							fmt.Fprintf(logger, "app for container %q doesn't appear to have any dynos running at latest version=%v, refusing to take any action\n", dyno.Container, app.LastDeploy)
 						}
 					} else {
-						fmt.Fprintf(logger, "app '%v' has no processes scaled up, terminating it\n", dyno.Application)
+						fmt.Fprintf(logger, "app %q has no processes scaled up, terminating it\n", dyno.Application)
 						destroy = true
 					}
 				} else {
-					fmt.Fprintf(logger, "warning: unrecognized application '%v', ignoring..\n", dyno.Application)
+					fmt.Fprintf(logger, "warning: unrecognized application %q, ignoring..\n", dyno.Application)
 				}
 
 				if destroy {
@@ -112,7 +112,7 @@ func (server *Server) pruneDynos(nodeStatus NodeStatus, hostStatusMap *map[strin
 						return err
 					}
 					if dynoInUseByLoadBalancer {
-						fmt.Fprintf(logger, "app container '%v' is still in use by the current load-balancer configuration, termination cancelled\n", dyno.Container)
+						fmt.Fprintf(logger, "app container %q is still in use by the current load-balancer configuration, termination cancelled\n", dyno.Container)
 						destroy = false
 					}
 				}
@@ -120,8 +120,8 @@ func (server *Server) pruneDynos(nodeStatus NodeStatus, hostStatusMap *map[strin
 		}
 
 		if destroy {
-			// TODO: Add LB config check to ensure that dyno.Node + "-" + dyno.Port does not appear anywhere in the haproxy config.
-			//"ssh", DEFAULT_NODE_USERNAME + "@" dyno.Host,
+			// TODO: Add LB config check to ensure that dyno.Node + "-" + dyno.Port does
+			// not appear anywhere in the haproxy config.
 			fmt.Fprintf(logger, "Cleaning up trash name=%v version=%v\n", dyno.Application, dyno.Version)
 			go func(dyno Dyno) {
 				dyno.Shutdown(e)
@@ -132,9 +132,11 @@ func (server *Server) pruneDynos(nodeStatus NodeStatus, hostStatusMap *map[strin
 	return nil
 }
 
-// Determine if a Dyno has active routes defined in the current load-balancer configuration.
+// dynoRoutingActive determines if a Dyno has active routes defined in the
+// current load-balancer configuration.
 func (server *Server) dynoRoutingActive(dyno *Dyno) (bool, error) {
-	// LB config check to ensure that dyno.Node + "-" + dyno.Port does not appear anywhere in the haproxy config.
+	// LB config check to ensure that dyno.Node + "-" + dyno.Port does not appear
+	// anywhere in the haproxy config.
 	// Non-web dynos have nothing to do with the load-balancer.
 	if dyno.Process != "web" {
 		return false, nil
@@ -145,7 +147,8 @@ func (server *Server) dynoRoutingActive(dyno *Dyno) (bool, error) {
 		return true, err
 	}
 
-	// If there aren't any load-balancers, then the dyno certainly isn't being used by one.
+	// If there aren't any load-balancers, then the dyno certainly isn't being
+	// used by one.
 	if len(config.LoadBalancers) == 0 {
 		return false, nil
 	}
@@ -159,3 +162,11 @@ func (server *Server) dynoRoutingActive(dyno *Dyno) (bool, error) {
 	inUse := expr.MatchString(strings.Replace(lbConfig, "\n", " ", -1))
 	return inUse, nil
 }
+
+// appStateHealth returns true if the current set of running dynos encapsulates
+func (server *Server) appStateHealth() bool {
+	return false
+}
+
+// TODO: Add check which reaches into HAProxy and checks process health - i.e.
+// is traffic currently being routed to the dynos.
