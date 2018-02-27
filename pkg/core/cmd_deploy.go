@@ -3,6 +3,7 @@ package core
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -1633,7 +1634,21 @@ func (d *Deployment) postDeployHooks(err error) {
 	if strings.HasPrefix(hookUrl, "https://api.hipchat.com/v1/rooms/message") {
 		hookUrl += "&notify=" + notify + "&color=" + color + "&from=ShipBuilder&message_format=text&message=" + url.QueryEscape(message)
 		log.Infof("Dispatching app deployhook url, app=%v url=%v", d.Application.Name, hookUrl)
+		// TODO: Error handling, at least log it.
 		go http.Get(hookUrl)
+	} else if strings.HasPrefix(hookUrl, "https://hooks.slack.com/services/") {
+		data := map[string]interface{}{
+			"text":     message,
+			"username": "ShipBuilder",
+			"icon_url": "https://github.com/jaytaylor/shipbuilder-site/raw/master/static/images/logo-new-sm.jpg",
+		}
+		payload, err := json.Marshal(data)
+		if err != nil {
+			log.Errorf("Problem marshalling JSON for Slack webhook: %s", err)
+			return
+		}
+		// TODO: Error handling, at least log it.
+		go http.Post(hookUrl, "application/json", bytes.NewBuffer(payload))
 	} else {
 		log.Errorf("Unrecognized app deployhook url, app=%v url=%v", d.Application.Name, hookUrl)
 	}
