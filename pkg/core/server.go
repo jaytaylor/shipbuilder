@@ -30,6 +30,7 @@ var (
 	appLocks   = map[string]bool{}
 )
 
+// Server struct encapsulates the entirety of Shipbuilder Server.
 type Server struct {
 	ListenAddr                string
 	LogServerListenAddr       string
@@ -37,7 +38,10 @@ type Server struct {
 	BuildpacksProvider        domain.BuildpacksProvider
 	ReleasesProvider          domain.ReleasesProvider
 	GlobalPortTracker         *GlobalPortTracker
+	Name                      string // Name of server to use when posting external messages (e.g. deploy announcements)..
+	ImageURL                  string // Image to use when posting external messages (e.g. deploy announcements).
 	currentLoadBalancerConfig string
+	deployHooksMap            map[string]DeployHookFunc
 }
 
 func run(name string, args ...string) error {
@@ -270,6 +274,8 @@ func (server *Server) Start() error {
 	initDrains(server)
 	go server.monitorNodes()
 	go server.startCrons()
+
+	server.deployHooksMap = server.defaultDeployHooks()
 
 	log.Infof("Starting server on %v", server.ListenAddr)
 	ln, err := net.Listen("tcp", server.ListenAddr)

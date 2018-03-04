@@ -198,6 +198,20 @@ func main() {
 						Usage:   "addr:port for Logserver to listen for TCP connections on",
 						Value:   fmt.Sprintf(":%v", lsbase.DefaultPort),
 					},
+					&cli.StringFlag{
+						Name:    "name",
+						Aliases: []string{"n"},
+						EnvVars: []string{"SB_NAME"},
+						Usage:   "Name to use when posting external messages (e.g. deployment announcements)",
+						Value:   "ShipBuilder",
+					},
+					&cli.StringFlag{
+						Name:    "image-url",
+						Aliases: []string{"i"},
+						EnvVars: []string{"SB_IMAGE_URL"},
+						Usage:   "URL of photo to use when posting external messages (e.g. deployment announcements)",
+						Value:   "https://github.com/jaytaylor/shipbuilder-site/raw/master/static/images/logo-new-sm.jpg",
+					},
 				},
 				Before: func(ctx *cli.Context) error {
 					if ctx.Args().Len() == 0 {
@@ -218,6 +232,8 @@ func main() {
 						LogServerListenAddr: ctx.String("logserver-listen"),
 						BuildpacksProvider:  bindata_buildpacks.NewProvider(),
 						ReleasesProvider:    releasesProvider,
+						Name:                ctx.String("name"),
+						ImageURL:            ctx.String("image-url"),
 					}
 					if err := server.Start(); err != nil {
 						return err

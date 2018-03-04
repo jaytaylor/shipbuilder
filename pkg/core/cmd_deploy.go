@@ -3,14 +3,11 @@ package core
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
-	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"regexp"
@@ -1582,76 +1579,6 @@ func (d *Deployment) deploy() error {
 	}
 
 	return nil
-}
-
-func (d *Deployment) postDeployHooks(err error) {
-	var (
-		message  string
-		notify   = "0"
-		color    = "green"
-		revision = "."
-	)
-
-	if len(d.Revision) > 0 {
-		revision = " (" + d.Revision[0:7] + ")."
-	}
-
-	durationFractionStripper, _ := regexp.Compile(`^(.*)\.[0-9]*(s)?$`)
-	duration := durationFractionStripper.ReplaceAllString(time.Since(d.StartedTs).String(), "$1$2")
-
-	hookUrl, ok := d.Application.Environment["DEPLOYHOOKS_HTTP_URL"]
-	if !ok {
-		log.Errorf("app %q doesn't have a DEPLOYHOOKS_HTTP_URL", d.Application.Name)
-		return
-	} else if err != nil {
-		task := "Deployment"
-		if d.ScalingOnly {
-			task = "Scaling"
-		}
-		message = d.Application.Name + ": " + task + " operation failed after " + duration + ": " + err.Error() + revision
-		notify = "1"
-		color = "red"
-	} else if err == nil && d.ScalingOnly {
-		procInfo := ""
-		err := d.Server.WithApplication(d.Application.Name, func(app *Application, cfg *Config) error {
-			for proc, val := range app.Processes {
-				procInfo += " " + proc + "=" + strconv.Itoa(val)
-			}
-			return nil
-		})
-		if err != nil {
-			log.Warnf("PostDeployHooks scaling caught: %v", err)
-		}
-		if len(procInfo) > 0 {
-			message = "Scaled " + d.Application.Name + " to" + procInfo + " in " + duration + revision
-		} else {
-			message = "Scaled down all " + d.Application.Name + " processes down to 0"
-		}
-	} else {
-		message = "Deployed " + d.Application.Name + " " + d.Version + " in " + duration + revision
-	}
-
-	if strings.HasPrefix(hookUrl, "https://api.hipchat.com/v1/rooms/message") {
-		hookUrl += "&notify=" + notify + "&color=" + color + "&from=ShipBuilder&message_format=text&message=" + url.QueryEscape(message)
-		log.Infof("Dispatching app deployhook url, app=%v url=%v", d.Application.Name, hookUrl)
-		// TODO: Error handling, at least log it.
-		go http.Get(hookUrl)
-	} else if strings.HasPrefix(hookUrl, "https://hooks.slack.com/services/") {
-		data := map[string]interface{}{
-			"text":     message,
-			"username": "ShipBuilder",
-			"icon_url": "https://github.com/jaytaylor/shipbuilder-site/raw/master/static/images/logo-new-sm.jpg",
-		}
-		payload, err := json.Marshal(data)
-		if err != nil {
-			log.Errorf("Problem marshalling JSON for Slack webhook: %s", err)
-			return
-		}
-		// TODO: Error handling, at least log it.
-		go http.Post(hookUrl, "application/json", bytes.NewBuffer(payload))
-	} else {
-		log.Errorf("Unrecognized app deployhook url, app=%v url=%v", d.Application.Name, hookUrl)
-	}
 }
 
 // publish pushes the built image to the LXC image repository.
