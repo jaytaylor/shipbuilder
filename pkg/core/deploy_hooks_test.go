@@ -14,7 +14,7 @@ func TestDeployHookURLsDiscovery(t *testing.T) {
 	}{
 		{
 			env: map[string]string{
-				"SB_DEPLOYHOOKS_HTTP_URL": "http://jaytaylor.com/v1/shipbuilder/deployed",
+				"SB_DEPLOYHOOK_URL": "http://jaytaylor.com/v1/shipbuilder/deployed",
 			},
 			expected: []string{"http://jaytaylor.com/v1/shipbuilder/deployed"},
 		},
@@ -26,7 +26,7 @@ func TestDeployHookURLsDiscovery(t *testing.T) {
 		},
 		{
 			env: map[string]string{
-				"SB_DEPLOYHOOKS_HTTP_URL_5": "http://jaytaylor.com/v1/shipbuilder/deployed",
+				"SB_DEPLOYHOOK_URL_5": "http://jaytaylor.com/v1/shipbuilder/deployed",
 			},
 			expected: []string{"http://jaytaylor.com/v1/shipbuilder/deployed"},
 		},
@@ -38,8 +38,8 @@ func TestDeployHookURLsDiscovery(t *testing.T) {
 		},
 		{
 			env: map[string]string{
-				"SB_DEPLOYHOOKS_HTTP_URL": "http://jaytaylor.com/v1/0",
-				"DEPLOYHOOKS_HTTP_URL":    "http://jaytaylor.com/v1/1",
+				"SB_DEPLOYHOOK_URL":    "http://jaytaylor.com/v1/0",
+				"DEPLOYHOOKS_HTTP_URL": "http://jaytaylor.com/v1/1",
 			},
 			expected: []string{
 				"http://jaytaylor.com/v1/0",
@@ -48,8 +48,8 @@ func TestDeployHookURLsDiscovery(t *testing.T) {
 		},
 		{
 			env: map[string]string{
-				"SB_DEPLOYHOOKS_HTTP_URL": "http://jaytaylor.com/v1/0",
-				"DEPLOYHOOKS_HTTP_URL_0":  "http://jaytaylor.com/v1/1",
+				"SB_DEPLOYHOOK_URL":      "http://jaytaylor.com/v1/0",
+				"DEPLOYHOOKS_HTTP_URL_0": "http://jaytaylor.com/v1/1",
 			},
 			expected: []string{
 				"http://jaytaylor.com/v1/0",
@@ -58,17 +58,17 @@ func TestDeployHookURLsDiscovery(t *testing.T) {
 		},
 		{
 			env: map[string]string{
-				"SB_DEPLOYHOOKS_HTTP_URL":   "http://jaytaylor.com/v1/0",
-				"SB_DEPLOYHOOKS_HTTP_URL_1": "http://jaytaylor.com/v1/1",
+				"SB_DEPLOYHOOK_URL":   "http://jaytaylor.com/v1/0",
+				"SB_DEPLOYHOOK_URL_1": "http://jaytaylor.com/v1/1",
 			},
 			expected: []string{"http://jaytaylor.com/v1/0", "http://jaytaylor.com/v1/1"},
 		},
 		{
 			env: map[string]string{
-				"SB_DEPLOYHOOKS_HTTP_URL":   "http://jaytaylor.com/v1/",
-				"SB_DEPLOYHOOKS_HTTP_URL_0": "http://jaytaylor.com/v1/0",
-				"SB_DEPLOYHOOKS_HTTP_URL_1": "http://jaytaylor.com/v1/1",
-				"SB_DEPLOYHOOKS_HTTP_URL_2": "http://jaytaylor.com/v1/2",
+				"SB_DEPLOYHOOK_URL":   "http://jaytaylor.com/v1/",
+				"SB_DEPLOYHOOK_URL_0": "http://jaytaylor.com/v1/0",
+				"SB_DEPLOYHOOK_URL_1": "http://jaytaylor.com/v1/1",
+				"SB_DEPLOYHOOK_URL_2": "http://jaytaylor.com/v1/2",
 			},
 			expected: []string{
 				"http://jaytaylor.com/v1/",
@@ -79,11 +79,11 @@ func TestDeployHookURLsDiscovery(t *testing.T) {
 		},
 		{
 			env: map[string]string{
-				"SB_DEPLOYHOOKS_HTTP_URL":    "http://jaytaylor.com/v1/",
-				"SB_DEPLOYHOOKS_HTTP_URL_0":  "http://jaytaylor.com/v1/0",
-				"SB_DEPLOYHOOKS_HTTP_URL_1":  "http://jaytaylor.com/v1/1",
-				"SB_DEPLOYHOOKS_HTTP_URL_2":  "http://jaytaylor.com/v1/2",
-				"SB_DEPLOYHOOKS_HTTP_URL_11": "http://jaytaylor.com/v1/11",
+				"SB_DEPLOYHOOK_URL":    "http://jaytaylor.com/v1/",
+				"SB_DEPLOYHOOK_URL_0":  "http://jaytaylor.com/v1/0",
+				"SB_DEPLOYHOOK_URL_1":  "http://jaytaylor.com/v1/1",
+				"SB_DEPLOYHOOK_URL_2":  "http://jaytaylor.com/v1/2",
+				"SB_DEPLOYHOOK_URL_11": "http://jaytaylor.com/v1/11",
 			},
 			expected: []string{
 				"http://jaytaylor.com/v1/",

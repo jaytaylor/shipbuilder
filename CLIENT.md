@@ -356,19 +356,21 @@ Set your own custom maintenance page URL to be displayed while the app is in mai
 
 Set a deploy-hook URL to enable things like HipChat room notifications.
 
-    sb config:set -aMyApp SB_DEPLOYHOOKS_HTTP_URL='https://api.hipchat.com/v1/rooms/message?auth_token=<THE_TOKEN>&room_id=<THE_ROOM>'
+    sb config:set -aMyApp SB_DEPLOYHOOK_URL='https://api.hipchat.com/v1/rooms/message?auth_token=<THE_TOKEN>&room_id=<THE_ROOM>'
 
-Multiple deploy-hook URLs can be set by adding _"\_0"_, _"\_1"_, .., _"\_N"_ to the `SB_DEPLOYHOOKS_HTTP_URL` environment variable.
+Multiple deploy-hook URLs can be set by adding _"\_0"_, _"\_1"_, .., _"\_N"_ to the `SB_DEPLOYHOOK_URL` environment variable.
 
 Note: Gaps are permitted in the trailing number _N_. Whenever _N_ is incremented 10 times without finding any values, the env var search halts.
 
     sb config:set -aMyApp \
-        SB_DEPLOYHOOKS_HTTP_URL_0='https://api.hipchat.com/v1/...' \
-        SB_DEPLOYHOOKS_HTTP_URL_1='https://hooks.slack.com/services/...'
+        SB_DEPLOYHOOK_URL_0='https://api.hipchat.com/v1/...' \
+        SB_DEPLOYHOOK_URL_1='https://hooks.slack.com/services/...'
 
 ### Supported deploy-hook integrations
 
 #### HipChat
+
+URL must match: `https://api.hipchat.com/v1/rooms/message.*`
 
 Only needs the URL with bundled API token.
 
@@ -376,20 +378,26 @@ Only needs the URL with bundled API token.
 
 Only needs the URL with bundled API token.
 
+URL must match: `https://hooks.slack.com/services/.*`
+
 #### New Relic
 
-The New Relic integration uses an HTTP POST call with the NR API key sent as a special header.
+URL must match: `https://api.newrelic.com/v2/applications/.*/deployments.json`
 
-For it to work, the `SB_NEWRELIC_API_KEY` app environment variable must be set.
+The New Relic integration uses an HTTP POST call with the API key included as a custom header.
+
+The `SB_NEWRELIC_API_KEY` app environment variable must be set, otherwise the deploy-hook will fail validation and bail out early with an error.
 
 #### Datadog
 
-The datadog integration requires that 2 app environment variables be set:
+URL must match: `https://app.datadoghq.com/api/v1/events?api_key=.*`
+
+The datadog integration requires that 2 app environment variables also be set:
 
 *   `SB_DATADOG_API_KEY`
 *   `SB_DATADOG_APP_KEY`
 
-These can be found and managed from the [Datadog console](https://app.datadoghq.com/account/settings#api).
+API keys can be found and managed in the [Datadog console](https://app.datadoghq.com/account/settings#api).
 
 ## ShipBuilder Client Configuration Overrides
 

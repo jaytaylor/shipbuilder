@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -55,7 +56,7 @@ func (d *Deployment) postDeployHooks(deployErr error) {
 			return nil
 		})
 		if err != nil {
-			log.Warnf("PostDeployHooks scaling caught: %v (continuing on..)", err)
+			log.Warnf("PostDeployHooks scaling caught an unexpcted error (continuing on..): %s", err)
 		}
 		if len(procInfo) > 0 {
 			message = "Scaled " + d.Application.Name + " to" + procInfo + " in " + duration + revision
@@ -70,8 +71,8 @@ func (d *Deployment) postDeployHooks(deployErr error) {
 
 	for _, hookURL := range hookURLs {
 		var found bool
-		func(hookURL string) {
-			for prefix, fn := range d.Server.deployHooksMap {
+		for prefix, fn := range d.Server.deployHooksMap {
+			func(hookURL string, prefix string, fn DeployHookFunc) {
 				if regexp.MustCompile(prefix).MatchString(hookURL) {
 					simpleFunc := func() error {
 						log.Infof("Dispatching deploy-hook callback for app=%v prefix=%v", d.Application.Name, prefix)
@@ -80,8 +81,8 @@ func (d *Deployment) postDeployHooks(deployErr error) {
 					deployHookFuncs = append(deployHookFuncs, simpleFunc)
 					found = true
 				}
-			}
-		}(hookURL)
+			}(hookURL, prefix, fn)
+		}
 		if !found {
 			log.Warnf("No deploy-hook handler found for app=%v url=%q", d.Application.Name, hookURL)
 		}
@@ -144,9 +145,9 @@ func (*Server) defaultDeployHooks() map[string]DeployHookFunc {
 		},
 
 		// New-Relic.
-		"^https://api.newrelic.com/v2/applications/[^/]+/deployments.json": func(d *Deployment, hookURL string, message string, alert bool) error {
+		"^https://api.newrelic.com/v2/applications/[^/]+/deployments.json$": func(d *Deployment, hookURL string, message string, alert bool) error {
 			apiKey, ok := d.Application.Environment["SB_NEWRELIC_API_KEY"]
-			if !ok {
+			if !ok || len(apiKey) == 0 {
 				return fmt.Errorf("new-relic deploy-hook: missing app environment variable %q", "SB_NEWRELIC_API_KEY")
 			}
 
@@ -183,7 +184,40 @@ func (*Server) defaultDeployHooks() map[string]DeployHookFunc {
 		},
 
 		// Datadog.
-		//https://app.datadoghq.com/api/v1/
+		"^https://app.datadoghq.com/api/v1/events.*": func(d *Deployment, hookURL string, message string, alert bool) error {
+			var (
+				hostname, _ = os.Hostname()
+				data        = map[string]interface{}{
+					"title":         fmt.Sprintf("%v deploy-hook", d.Server.Name),
+					"text":          message,
+					"date_happened": time.Now().Unix(),
+					"host":          hostname,
+					"priority":      "normal",
+					"tags": []string{
+						"shipbuilder",
+						fmt.Sprintf("shipbuilder:server:%v", d.Server.Name),
+						fmt.Sprintf("shipbuilder:app:%v", d.Application.Name),
+					},
+					"alert_type":       "success",
+					"source_type_name": "shipbuilder",
+				}
+			)
+			if alert {
+				data["alert_type"] = "warning"
+			}
+			payload, err := json.Marshal(data)
+			if err != nil {
+				return fmt.Errorf("datadog deploy-hook: marshalling JSON: %s", err)
+			}
+			response, err := http.Post(hookURL, "application/json", bytes.NewBuffer(payload))
+			if err != nil {
+				return fmt.Errorf("datadog deploy-hook: %s", err)
+			}
+			if response.StatusCode/100 != 2 {
+				return fmt.Errorf("datadog deploy-hook: received non-200 status code=%v", response.StatusCode)
+			}
+			return nil
+		},
 	}
 
 	return deployHooksMap
@@ -194,7 +228,7 @@ func (*Server) defaultDeployHooks() map[string]DeployHookFunc {
 func (d *Deployment) deployHookURLs() []string {
 	var (
 		envVarKeys = []string{ // Be forgiving and support legacy / deprecated environment variable keys.
-			"SB_DEPLOYHOOKS_HTTP_URL",
+			"SB_DEPLOYHOOK_URL",
 			"DEPLOYHOOKS_HTTP_URL",
 		}
 		hooksURLs = []string{}
