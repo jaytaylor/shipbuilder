@@ -358,9 +358,38 @@ Set a deploy-hook URL to enable things like HipChat room notifications.
 
     sb config:set -aMyApp SB_DEPLOYHOOKS_HTTP_URL='https://api.hipchat.com/v1/rooms/message?auth_token=<THE_TOKEN>&room_id=<THE_ROOM>'
 
-Multiple deploy-hook URLs can be set by separating them with a comma.
+Multiple deploy-hook URLs can be set by adding _"\_0"_, _"\_1"_, .., _"\_N"_ to the `SB_DEPLOYHOOKS_HTTP_URL` environment variable.
 
-    sb config:set -aMyApp SB_DEPLOYHOOKS_HTTP_URL='https://api.hipchat.com/v1/...,https://hooks.slack.com/services/...'
+Note: Gaps are permitted in the trailing number _N_. Whenever _N_ is incremented 10 times without finding any values, the env var search halts.
+
+    sb config:set -aMyApp \
+        SB_DEPLOYHOOKS_HTTP_URL_0='https://api.hipchat.com/v1/...' \
+        SB_DEPLOYHOOKS_HTTP_URL_1='https://hooks.slack.com/services/...'
+
+### Supported deploy-hook integrations
+
+#### HipChat
+
+Only needs the URL with bundled API token.
+
+#### Slack
+
+Only needs the URL with bundled API token.
+
+#### New Relic
+
+The New Relic integration uses an HTTP POST call with the NR API key sent as a special header.
+
+For it to work, the `SB_NEWRELIC_API_KEY` app environment variable must be set.
+
+#### Datadog
+
+The datadog integration requires that 2 app environment variables be set:
+
+*   `SB_DATADOG_API_KEY`
+*   `SB_DATADOG_APP_KEY`
+
+These can be found and managed from the [Datadog console](https://app.datadoghq.com/account/settings#api).
 
 ## ShipBuilder Client Configuration Overrides
 

@@ -263,7 +263,7 @@ func (server *Server) IncrementAppVersion(app *Application) (*Application, *Conf
 }
 
 // Only to be invoked by safe locking getters/setters, never externally!!!
-func (*Server) getConfig(lock bool) (*Config, error) {
+func (server *Server) getConfig(lock bool) (*Config, error) {
 	if lock {
 		configLock.Lock()
 		defer configLock.Unlock()
@@ -272,16 +272,16 @@ func (*Server) getConfig(lock bool) (*Config, error) {
 	var config Config
 
 	// Create config if it doesn't exist.
-	if exists, err := oslib.PathExists(CONFIG); err != nil {
-		return nil, fmt.Errorf("checking if config file at location %q exists: %s", CONFIG, err)
+	if exists, err := oslib.PathExists(server.ConfigFile); err != nil {
+		return nil, fmt.Errorf("checking if config file at location %q exists: %s", server.ConfigFile, err)
 	} else if !exists {
-		if err := ioutil.WriteFile(CONFIG, []byte("{}"), os.FileMode(int(0600))); err != nil {
-			return nil, fmt.Errorf("writing to new config file at location %q: %s", CONFIG, err)
+		if err := ioutil.WriteFile(server.ConfigFile, []byte("{}"), os.FileMode(int(0600))); err != nil {
+			return nil, fmt.Errorf("writing to new config file at location %q: %s", server.ConfigFile, err)
 		}
-		log.Infof("Created new shipbuilder config file at location %q", CONFIG)
+		log.Infof("Created new shipbuilder config file at location %q", server.ConfigFile)
 	}
 
-	f, err := os.Open(CONFIG)
+	f, err := os.Open(server.ConfigFile)
 	if err == nil {
 		defer f.Close()
 		err = json.NewDecoder(f).Decode(&config)
@@ -306,8 +306,8 @@ func (*Server) getConfig(lock bool) (*Config, error) {
 
 // IMPORTANT: Only to be invoked by `WithPersistentConfig`.
 // TODO: Check for ignored errors.
-func (*Server) writeConfig(config *Config) error {
-	f, err := os.Create(CONFIG)
+func (server *Server) writeConfig(config *Config) error {
+	f, err := os.Create(server.ConfigFile)
 	if err != nil {
 		return err
 	}

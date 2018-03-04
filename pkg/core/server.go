@@ -42,6 +42,7 @@ type Server struct {
 	ImageURL                  string // Image to use when posting external messages (e.g. deploy announcements).
 	currentLoadBalancerConfig string
 	deployHooksMap            map[string]DeployHookFunc
+	ConfigFile                string // Path to ShipBuilder config.json.
 }
 
 func run(name string, args ...string) error {
@@ -275,8 +276,6 @@ func (server *Server) Start() error {
 	go server.monitorNodes()
 	go server.startCrons()
 
-	server.deployHooksMap = server.defaultDeployHooks()
-
 	log.Infof("Starting server on %v", server.ListenAddr)
 	ln, err := net.Listen("tcp", server.ListenAddr)
 	if err != nil {
@@ -312,5 +311,11 @@ func (server *Server) init() {
 	}
 	if server.LogServerListenAddr == "" {
 		server.LogServerListenAddr = fmt.Sprintf(":%v", lsbase.DefaultPort)
+	}
+	if server.deployHooksMap == nil {
+		server.deployHooksMap = server.defaultDeployHooks()
+	}
+	if server.ConfigFile == "" {
+		server.ConfigFile = CONFIG
 	}
 }

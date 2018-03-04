@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gigawattio/concurrency"
@@ -69,6 +69,7 @@ func (d *Deployment) postDeployHooks(deployErr error) {
 	deployHookFuncs := []func() error{}
 
 	for _, hookURL := range hookURLs {
+		var found bool
 		func(hookURL string) {
 			for prefix, fn := range d.Server.deployHooksMap {
 				if regexp.MustCompile(prefix).MatchString(hookURL) {
@@ -77,9 +78,13 @@ func (d *Deployment) postDeployHooks(deployErr error) {
 						return fn(d, hookURL, message, alert)
 					}
 					deployHookFuncs = append(deployHookFuncs, simpleFunc)
+					found = true
 				}
 			}
 		}(hookURL)
+		if !found {
+			log.Warnf("No deploy-hook handler found for app=%v url=%q", d.Application.Name, hookURL)
+		}
 	}
 
 	if err := concurrency.MultiGo(deployHookFuncs...); err != nil {
@@ -87,27 +92,7 @@ func (d *Deployment) postDeployHooks(deployErr error) {
 	}
 }
 
-func (d *Deployment) deployHookURLs() []string {
-	var (
-		envVarKeys = []string{ // Be forgiving and support legacy / deprecated environment variable keys.
-			"SB_DEPLOYHOOKS_HTTP_URL",
-			"SB_DEPLOYHOOKS_HTTP_URLS",
-			"DEPLOYHOOKS_HTTP_URL",
-			"DEPLOYHOOKS_HTTP_URLS",
-		}
-		hookURLs string
-		ok       bool
-	)
-	for _, key := range envVarKeys {
-		hookURLs, ok = d.Application.Environment[key]
-		if ok {
-			return strings.Split(hookURLs, ",")
-		}
-	}
-	return nil
-}
-
-func (_ *Server) defaultDeployHooks() map[string]DeployHookFunc {
+func (*Server) defaultDeployHooks() map[string]DeployHookFunc {
 	// deployHooksMap follows the form of regExpPrefix->callbackHandler.
 	deployHooksMap := map[string]DeployHookFunc{
 		// HipChat.
@@ -196,7 +181,53 @@ func (_ *Server) defaultDeployHooks() map[string]DeployHookFunc {
 			}
 			return nil
 		},
+
+		// Datadog.
+		//https://app.datadoghq.com/api/v1/
 	}
 
 	return deployHooksMap
+}
+
+// deployHookURLs discovers deploy-hook URLs based on an App's environment
+// variables.
+func (d *Deployment) deployHookURLs() []string {
+	var (
+		envVarKeys = []string{ // Be forgiving and support legacy / deprecated environment variable keys.
+			"SB_DEPLOYHOOKS_HTTP_URL",
+			"DEPLOYHOOKS_HTTP_URL",
+		}
+		hooksURLs = []string{}
+		val       string
+		ok        bool
+		i         int
+		misses    int
+	)
+
+	for _, key := range envVarKeys {
+		val, ok = d.Application.Environment[key]
+		if ok {
+			hooksURLs = append(hooksURLs, val)
+		}
+
+		i = 0
+		misses = 0
+		for {
+			if misses > 10 {
+				break
+			}
+			val, ok := d.Application.Environment[fmt.Sprintf("%v_%v", key, i)]
+			i++
+			if ok {
+				hooksURLs = append(hooksURLs, val)
+				misses = 0
+				continue
+			}
+			misses++
+		}
+	}
+
+	sort.Strings(hooksURLs)
+
+	return hooksURLs
 }

@@ -13,6 +13,7 @@ func TestDynoPortAllocation(t *testing.T) {
 		LogServerListenAddr: ":59595",
 		BuildpacksProvider:  bindata_buildpacks.NewProvider(),
 		ReleasesProvider:    releases.NewFSReleasesProvider("/tmp/sb-dyno-test"),
+		ConfigFile:          "/tmp/sb-test.json",
 	}
 	if err := server.Start(); err != nil {
 		t.Fatal(err)
