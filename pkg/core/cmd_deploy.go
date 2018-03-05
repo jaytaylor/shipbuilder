@@ -37,16 +37,17 @@ type DeploymentOptions struct {
 }
 
 type Deployment struct {
-	StartedTs   time.Time
-	Server      *Server
-	Logger      io.Writer
-	Application *Application
-	Config      *Config
-	Revision    string
-	Version     string
-	ScalingOnly bool // Flag to indicate whether this is a new release or a scaling activity.
-	exe         *Executor
-	err         error
+	StartedTs        time.Time
+	Server           *Server
+	Logger           io.Writer
+	Application      *Application
+	Config           *Config
+	Revision         string
+	Version          string
+	ScalingOnly      bool // Flag to indicate whether this is a new release or a scaling activity.
+	exe              *Executor
+	ImageFingerprint string
+	err              error
 }
 
 func NewDeployment(options DeploymentOptions) *Deployment {
@@ -1038,10 +1039,6 @@ func (d *Deployment) lxcExecf(cmd string, args ...interface{}) error {
 func (d *Deployment) archive() error {
 	versionedContainerName := d.Application.Name + DYNO_DELIMITER + d.Version
 
-	if err := d.exe.CloneContainer(d.Application.Name, versionedContainerName); err != nil {
-		return err
-	}
-
 	// Compress & persist the container image.
 	go func() {
 		var (
@@ -1055,7 +1052,7 @@ func (d *Deployment) archive() error {
 		err := func() error {
 			// NB: LXC (rather annoyingly) automatically appends '.tar.gz' to whatever
 			// argument is specified for the output filename.
-			if err := e.BashCmdf(LXC_BIN+" image export %v-%v %v", d.Application.Name, d.Version, strings.TrimSuffix(archive, ".tar.gz")); err != nil {
+			if err := e.BashCmdf(LXC_BIN+" image export local:%v-%v %v", d.Application.Name, d.Version, strings.TrimSuffix(archive, ".tar.gz")); err != nil {
 				return fmt.Errorf("exporting image: %s; operation aborted", err)
 			}
 
@@ -1098,6 +1095,11 @@ func (d *Deployment) archive() error {
 	return nil
 }
 
+// extract returns the resolved image name.  This is necessary because LXC will
+// refuse to import duplicate fingerprints.  So in cases where the image
+// fingerprint already exists in the LXC image store, that image version must be
+// used.
+//
 // TODO: check for ignored errors.
 func (d *Deployment) extract(version string) error {
 	if err := d.Application.CreateBaseContainerIfMissing(d.exe); err != nil {
@@ -1111,7 +1113,7 @@ func (d *Deployment) extract(version string) error {
 		return err
 	}
 	if exists {
-		fmt.Fprintf(d.Logger, "Image v%v already exists locally\n", version)
+		fmt.Fprintf(d.Logger, "Image %v already exists locally\n", version)
 		return nil
 	}
 
@@ -1146,7 +1148,7 @@ func extractAppFromS3(e *Executor, app *Application, version string) error {
 
 	fmt.Fprintf(e.Logger, "Importing %v\n", localArchive)
 
-	if err := e.BashCmdf(LXC_BIN+" image import %v --public --alias %v", localArchive, app.Name+DYNO_DELIMITER+version); err != nil {
+	if err := e.BashCmdf("%v image import %v --public --alias %v", LXC_BIN, localArchive, app.Name+DYNO_DELIMITER+version); err != nil {
 		return err
 	}
 	return nil
@@ -1161,10 +1163,10 @@ func (d *Deployment) syncNode(node *Node) error {
 set -o errexit
 set -o pipefail
 test -n "$(%[1]v remote list | sed '1,3d' | grep -v '^+' | awk '{print $2}' | grep %[2]v)" || %[1]v remote add --accept-certificate --public %[2]v https://%[2]v:8443
-%[1]v image copy --copy-aliases %[3]v local:`,
+%[1]v image copy --copy-aliases %[2]v:%[3]v local:`,
 		LXC_BIN,
 		DefaultSSHHost,
-		fmt.Sprintf("%v:%v", DefaultSSHHost, d.lxcImageName()),
+		d.lxcImageName(),
 	)
 	if err := d.exe.Run("ssh", "root@"+node.Host, "/bin/bash", "-c", bashCmds); err != nil {
 		fmt.Fprintf(logger, "Problem sending image from host %v to %v: %s\n", DefaultSSHHost, node.Host, err)
@@ -1582,10 +1584,33 @@ func (d *Deployment) deploy() error {
 }
 
 // publish pushes the built image to the LXC image repository.
+//
+// As a side-effect, when successful it sets the Deployment.ImageFingerprint.
 func (d *Deployment) publish() error {
-	if err := d.exe.Run(LXC_BIN, "publish", "--force", "--force-local", "--public", d.Application.Name, "--alias", d.lxcImageName()); err != nil {
-		return err
+	var (
+		cmd    = logcmd(exec.Command(LXC_BIN, "publish", "--force", "--force-local", "--public", d.Application.Name, "--alias", d.lxcImageName()))
+		stderr = &bytes.Buffer{}
+	)
+
+	cmd.Stderr = stderr
+
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("publishing image: %s (stdout=%v stderr=%v)", err, string(output), stderr.String())
 	}
+
+	// Extract the image fingerprint from the output.
+	var (
+		expr    = regexp.MustCompile(`Container published with fingerprint: (.+)`)
+		matches = expr.FindSubmatch(output)
+	)
+
+	if len(matches) < 2 {
+		return fmt.Errorf("fingerprint not found in lxc publish output %q", string(output))
+	}
+
+	d.ImageFingerprint = string(matches[1])
+
 	return nil
 }
 
@@ -1607,10 +1632,11 @@ func (d *Deployment) undoVersionBump() {
 
 func (d *Deployment) release() domain.Release {
 	r := domain.Release{
-		Version:  d.Version,
-		Revision: d.Revision,
-		Date:     time.Now(),
-		Config:   d.Application.Environment,
+		Version:          d.Version,
+		Revision:         d.Revision,
+		ImageFingerprint: d.ImageFingerprint,
+		Date:             time.Now(),
+		Config:           d.Application.Environment,
 	}
 	return r
 }
