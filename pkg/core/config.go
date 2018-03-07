@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -18,7 +19,6 @@ import (
 	"github.com/gigawattio/oslib"
 	lslog "github.com/jaytaylor/logserver"
 	log "github.com/sirupsen/logrus"
-	"launchpad.net/goamz/aws"
 )
 
 const (
@@ -638,16 +638,8 @@ func ConfigFromEnv(key string, defaultValue string) string {
 func ValidateConfig() error {
 	errs := []error{}
 
-	// Validate AWS region.
-	{
-		regionKey, ok := aws.Regions[DefaultAWSRegion]
-		if !ok {
-			validRegions := []string{}
-			for _, r := range aws.Regions {
-				validRegions = append(validRegions, r.Name)
-			}
-			errs = append(errs, fmt.Errorf("invalid option %q for AWS region parameter, acceptable values are: %v", regionKey, validRegions))
-		}
+	if DefaultAWSRegion == "" {
+		errs = append(errs, errors.New("AWS region cannot be empty"))
 	}
 
 	if err := errorlib.Merge(errs); err != nil {
