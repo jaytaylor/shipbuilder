@@ -1,7 +1,7 @@
 ShipBuilder
 ===========
 
-Additional information is available at [https://shipbuilder.io](http://shipbuilder.io)
+Additional information is available at [https://shipbuilder.gigawatt.io](shipbuilder.gigawatt.io)
 
 About
 -----
