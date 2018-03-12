@@ -958,7 +958,7 @@ func releasesProvider(ctx *cli.Context) (provider domain.ReleasesProvider, err e
 
 	switch requested {
 	case "s3", "aws":
-		provider = releases.NewAWSS3ReleasesProvider(core.DefaultAWSKey, core.DefaultAWSSecret, core.DefaultS3BucketName, core.DefaultAWSRegion)
+		provider, err = releases.NewAWSS3ReleasesProvider(core.DefaultAWSKey, core.DefaultAWSSecret, core.DefaultS3BucketName, core.DefaultAWSRegion)
 		return
 
 	case "fs":

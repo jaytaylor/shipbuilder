@@ -76,7 +76,7 @@ func (provider *FSReleasesProvider) Delete(applicationName string, logger io.Wri
 }
 
 // Store adds a new release to the set of releases.
-func (provider *FSReleasesProvider) Store(applicationName string, version string, r io.Reader, length int64) error {
+func (provider *FSReleasesProvider) Store(applicationName string, version string, rs io.ReadSeeker, length int64) error {
 	var (
 		archive = provider.releasePath(applicationName, version)
 		dir     = oslib.PathDirName(archive)
@@ -90,7 +90,7 @@ func (provider *FSReleasesProvider) Store(applicationName string, version string
 	}
 	go func() {
 		w := bufio.NewWriter(fd)
-		if _, err := w.ReadFrom(r); err != nil {
+		if _, err := w.ReadFrom(rs); err != nil {
 			log.Errorf("Problem writing archive file %q: %s", archive, err)
 		}
 	}()

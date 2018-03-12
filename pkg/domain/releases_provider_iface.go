@@ -16,7 +16,7 @@ type ReleasesProvider interface {
 	Delete(applicationName string, logger io.Writer) error
 
 	// Store adds a new release to the set of releases.
-	Store(applicationName string, version string, r io.Reader, length int64) error
+	Store(applicationName string, version string, rs io.ReadSeeker, length int64) error
 
 	// Get retrieves a specific release.
 	Get(applicationName string, version string) (*Release, error)
