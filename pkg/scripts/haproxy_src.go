@@ -20,10 +20,10 @@ global
 
     # Default ciphers to use on SSL-enabled listening sockets.
     # For more information, see ciphers(1SSL).
-    ssl-default-bind-options no-sslv3
+    ssl-default-bind-options force-tlsv12
     ssl-default-bind-ciphers ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:RSA+AESGCM:RSA+AES:!aNULL:!MD5:!DSS
 
-    ssl-default-server-options no-sslv3
+    ssl-default-server-options force-tlsv12
     ssl-default-server-ciphers ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:RSA+AESGCM:RSA+AES:!aNULL:!MD5:!DSS
    
     tune.ssl.default-dh-param 2048
