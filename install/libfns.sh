@@ -851,6 +851,8 @@ net.core.wmem_max = 16777216' | ${SB_SUDO} tee /etc/sysctl.d/60-shipbuilder.conf
             ${SB_SUDO} mkdir /etc/haproxy/certs.d 2>/dev/null
             abortIfNonZero $? "creating /etc/haproxy/certs.d directory"
         fi
+        ${SB_SUDO} chmod 750 /etc/haproxy/certs.d
+        abortIfNonZero $? "chmod 750 /etc/haproxy/certs.d"
 
         echo "info: installing ssl certificate to /etc/haproxy/certs.d"
         ${SB_SUDO} mv ${certFile} /etc/haproxy/certs.d/
