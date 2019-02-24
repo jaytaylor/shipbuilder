@@ -809,7 +809,7 @@ function prepareLoadBalancer() {
     version=$(lsb_release -a 2>/dev/null | grep "Release" | grep -o "[0-9\.]\+$")
 
     if [ "${version}" = "16.04" ] ; then
-        ppa='ppa:vbernat/haproxy-1.7'
+        ppa='ppa:vbernat/haproxy-1.8'
     elif [ "${version}" = "14.04" ] || [ "${version}" = "13.10" ] || [ "${version}" = "12.04" ] ; then
         ppa='ppa:vbernat/haproxy-1.5'
     elif [ "${version}" = "13.04" ] ; then
