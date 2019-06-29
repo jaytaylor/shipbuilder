@@ -313,6 +313,7 @@ func (d *Deployment) hasDevice(name string) (bool, error) {
 }
 
 func (d *Deployment) addDevice(name string, hostPath string, containerPath string) error {
+	log.WithField("app", d.Application.Name).Debugf("Adding LXC device name=%v hostPath=%v containerPath=%v", name, hostPath, containerPath)
 	hasDevice, err := d.hasDevice(name)
 	if err != nil {
 		return err
@@ -326,6 +327,7 @@ func (d *Deployment) addDevice(name string, hostPath string, containerPath strin
 }
 
 func (d *Deployment) removeDevice(name string) error {
+	log.WithField("app", d.Application.Name).Debugf("Removing LXC device name=%v", name)
 	hasDevice, err := d.hasDevice(name)
 	if err != nil {
 		return err
@@ -340,6 +342,9 @@ func (d *Deployment) removeDevice(name string) error {
 
 func (d *Deployment) gitClone() (err error) {
 	// LXD compat: map /git/repo to /git in the container.
+	if err = d.exe.BashCmdf("chmod -R a+r %v", d.Application.BareGitDir()); err != nil {
+		return
+	}
 	if err = d.addDevice("git", d.Application.BareGitDir(), oslib.OsPath(string(os.PathSeparator)+"git")); err != nil {
 		return
 	}
