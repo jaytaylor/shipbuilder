@@ -1026,17 +1026,25 @@ func (d *Deployment) build() (err error) {
 }
 
 func (d *Deployment) lxcExec(cmd string) error {
-	c := exec.Command(LXC_BIN, "exec", "-T", d.Application.Name, "--", "/bin/bash", "-c", fmt.Sprintf("set -o errexit ; set -o pipefail ; %v", cmd))
+	lxcArgs := []string{"exec", "-T", d.Application.Name, "--", "/bin/bash", "-c", fmt.Sprintf("set -o errexit ; set -o pipefail ; %v", cmd)}
+	log.WithField("app", d.Application.Name).Debugf("lxcExec: %v %v", LXC_BIN, strings.Join(lxcArgs, " "))
+	c := exec.Command(LXC_BIN, lxcArgs...)
 	if output, err := c.CombinedOutput(); err != nil {
 		return fmt.Errorf("%s (output=%v)", err, string(output))
+	} else {
+		log.WithField("app", d.Application.Name).Debugf("lxcExec output: %v", string(output))
 	}
 	return nil
 }
 
 func (d *Deployment) lxcExecf(cmd string, args ...interface{}) error {
-	c := exec.Command(LXC_BIN, "exec", "-T", d.Application.Name, "--", "/bin/bash", "-c", fmt.Sprintf("set -o errexit ; set -o pipefail ; %v", fmt.Sprintf(cmd, args...)))
+	lxcArgs := []string{"exec", "-T", d.Application.Name, "--", "/bin/bash", "-c", fmt.Sprintf("set -o errexit ; set -o pipefail ; %v", fmt.Sprintf(cmd, args...))}
+	log.WithField("app", d.Application.Name).Debugf("lxcExecf: %v %v", LXC_BIN, strings.Join(lxcArgs, " "))
+	c := exec.Command(LXC_BIN, lxcArgs...)
 	if output, err := c.CombinedOutput(); err != nil {
 		return fmt.Errorf("%s (output=%v)", err, string(output))
+	} else {
+		log.WithField("app", d.Application.Name).Debugf("lxcExecf output: %v", string(output))
 	}
 	return nil
 }
