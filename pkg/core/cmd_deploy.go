@@ -989,7 +989,7 @@ func (d *Deployment) archive() error {
 	go func() {
 		var (
 			archive    = fmt.Sprintf("/tmp/%v.tar.gz", versionedContainerName)
-			logContext = log.WithField("app", d.Application).WithField("version", d.Version).WithField("archive", archive)
+			logContext = log.WithField("app", d.Application.Name).WithField("version", d.Version).WithField("archive", archive)
 			e          = Executor{
 				Logger: NewLogger(os.Stdout, "[archiver] "),
 			}
