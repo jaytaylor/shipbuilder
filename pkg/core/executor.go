@@ -33,7 +33,7 @@ type Executor struct {
 func (exe *Executor) Run(name string, args ...string) error {
 	if name == "ssh" {
 		// Automatically inject ssh parameters.
-		args = append(defaultSshParametersList, args...)
+		args = append(defaultSSHParametersList, args...)
 	}
 
 	log.Debugf("Running command: " + name + " " + fmt.Sprint(args))
