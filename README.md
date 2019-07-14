@@ -1,5 +1,9 @@
 # ShipBuilder
 
+This is ShipBuilder v2.0, based on LXC 2.
+
+The [legacy v1.0 branch](https://github.com/jaytaylor/shipbuilder/tree/v1.0) lives on in maintenance mode.
+
 ## About
 
 ShipBuilder is a git-based application deployment and serving system (PaaS) written in Go.
