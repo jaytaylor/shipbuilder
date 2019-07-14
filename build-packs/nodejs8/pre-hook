@@ -1,0 +1,58 @@
+#!/bin/bash
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+logfile=/app/out
+exec > "${logfile}" 2>&1
+
+set -x
+
+##
+# Node.js app dependencies and build hook.
+#
+
+function abortIfNonZero() {
+    # @param $1 command return code/exit status (e.g. $?, '0', '1').
+    # @param $2 error message if exit status was non-zero.
+    local rc=${1:-}
+    local what=${2:-}
+    if [ ${rc} -ne 0 ] ; then
+        echo "error: ${what} exited with non-zero status ${rc}"
+        echo "RETURN_CODE: ${rc}"
+        exit ${rc}
+    fi
+}
+
+cd /app/src
+
+dependenciesPath=/app/.shipbuilder
+
+mkdir -p "${dependenciesPath}"
+abortIfNonZero $? 'Creating directory dependenciesPath=${dependenciesPath}'
+
+if [ -r 'package.json' ] ; then
+    if [ -L 'node_modules' ] ; then
+        unlink node_modules
+    elif [ -d 'node_modules' ] ; then
+        rm -rf node_modules
+    fi
+
+    cp package.json "${dependenciesPath}"
+
+    cd "${dependenciesPath}"
+
+    echo '--> Installing npm dependencies'
+    stdbuf -o0 npm install 2>&1
+    abortIfNonZero $? "Command 'stdbuf -o0 npm install"
+
+    ln -s "${dependenciesPath}/node_modules" /app/src/node_modules
+    abortIfNonZero $? "Command 'ln -s ${dependenciesPath}/node_modules /app/src/node_modules'"
+
+else
+    echo 'Warning: no "packages.json" file found'
+fi
+
+echo "RETURN_CODE: 0"
+exit 0
