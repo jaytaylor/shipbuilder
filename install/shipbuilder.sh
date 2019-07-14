@@ -160,8 +160,15 @@ function main() {
             abortIfNonZero $? 'building and deploying shipbuilder binary'
 
             # Install a single build-pack.
-            if ! [ -d "../build-packs/${buildPackToInstall}" ] ; then
-                knownBuildPacks="$(find ../build-packs -depth 1 -type d | cut -d'/' -f3 | tr '\n' ' ' | sed 's/ /, /g' | sed 's/, $//')"
+            if ! [ -d "$(dirname "$0")/../build-packs/${buildPackToInstall}" ] ; then
+                knownBuildPacks="$( \
+                    find "$(dirname "$0")/../build-packs" -maxdepth 1 -type d \
+                    | cut -d'/' -f5 \
+                    | tr '\n' ' ' \
+                    | grep -v '^$' \
+                    | sed 's/ /, /g' \
+                    | sed 's/, $//' \
+                )"
                 echo "error: unable to locate any build-pack named '${buildPackToInstall}', choices are: ${knownBuildPacks}" 1>&2
                 exit 1
             fi
