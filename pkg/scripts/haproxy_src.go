@@ -48,7 +48,7 @@ frontend frontend
     {{- range $domain := .SSLForwardingDomains }}
     http-request redirect scheme https code 301 if !{ ssl_fc } { hdr(host) -i {{ $context.DynHdrFlags }}-- {{ $domain }} }
     {{- end }}
-    bind 0.0.0.0:443 ssl crt /etc/haproxy/certs.d no-sslv3
+    bind 0.0.0.0:443 ssl crt /etc/haproxy/certs.d force-tlsv12
     {{- end }}
     maxconn 32000
     option httplog
@@ -85,11 +85,6 @@ backend {{ .Name }}
     {{- range $app.Servers }}
     server {{ .Host }}-{{ .Port }} {{ .Host}}:{{ .Port}} check port {{ .Port}} observe layer7
     {{- end }}
-    {{- if and $context.HaProxyStatsEnabled $context.HaProxyCredentials }}
-    stats enable
-    stats uri /haproxy
-    stats auth {{ $context.HaProxyCredentials }}
-    {{- end }}
 
 backend {{ $app.Name }}-maintenance
     acl static_file path_end .gif || path_end .jpg || path_end .jpeg || path_end .png || path_end .css
@@ -111,6 +106,14 @@ backend {{ $app.Name }}-maintenance
 backend load_balancer
     stats enable
     stats uri /haproxy
+    stats auth {{ .HaProxyCredentials }}
+{{- end }}
+
+{{ if and .HaProxyStatsEnabled .HaProxyCredentials .LoadBalancers }}
+frontend stats
+    bind *:1337 ssl crt /etc/haproxy/certs.d force-tlsv12
+    stats enable
+    stats uri /tsdyno
     stats auth {{ .HaProxyCredentials }}
 {{- end }}
 `

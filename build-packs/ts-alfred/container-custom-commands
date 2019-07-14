@@ -1,3 +1,4 @@
+
 sudo apt-get update
 sudo apt-get install -y --force-yes apt-transport-https
 
@@ -9,7 +10,7 @@ curl -sL https://deb.nodesource.com/setup_6.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
 sudo apt-get update
-sudo apt-get install -y npm
+sudo apt-get install -y  npm
 
 sudo apt-get install -y nodejs libfreetype6 libfontconfig
 sudo npm rebuild

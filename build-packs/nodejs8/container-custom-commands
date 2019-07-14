@@ -1,0 +1,18 @@
+sudo apt-get update
+sudo apt-get install -y --force-yes apt-transport-https
+
+curl -sL https://deb.nodesource.com/setup_8.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+sudo apt-get update
+sudo apt-get install -y npm
+
+sudo apt-get install -y nodejs libfreetype6 libfontconfig
+sudo npm rebuild
+
+sudo apt-get install -y ruby-dev
+sudo gem install sass -v 3.4.25
+
+sudo npm install -g webdriver-manager protractor
+
+exit 0

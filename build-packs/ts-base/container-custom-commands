@@ -1,0 +1,15 @@
+
+sudo apt-get update
+sudo apt-get install linux-libc-dev -y
+
+sudo pip install virtualenv
+
+sudo apt-add-repository -y ppa:maxmind/ppa
+sudo apt-add-repository -y ppa:openjdk-r/ppa
+
+sudo echo "deb https://deb.nodesource.com/node_6.x trusty main" >> /etc/apt/sources.list
+sudo echo "deb-src https://deb.nodesource.com/node_6.x trusty main" >> /etc/apt/sources.list
+curl -s "https://deb.nodesource.com/gpgkey/nodesource.gpg.key" | sudo apt-key add -
+
+exit 0
+
