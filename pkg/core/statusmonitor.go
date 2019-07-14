@@ -51,7 +51,7 @@ func (ns *NodeStatus) Parse(input string, err error) {
 }
 
 func RemoteCommand(DefaultSSHHost string, sshArgs ...string) (string, error) {
-	frontArgs := append([]string{"1m", "ssh", DEFAULT_NODE_USERNAME + "@" + DefaultSSHHost}, defaultSshParametersList...)
+	frontArgs := append([]string{"1m", "ssh", DEFAULT_NODE_USERNAME + "@" + DefaultSSHHost}, defaultSSHParametersList...)
 	combinedArgs := append(frontArgs, sshArgs...)
 
 	//fmt.Printf("debug: cmd is -> ssh %v <-\n", combinedArgs)

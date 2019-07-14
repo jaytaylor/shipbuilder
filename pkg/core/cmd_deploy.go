@@ -112,13 +112,13 @@ var deployLock = DeployLock{
 	numFinished: 0,
 }
 
-// applySshPrivateKeyFile is used to enable private github repo access.
-func (d *Deployment) applySshPrivateKeyFile() error {
-	if d.Application.SshPrivateKey != nil {
-		if err := os.Mkdir(d.Application.SshDir(), os.FileMode(int(0700))); err != nil {
+// applySSHPrivateKeyFile is used to enable private github repo access.
+func (d *Deployment) applySSHPrivateKeyFile() error {
+	if d.Application.SSHPrivateKey != nil {
+		if err := os.Mkdir(d.Application.SSHDir(), os.FileMode(int(0700))); err != nil {
 			return err
 		}
-		if err := ioutil.WriteFile(d.Application.SshPrivateKeyFilePath(), []byte(*d.Application.SshPrivateKey), 0500); err != nil {
+		if err := ioutil.WriteFile(d.Application.SSHPrivateKeyFilePath(), []byte(*d.Application.SSHPrivateKey), 0500); err != nil {
 			return err
 		}
 	}
@@ -127,12 +127,12 @@ func (d *Deployment) applySshPrivateKeyFile() error {
 
 // Removes To be invoked after dependency retrieval.
 func (d *Deployment) removeSshPrivateKeyFile() error {
-	path := d.Application.SshPrivateKeyFilePath()
+	path := d.Application.SSHPrivateKeyFilePath()
 	exists, err := PathExists(path)
 	if err != nil {
 		return fmt.Errorf("checking if path=%v exists: %s", path, err)
 	}
-	if d.Application.SshPrivateKey != nil && exists {
+	if d.Application.SSHPrivateKey != nil && exists {
 		if err := os.Remove(path); err != nil {
 			return err
 		}
@@ -181,19 +181,6 @@ func (d *Deployment) createContainer() (err error) {
 	}()
 
 	/*
-		if d.err = d.exe.BashCmdf("rm -rf %[1]v/* && mkdir -p %[1]v", d.Application.AppDir()); d.err != nil {
-			err = d.err
-			return
-		}
-		// if d.err = d.exe.BashCmdf("sudo lxc exec %v -- rm -rf %v/*", d.Application.Name, d.Application.AppDir()); d.err != nil {
-		// 	err = d.err
-		// 	return
-		// }
-		// if d.err = d.exe.BashCmdf("sudo lxc exec %v -- mkdir -p %v", d.Application.SrcDir()); d.err != nil {
-		// 	err = d.err
-		// 	return
-		// }
-
 		if d.err = d.b64FileIntoContainer(EXE, oslib.OsPath(string(os.PathSeparator)+"app", BINARY), "755"); d.err != nil {
 			err = d.err
 			return
@@ -207,7 +194,7 @@ func (d *Deployment) createContainer() (err error) {
 		// // TEMPORARILY DISABLED
 		// // TODO: RESTORE THIS FUNCTIONALITY!
 		// // Add the public ssh key for submodule (and later dependency) access.
-		// if d.err = d.applySshPrivateKeyFile(); d.err != nil {
+		// if d.err = d.applySSHPrivateKeyFile(); d.err != nil {
 		// 	err = d.err
 		// 	return
 		// }
@@ -291,16 +278,6 @@ func (d *Deployment) initContainer() error {
 	if err := d.exe.CloneContainer("base-"+d.Application.BuildPack, d.Application.Name); err != nil {
 		return err
 	}
-	// Create path mapping as per
-	// https://stgraber.org/2017/06/15/custom-user-mappings-in-lxd-containers/.
-	// if err := d.addDevice("git", d.Application.GitDir(), string(os.PathSeparator)+"git"); err != nil {
-	// 	return err
-	// }
-	// // TODO: Make into "IF LINE DOESNT EXIST, INSERT IT"
-	// if err := d.exe.BashCmdf(`printf "lxd:$(id -u %[1]v):1\nroot:$(id -u %[1]v):1\n" | sudo tee -a /etc/subuid`, DEFAULT_NODE_USERNAME); err != nil {
-	// 	return err
-	// }
-	// // && printf "lxd:$(id -g ubuntu):1\nroot:$(id -g):1\n" | sudo tee -a /etc/subgid, ...)
 	return nil
 }
 
@@ -359,11 +336,7 @@ func (d *Deployment) gitClone() (err error) {
 		}
 	}()
 
-	// Export the source to the container.  Use `--depth 1` to omit the history
-	// which wasn't going to be used anyways.
-	// if err = d.exe.BashCmd("git clone --depth 1 --branch master file://" + d.Application.GitDir() + " " + d.Application.SrcDir()); err != nil {
-	// if err = d.exe.BashCmd("git clone file://" + d.Application.GitDir() + " " + d.Application.SrcDir()); err != nil {
-	// if err = d.exe.BashCmdf("git --git-dir=%q --work-tree=%q checkout -f", d.Application.GitDir(), d.Application.SrcDir()); err != nil {
+	// Copy source code into the container.
 	if err = d.lxcExecf("git clone --depth 1 file:///git /app/src"); err != nil {
 		return
 	}
@@ -485,11 +458,6 @@ func (d *Deployment) b64FileIntoContainer(src string, dst string, permissions st
 	// 	return
 	// }
 	// return
-
-	// // if d.err = d.exe.BashCmdf("sudo lxc exec %v cp " + EXE + " " + d.Application.AppDir() + "/" + BINARY); d.err != nil {
-	// // 	err = d.err
-	// // 	return
-	// // }
 }
 
 func (d *Deployment) prepareEnvironmentVariables() (err error) {
@@ -544,19 +512,6 @@ func (d *Deployment) prepareEnvironmentVariables() (err error) {
 	}
 
 	return
-
-	// if err := d.exe.BashCmd("rm -rf " + oslib.OsPath(d.Application.AppDir(), "env")); err != nil {
-	// 	return err
-	// }
-	// if err := d.exe.BashCmd("mkdir -p " + oslib.OsPath(d.Application.AppDir(), "env")); err != nil {
-	// 	return err
-	// }
-	// for key, value := range d.Application.Environment {
-	// 	if err := ioutil.WriteFile(oslib.OsPath(d.Application.AppDir(), "env", key), []byte(value), os.FileMode(int(0444))); err != nil {
-	// 		return err
-	// 	}
-	// }
-	// return nil
 }
 
 func (d *Deployment) prepareShellEnvironment() error {
@@ -565,18 +520,6 @@ func (d *Deployment) prepareShellEnvironment() error {
 	if err := d.lxcExecf("mkdir -p /app/src && ps -ef && usermod -d /app/src %v", DEFAULT_NODE_USERNAME); err != nil {
 		return err
 	}
-	// TODO: TRACK DOWN THE ENVDIR THING - IT DOESN'T APPEAR TO HAVE EVER EXISTED???
-
-	// escapedAppSrc := strings.Replace(d.Application.LocalSrcDir(), "/", `\/`, -1)
-	// err := d.exe.Run("sudo",
-	// 	"lxc", "exec", d.Application.Name, "--",
-	// 	"sed", "-i",
-	// 	fmt.Sprintf(`s/^\(%[1]v:.*:\):\/home\/%[1]v:\/bin\/bash$/\1:%[2]v:\/bin\/bash/g`, DEFAULT_NODE_USERNAME, escapedAppSrc),
-	// 	"/etc/passwd",
-	// )
-	// if err != nil {
-	// 	return err
-	// }
 
 	// Move /home/<user>/.ssh to the new home directory in /app/src
 	if err := d.lxcExecf("test ! -d /home/%[1]v/.ssh || cp -a /home/%[1]v/.ssh /app/src/", DEFAULT_NODE_USERNAME); err != nil {
@@ -588,13 +531,6 @@ func (d *Deployment) prepareShellEnvironment() error {
 func (d *Deployment) prepareAppFilePermissions() error {
 	// Chown the app env, src, and output to default node user.
 	return d.lxcExecf(`bash -c "touch /app/out && chown $(id -u %[1]v):$(id -g %[1]v) /app && chown -R $(id -u %[1]v):$(id -g %[1]v) /app/{env,out,src}"`, DEFAULT_NODE_USERNAME)
-	// return d.exe.BashCmd(
-	// 	"touch " + d.Application.AppDir() + "/out && " +
-	// 		"chown $(cat " + d.Application.RootFsDir() + "/etc/passwd | grep '^" + DEFAULT_NODE_USERNAME + ":' | cut -d':' -f3,4) " +
-	// 		d.Application.AppDir() + " && " +
-	// 		"chown -R $(cat " + d.Application.RootFsDir() + "/etc/passwd | grep '^" + DEFAULT_NODE_USERNAME + ":' | cut -d':' -f3,4) " +
-	// 		d.Application.AppDir() + "/{out,src}",
-	// )
 }
 
 // installAppPPAs processes and acts upon an apps ".ppas" file.
@@ -786,11 +722,8 @@ func (d *Deployment) build() (err error) {
 		return
 	}
 
-	// if d.err = d.exe.BashCmdf("rm -rf %[1]v/* && mkdir -p %[1]v", d.Application.AppDir()); d.err != nil {
-	// 	err = d.err
-	// 	return
-	// }
-	if d.err = d.lxcExec("bash -c 'rm -rf /app/src /app/env && mkdir -p /app /app/env'"); d.err != nil {
+	if d.err = d.lxcExec("bash -c 'rm -rf /app/src /app/env ; rc=$? ; echo rc=${rc} ; find /app/src -exec stat {} + ; mkdir -p /app /app/env ; exit ${rc}'"); d.err != nil {
+		// if d.err = d.lxcExec("bash -c 'rm -rf /app/src /app/env && mkdir -p /app /app/env'"); d.err != nil {
 		err = d.err
 		return
 	}
@@ -809,7 +742,7 @@ func (d *Deployment) build() (err error) {
 	// // TEMPORARILY DISABLED
 	// // TODO: RESTORE THIS FUNCTIONALITY!
 	// // Add the public ssh key for submodule (and later dependency) access.
-	// if d.err = d.applySshPrivateKeyFile(); d.err != nil {
+	// if d.err = d.applySSHPrivateKeyFile(); d.err != nil {
 	// 	err = d.err
 	// 	return
 	// }

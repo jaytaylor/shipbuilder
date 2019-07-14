@@ -33,7 +33,6 @@ const (
 	CONFIG                             = DIRECTORY + "/config.json"
 	GIT_DIRECTORY                      = "/git"
 	DEFAULT_NODE_USERNAME              = "ubuntu"
-	VERSION                            = "0.1.4"
 	NODE_SYNC_TIMEOUT_SECONDS          = 180
 	DYNO_START_TIMEOUT_SECONDS         = 120
 	LOAD_BALANCER_SYNC_TIMEOUT_SECONDS = 45
@@ -46,7 +45,7 @@ const (
 	bashHAProxyReloadCommand = `/bin/bash -c 'set -o errexit ; set -o pipefail ; if [ "$(sudo systemctl status haproxy | grep --only-matching "Active: [^ ]\+" | cut -d " " -f 2)" = "inactive" ] ; then sudo systemctl start haproxy ; else sudo systemctl reload haproxy ; fi'`
 )
 
-var defaultSshParametersList = strings.Split(DEFAULT_SSH_PARAMETERS, " ")
+var defaultSSHParametersList = strings.Split(DEFAULT_SSH_PARAMETERS, " ")
 
 // Global configuration.
 var (
@@ -87,7 +86,7 @@ type Application struct {
 	LastDeploy    string
 	Maintenance   bool
 	Drains        []string
-	SshPrivateKey *string
+	SSHPrivateKey *string
 }
 
 type Node struct {
@@ -103,38 +102,17 @@ type Config struct {
 	Applications  []*Application
 }
 
-func (app *Application) LxcDir() string {
-	panic("LxcDir is *DECPRECATED*, DISCONTINUE ALL USE")
-}
-func (app *Application) RootFsDir() string {
-	panic("RootFsDir is *DECPRECATED*, DISCONTINUE ALL USE")
-}
-func (app *Application) AppDir() string {
-	panic("AppDir is *DECPRECATED*, DISCONTINUE ALL USE")
-}
-func (app *Application) SrcDir() string {
-	panic("SrcDir is *DECPRECATED*, DISCONTINUE ALL USE")
-}
 func (app *Application) BareGitDir() string {
 	return GIT_DIRECTORY + "/" + app.Name
 }
-func (app *Application) LocalAppDir() string {
-	return APP_DIR
+func (app *Application) SSHDir() string {
+	panic("SSHDir is *DECPRECATED*, DISCONTINUE ALL USE")
 }
-func (app *Application) LocalSrcDir() string {
-	return APP_DIR + "/src"
-}
-func (app *Application) SshDir() string {
-	panic("SshDir is *DECPRECATED*, DISCONTINUE ALL USE")
-}
-func (app *Application) SshPrivateKeyFilePath() string {
-	panic("SshPrivateKeyFilePath is *DECPRECATED*, DISCONTINUE ALL USE")
+func (app *Application) SSHPrivateKeyFilePath() string {
+	panic("SSHPrivateKeyFilePath is *DECPRECATED*, DISCONTINUE ALL USE")
 }
 func (app *Application) BaseContainerName() string {
 	return "base-" + app.BuildPack
-}
-func (app *Application) GitDir() string {
-	panic("GitDir is *DECPRECATED*, DISCONTINUE ALL USE")
 }
 func (app *Application) LastDeployNumber() (int, error) {
 	return strconv.Atoi(strings.TrimPrefix(app.LastDeploy, "v"))
@@ -430,8 +408,8 @@ func (server *Server) SyncLoadBalancers(e *Executor, addDynos []Dyno, removeDyno
 			MaintenancePageFullPath: app.MaintenancePageFullPath(),
 			MaintenancePageBasePath: app.MaintenancePageBasePath(),
 			MaintenancePageDomain:   app.MaintenancePageDomain(),
-			SSL:           !isTruthy(app.Environment["SB_DISABLE_SSL"]),
-			SSLForwarding: !isTruthy(app.Environment["SB_DISABLE_SSL_FORWARDING"]),
+			SSL:                     !isTruthy(app.Environment["SB_DISABLE_SSL"]),
+			SSLForwarding:           !isTruthy(app.Environment["SB_DISABLE_SSL_FORWARDING"]),
 		}
 		for proc, _ := range app.Processes {
 			if proc == "web" {

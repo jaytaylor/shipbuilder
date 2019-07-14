@@ -53,7 +53,7 @@ func (server *Server) sysPerformZfsMaintenance(logger io.Writer) error {
 				fmt.Fprintf(logger, "Error rsync'ing %v to %v: %v, node will be skipped", maintenanceScriptPath, node.Host, err)
 				continue
 			}
-			sshArgs := append(defaultSshParametersList, "root@"+node.Host, maintenanceScriptPath)
+			sshArgs := append(defaultSSHParametersList, "root@"+node.Host, maintenanceScriptPath)
 			err = e.Run("ssh", sshArgs...)
 			if err != nil {
 				fmt.Fprintf(logger, "Error running %v on %v: %v", maintenanceScriptPath, node.Host, err)
