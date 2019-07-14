@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -212,7 +213,10 @@ func NodeStatusToDynos(nodeStatus *NodeStatus) ([]Dyno, error) {
 }
 
 func (server *Server) GetRunningDynos(application string, processType string) ([]Dyno, error) {
-	dynos := []Dyno{}
+	var (
+		dynos           = []Dyno{}
+		expectedProcess = normalizeAppProcessName(processType)
+	)
 
 	cfg, err := server.getConfig(true)
 	if err != nil {
@@ -229,7 +233,7 @@ func (server *Server) GetRunningDynos(application string, processType string) ([
 			dyno, err := ContainerToDyno(node.Host, container)
 			if err != nil {
 				log.Errorf("parsing Container->Dyno for host/container=%v/%v: %v\n", node.Host, container, err)
-			} else if dyno.State == DYNO_STATE_RUNNING && dyno.Application == application && dyno.Process == processType {
+			} else if dyno.State == DYNO_STATE_RUNNING && dyno.Application == application && dyno.Process == expectedProcess {
 				dynos = append(dynos, dyno)
 			}
 		}
@@ -273,6 +277,7 @@ func (server *Server) NewDynoGenerator(nodes []*Node, application string, versio
 }
 
 func (dg *DynoGenerator) Next(process string) (Dyno, error) {
+	process = normalizeAppProcessName(process)
 	nodeStatus := dg.statuses[dg.position%len(dg.statuses)].status
 	dg.position++
 	port := fmt.Sprint(dg.server.getNextPort(&nodeStatus, &dg.usedPorts))
@@ -341,4 +346,14 @@ func (server *Server) getNextPort(nodeStatus *NodeStatus, usedPorts *[]int) int 
 	*usedPorts = AppendIfMissing(*usedPorts, port)
 	server.GlobalPortTracker.Using(port)
 	return port
+}
+
+// normalizeAppProcessName converts dashes to camelCase.
+func normalizeAppProcessName(process string) string {
+	// Camel-case process name to align with conversion in container creation
+	// shell script.
+	p := regexp.MustCompile(`[-_]+([a-zA-Z0-9])`).ReplaceAllStringFunc(process, func(s string) string {
+		return strings.ToUpper(string(s[1]))
+	})
+	return p
 }

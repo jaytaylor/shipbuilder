@@ -296,6 +296,7 @@ func (d *Deployment) addDevice(name string, hostPath string, containerPath strin
 		return err
 	}
 	if !hasDevice {
+		// e.g. lxc config device add my-app git disk source=/git/my-app path=/git
 		if err := d.exe.BashCmdf("%v config device add %v %v disk source=%v path=%v", LXC_BIN, d.Application.Name, name, hostPath, containerPath); err != nil {
 			return err
 		}
@@ -319,7 +320,8 @@ func (d *Deployment) removeDevice(name string) error {
 
 func (d *Deployment) gitClone() (err error) {
 	// LXD compat: map /git/repo to /git in the container.
-	if err = d.exe.BashCmdf("chmod -R a+r %v", d.Application.BareGitDir()); err != nil {
+	// Ensure permissions allow container user to read and traverse git repository content.
+	if err = d.exe.BashCmdf("chown -R root:root %[1]v && chmod -R 777 %[1]v", d.Application.BareGitDir()); err != nil {
 		return
 	}
 	if err = d.addDevice("git", d.Application.BareGitDir(), oslib.OsPath(string(os.PathSeparator)+"git")); err != nil {
@@ -337,7 +339,7 @@ func (d *Deployment) gitClone() (err error) {
 	}()
 
 	// Copy source code into the container.
-	if err = d.lxcExecf("git clone --depth 1 file:///git /app/src"); err != nil {
+	if err = d.lxcExecf("rm -rf /app/src && git clone --depth 1 file:///git /app/src && chown -R ubuntu:ubuntu /app/src"); err != nil {
 		return
 	}
 	return

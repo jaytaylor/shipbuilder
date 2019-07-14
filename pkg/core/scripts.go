@@ -643,9 +643,9 @@ fi
 echo '{port}' > ../env/PORT
 while read line || [ -n "${{line}}" ]; do
     # Convert app process name from snake to camelCase.
-    process="$(echo ""${{line%%:*}}") | sed 's/[_-]\+\([a-zA-Z0-9]\)/\U\1/g'"
+    process="$(echo "${{line%%:*}}" | sed 's/[_-]\+\([a-zA-Z0-9]\)/\U\1/g')"
     command="${{line#*: }}"
-    if [ "${process}" = "{process}" ]; then
+    if [ "${{process}}" = "{process}" ]; then
         envdir {envDir} /bin/bash -c "${{__DEBUG}}export PATH=\"$(find /app/.shipbuilder -type d -wholename '*bin' -maxdepth 2):${{PATH}}\" ; set -o errexit ; set -o pipefail ; ( ${{command}} ) 2>&1 | /app/` + BINARY + ` logger --host={host} --app={app} --process={process}.{port}"
     fi
 done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, app=app, envDir=envDir)
