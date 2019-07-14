@@ -1391,6 +1391,7 @@ func (d *Deployment) Validate() error {
 
 // validateProcfile performs validation on an apps Procfile.
 // TODO: check for ignored errors.
+// TODO: check for instances of duplicate names (snake vs camel).
 func (d *Deployment) validateProcfile() error {
 	r, err := d.bareRepoContent("Procfile")
 	if err != nil {
@@ -1401,7 +1402,7 @@ func (d *Deployment) validateProcfile() error {
 	}
 
 	var (
-		processExpr = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]:.*$`)
+		processExpr = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*[a-zA-Z0-9]:.*$`)
 		lineFilter  = func(line string) bool {
 			return len(line) > 0 && strings.Index(line, "#") != 0 && strings.Index(line, ";") != 0
 		}

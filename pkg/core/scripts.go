@@ -619,6 +619,8 @@ def main(argv):
     # braces.
     host = defaultSshHost
     runScript = '''#!/usr/bin/env bash
+
+# TODO: enable errexit and pipefail.
 # set -o errexit
 # set -o pipefail
 set -o nounset
@@ -629,29 +631,21 @@ rm -rf /tmp/log
 
 cd /app/src
 
-__DEBUG=
+__DEBUG=''
 
 if [ -f ../env/SB_DEBUG ] ; then
     export SB_DEBUG="$(cat ../env/SB_DEBUG)"
-    if [ "${{SB_DEBUG}}" = '1' ] \
-        || [ "${{SB_DEBUG}}" = 't' ] \
-        || [ "${{SB_DEBUG}}" = 'true' ] \
-        || [ "${{SB_DEBUG}}" = 'True' ] \
-        || [ "${{SB_DEBUG}}" = 'TRUE' ] \
-        || [ "${{SB_DEBUG}}" = 'y' ] \
-        || [ "${{SB_DEBUG}}" = 'yes' ] \
-        || [ "${{SB_DEBUG}}" = 'Y' ] \
-        || [ "${{SB_DEBUG}}" = 'Yes' ] \
-        || [ "${{SB_DEBUG}}" = 'YES' ] ; then
-        __DEBUG='set -x ; '
+    if [[ "${{SB_DEBUG:-}}" =~ ^(1|[tT]([rR][uU][eE])?|[yY]([eE][sS])?)$ ]] ; then
+        __DEBUG='set -o xtrace ; '
     fi
 fi
 
 echo '{port}' > ../env/PORT
 while read line || [ -n "${{line}}" ]; do
-    process="${{line%%:*}}"
+    # Convert app process name from snake to camelCase.
+    process="$(echo ""${{line%%:*}}") | sed 's/[_-]\+\([a-zA-Z0-9]\)/\U\1/g'"
     command="${{line#*: }}"
-    if [ "$process" == "{process}" ]; then
+    if [ "${process}" = "{process}" ]; then
         envdir {envDir} /bin/bash -c "${{__DEBUG}}export PATH=\"$(find /app/.shipbuilder -type d -wholename '*bin' -maxdepth 2):${{PATH}}\" ; set -o errexit ; set -o pipefail ; ( ${{command}} ) 2>&1 | /app/` + BINARY + ` logger --host={host} --app={app} --process={process}.{port}"
     fi
 done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, app=app, envDir=envDir)

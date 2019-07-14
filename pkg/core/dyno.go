@@ -159,7 +159,8 @@ func (dpt *DynoPortTracker) Release(host string, port int) {
 	}
 }
 
-// NB: Container name format is: appName-version-process-port
+// n.b. Container name format is: app-version-process-port.
+// n.b. "container" param must container app-version-process-port-status.
 func ContainerToDyno(host string, container string) (Dyno, error) {
 	tokens := strings.SplitN(stringsutil.Reverse(container), DYNO_DELIMITER, 5)
 
