@@ -618,7 +618,7 @@ def main(argv):
     # NB: The curly braces are kinda crazy here, to get a single '{' or '}' with python.format(), use double curly
     # braces.
     host = defaultSshHost
-    runScript = '''#!/usr/bin/env bash
+    runScript = r'''#!/usr/bin/env bash
 
 # TODO: enable errexit and pipefail.
 # set -o errexit
