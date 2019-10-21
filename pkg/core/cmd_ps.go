@@ -8,13 +8,23 @@ import (
 func (server *Server) Ps_List(conn net.Conn, applicationName string) error {
 	return server.WithApplication(applicationName, func(app *Application, cfg *Config) error {
 		str := ""
+		procfile, err := Procfile(applicationName)
+		if err != nil {
+			Logf(conn, "Warn: app=%v failed getting or parsing Procfile: %s", app.Name, err)
+		}
 		for process, numDynos := range app.Processes {
+			Logf(conn, "=== %v: ", process)
+			//if len(procfile) > 0 {
+			if _, ok := procfile[process]; !ok {
+				Logf(conn, "\nWarn: app=%[1]v currently has no Procfile entry for process=%[2]v\n=== %[2]v", app.Name, process)
+			}
+			//}
 			dynos, err := server.GetRunningDynos(app.Name, process)
 			if err != nil {
-				Logf(conn, "Error: %v (process was '%v')", err, process)
+				Logf(conn, "Error: %v (app=%q process=%q)", err, app.Name, process)
 				continue
 			}
-			Logf(conn, "=== %v: dyno scale=%v, actual=%v\n", process, numDynos, len(dynos))
+			Logf(conn, "dyno scale=%v, actual=%v\n", numDynos, len(dynos))
 			for _, dyno := range dynos {
 				Logf(conn, "%v @ %v [%v:%v]\n", process, dyno.Version, dyno.Host, dyno.Port)
 			}

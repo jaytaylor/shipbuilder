@@ -8,39 +8,32 @@ import (
 )
 
 const (
-	PRE_RECEIVE = `#!/usr/bin/env bash
-
-# set -x
+	PRE_RECEIVE_SH = `#!/usr/bin/env bash
 
 set -o errexit
 set -o pipefail
 set -o nounset
 
-#whoami
-#ls -lah /git/test
-#find /git/test
-#rm -rf /tmp/test && cp -a /git/test /tmp/
-echo '==========================================='
-#find /tmp/test
+# set -o xtrace
 
 while read oldrev newrev refname; do
-    echo $newrev > $refname
-    ` + EXE + ` pre-receive "$(pwd)" "${oldrev}" "${newrev}" "${refname}" # || exit 0
+    echo "${newrev}" > "${refname}"
+    ` + EXE + ` pre-receive "$(pwd)" "${oldrev}" "${newrev}" "${refname}"
 done`
 
-	POST_RECEIVE = `#!/usr/bin/env bash
-
-# set -x
+	POST_RECEIVE_SH = `#!/usr/bin/env bash
 
 set -o errexit
 set -o pipefail
 set -o nounset
+
+# set -o xtrace
 
 while read oldrev newrev refname; do
     ` + EXE + ` post-receive "$(pwd)" "${oldrev}" "${newrev}" "${refname}"
 done`
 
-	LOGIN_SHELL = `#!/usr/bin/env bash
+	LOGIN_SHELL_SH = `#!/usr/bin/env bash
 /usr/bin/envdir ` + ENV_DIR + ` /bin/bash`
 
 	// # Cleanup old versions on the shipbuilder build box (only old versions, not the newest/latest version).
@@ -66,7 +59,7 @@ done`
 	//
 	// sudo -n lxc-ls --fancy | grep '_v[0-9]\+.*STOPPED' | cut -f1 -d' ' | xargs -n1 -IX bash -c 'echo X ; ( sudo -n zfs destroy tank/X; sudo -n zfs destroy tank/$(echo X | sed "s/\([^_]\+\).*/\1/")@X || : ) && test $(sudo -n find /var/lib/lxc/X/rootfs -maxdepth 1 | wc -l) -lt 2 && sudo -n rm -rf /var/lib/lxc/X && echo "destroyed X" || echo "failed to eradicate X"'
 
-	ZFS_MAINTENANCE = `#!/usr/bin/env bash
+	ZFS_MAINTENANCE_SH = `#!/usr/bin/env bash
 
 # Cleanup old versions on the shipbuilder build box (only old versions, not the newest/latest version).
 
@@ -229,9 +222,9 @@ destroyOldAppVersions
 
 exit $?`
 
-	// LXDCompatScript updates the LXD systemd service definition to protect
+	// LXDCompatScript_PY updates the LXD systemd service definition to protect
 	// against /var/lib/lxd path conflicts between LXD and shipbuilder.
-	LXDCompatScript = `
+	LXDCompatScript_PY = `
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
@@ -435,9 +428,9 @@ def portForward(action, container, ip, port):
                 raise subprocess.CalledProcessError(statusCode, 'iptables failure; no handler for exit status code {0}'.format(statusCode))
 `
 
-	// AutoIPTablesScript is the automatic IP tables fixer script to allow
+	// AutoIPTablesScript_PY is the automatic IP tables fixer script to allow
 	// containers running on slaves to survive reboots.
-	AutoIPTablesScript = `#!/usr/bin/env python
+	AutoIPTablesScript_PY = `#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 ` + pyIptables + `
@@ -481,7 +474,7 @@ if __name__ == '__main__':
 )
 
 // TODO TODO TODO: ADD IPTABLES-BASED PORT CHECK TO THIS.
-var POSTDEPLOY = `#!/usr/bin/python -u
+var POST_DEPLOY_PY = `#!/usr/bin/python -u
 # -*- coding: utf-8 -*-
 
 import os
@@ -697,8 +690,7 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
                         '{0}:{1}/'.format(ip, port),
                     ], stderr=sys.stderr, stdout=sys.stdout)
                     break
-
-                except subprocess.CalledProcessError, e:
+                except subprocess.CalledProcessError as e:
                     if time.time() - startedTs > maxSeconds:
                         sys.stderr.write('- error: curl http check failed, {0}\n'.format(e))
                         subprocess.check_call(['/tmp/shutdown_container.py', container, 'skip-stop'])
@@ -711,9 +703,30 @@ done < Procfile'''.format(port=port, host=host.split('@')[-1], process=process, 
         subprocess.check_call(['/tmp/shutdown_container.py', container, 'skip-stop'])
         sys.exit(1)
 
+    # Verify system service (named "app") is running.
+    try:
+        subprocess.check_call([
+            'lxc',
+            'exec',
+            container,
+            '--',
+            'systemctl',
+            '--no-pager',
+            'status',
+            'app',
+        ])
+    except subprocess.CalledProcessError as e:
+        sys.stderr.write('ERROR: Systemd service not running for %s\n' % (container,))
+        try:
+            subprocess.check_call(['/tmp/shutdown_container.py', container, 'skip-stop'])
+        except subprocess.CalledProcessError as e:
+            sys.stderr.write('WARN: Cleanup failed for container=%s\n' % (container,))
+
+        sys.exit(1)
+
 main(sys.argv)`
 
-var SHUTDOWN_CONTAINER = `#!/usr/bin/python -u
+var SHUTDOWN_CONTAINER_PY = `#!/usr/bin/python -u
 # -*- coding: utf-8 -*-
 
 import os
@@ -734,7 +747,7 @@ def retriableCommand(*command):
     for _ in range(0, 30):
         try:
             return subprocess.check_call(command, stdout=sys.stdout, stderr=sys.stderr)
-        except subprocess.CalledProcessError, e:
+        except subprocess.CalledProcessError as e:
             if 'dataset is busy' in str(e):
                 time.sleep(0.5)
                 continue
@@ -827,7 +840,7 @@ def main(argv):
                 #     # Stop and destroy the container.
                 #     log('stopping container: {}'.format(container))
                 #     subprocess.call([lxcBin, 'stop', '--force', container], stdout=sys.stdout, stderr=sys.stderr)
-                # except Exception, e:
+                # except Exception as e:
                 #     if not skipStop:
                 #         raise e # Otherwise ignore.
 

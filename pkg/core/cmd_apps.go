@@ -100,7 +100,7 @@ func (server *Server) initAppGitRepo(conn net.Conn, applicationName string) erro
 	// Add pre- and post- receive hooks.
 	if err := ioutil.WriteFile(
 		fmt.Sprintf("%[1]v%[2]v%[3]v%[2]vhooks/pre-receive", GIT_DIRECTORY, string(os.PathSeparator), applicationName),
-		[]byte(PRE_RECEIVE),
+		[]byte(PRE_RECEIVE_SH),
 		os.FileMode(int(0777)),
 	); err != nil {
 		return fmt.Errorf("initializing pre-receive local git repo for app=%q: %s", applicationName, err)
@@ -108,7 +108,7 @@ func (server *Server) initAppGitRepo(conn net.Conn, applicationName string) erro
 
 	if err := ioutil.WriteFile(
 		fmt.Sprintf("%[1]v%[2]v%[3]v%[2]vhooks/post-receive", GIT_DIRECTORY, string(os.PathSeparator), applicationName),
-		[]byte(POST_RECEIVE),
+		[]byte(POST_RECEIVE_SH),
 		os.FileMode(int(0777)),
 	); err != nil {
 		return fmt.Errorf("initializing post-receive in local git repo for app=%q: %s", applicationName, err)

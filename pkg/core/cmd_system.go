@@ -37,7 +37,7 @@ func (server *Server) sysPerformZfsMaintenance(logger io.Writer) error {
 
 	maintenanceScriptPath := "/tmp/zfs_maintenance.sh"
 
-	err := ioutil.WriteFile(maintenanceScriptPath, []byte(ZFS_MAINTENANCE), 0777)
+	err := ioutil.WriteFile(maintenanceScriptPath, []byte(ZFS_MAINTENANCE_SH), 0777)
 	if err != nil {
 		fmt.Fprintf(logger, "Error writing maintenance script to %v: %v, operation aborted\n", maintenanceScriptPath, err)
 		return err

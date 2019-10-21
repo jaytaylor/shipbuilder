@@ -165,7 +165,7 @@ func (d *Deployment) createContainer() (err error) {
 		// Housekeeping.
 		running, checkErr := d.exe.ContainerRunning(d.Application.Name)
 		if checkErr != nil {
-			log.Errorf("Unexected problem checking if container already running for app=%q: %s", d.Application.Name, err)
+			log.Errorf("Unexpected problem checking if container already running for app=%q: %s", d.Application.Name, err)
 			return
 		}
 		if running {

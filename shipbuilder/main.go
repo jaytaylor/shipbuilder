@@ -1277,25 +1277,25 @@ func scriptSubcommands() []*cli.Command {
 			Name:        "auto-iptables",
 			Aliases:     []string{"auto-iptables.py", "iptables", "iptables.py"},
 			Description: "Automatic IPTables fixer (should be cron'd to allow containers running on nodes to become accessible again after a reboot)",
-			Action:      genPrintAction(core.AutoIPTablesScript),
+			Action:      genPrintAction(core.AutoIPTablesScript_PY),
 		},
 		&cli.Command{
 			Name:        "postdeploy",
 			Aliases:     []string{"postdeploy.py"},
 			Description: "Container launcher",
-			Action:      genPrintAction(core.POSTDEPLOY),
+			Action:      genPrintAction(core.POST_DEPLOY_PY),
 		},
 		&cli.Command{
 			Name:        "shutdown",
 			Aliases:     []string{"shutdown.py"},
 			Description: "Container terminator",
-			Action:      genPrintAction(core.SHUTDOWN_CONTAINER),
+			Action:      genPrintAction(core.SHUTDOWN_CONTAINER_PY),
 		},
 		&cli.Command{
 			Name:        "lxd-systemd-patch",
 			Aliases:     []string{"lxd-systemd-patch.py", "lxd-compat", "lxd-compat.py"},
-			Description: "LXDCompatScript updates the LXD systemd service definition to protect against /var/lib/lxd path conflicts between LXD and shipbuilder",
-			Action:      genPrintAction(core.LXDCompatScript),
+			Description: "LXDCompatScript_PY updates the LXD systemd service definition to protect against /var/lib/lxd path conflicts between LXD and shipbuilder",
+			Action:      genPrintAction(core.LXDCompatScript_PY),
 		},
 	}
 }

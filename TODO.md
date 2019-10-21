@@ -2,7 +2,7 @@
 
 - [ ] Run `systemctl status app` on dynos to ensure service is running as part of the startup health check.
 
-- [ ] Cleann up leftover dynos when a deploy fails.
+- [ ] Clean up leftover dynos when a deploy fails.
 
 - [ ] Fix redeploy failures
 
@@ -25,4 +25,6 @@ redeploying
 building: exit status 128 (output=fatal: reference is not a tree: d5596925da035508eb991d99473ffc98791293a1
 )
 ```
+
+- [ ] Add command to reset git without nuking the lxc container.
 

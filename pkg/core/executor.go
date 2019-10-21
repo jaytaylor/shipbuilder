@@ -404,10 +404,10 @@ func (exe *Executor) Rsync(target string, files ...string) error {
 // WriteDeployScripts writes out python container control scripts to the
 // specified local path.
 func (_ *Executor) WriteDeployScripts(path string) error {
-	if err := ioutil.WriteFile(fmt.Sprintf("%v/postdeploy.py", path), []byte(POSTDEPLOY), os.FileMode(int(0777))); err != nil {
+	if err := ioutil.WriteFile(fmt.Sprintf("%v/postdeploy.py", path), []byte(POST_DEPLOY_PY), os.FileMode(int(0777))); err != nil {
 		return err
 	}
-	if err := ioutil.WriteFile(fmt.Sprintf("%v/shutdown_container.py", path), []byte(SHUTDOWN_CONTAINER), os.FileMode(int(0777))); err != nil {
+	if err := ioutil.WriteFile(fmt.Sprintf("%v/shutdown_container.py", path), []byte(SHUTDOWN_CONTAINER_PY), os.FileMode(int(0777))); err != nil {
 		return err
 	}
 	return nil
