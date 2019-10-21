@@ -370,7 +370,7 @@ def portForward(action, container, ip, port):
         ip = subprocess.check_output([
             'bash',
             '-c',
-            '''set -o errexit ; set -o pipefail ; /sbin/iptables --table nat --list | {{ grep '^DNAT.* tcp dpt:{}' || : ; }} | head -n1 | sed 's/^.* to://' | cut -d ':' -f 1'''.format(port),
+            '''set -o errexit ; set -o pipefail ; /sbin/iptables --table nat --list -w 30 | {{ grep '^DNAT.* tcp dpt:{}' || : ; }} | head -n1 | sed 's/^.* to://' | cut -d ':' -f 1'''.format(port),
         ]).strip()
         if len(ip) == 0:
             # No rules need to be removed.
