@@ -209,7 +209,23 @@ func (exe *Executor) DestroyContainer(name string) error {
 
 // Clone a local container.
 func (exe *Executor) CloneContainer(oldName, newName string) error {
-	return exe.Run(LXC_BIN, "copy", oldName, newName)
+	if err := exe.Run(LXC_BIN, "copy", oldName, newName); err != nil {
+		return err
+	}
+	if err := exe.configureNewContainer(newName); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (exe *Executor) configureNewContainer(name string) error {
+	if err := exec.Command(
+		"/usr/bin/env", "bash", "-c",
+		fmt.Sprintf(`set -o errexit ; set -o pipefail ; lxc config show '%[1]s' | sed 's/^\(ephemeral: \)false$/\1true/' | lxc config edit '%[1]s'`, name),
+	); err != nil {
+		return fmt.Errorf("configuring container ephemeral attribute: %s", err)
+	}
+	return nil
 }
 
 // Run a command in a local container.
