@@ -60,6 +60,19 @@ func (exe *Executor) BashCmdf(format string, args ...interface{}) error {
 	return exe.BashCmd(fmt.Sprintf(format, args...))
 }
 
+// Check if an LXC image exists locally.
+func (exe *Executor) ImageExists(name string) (bool, error) {
+	out, err := exe.lxcImageListJqCmd(fmt.Sprintf(`.[] | .aliases | .[] | select(.name == %q) | .`, name)).Output()
+	if err != nil {
+		return false, fmt.Errorf("checking if image=%q exists: %s", name, err)
+	}
+
+	if len(strings.Trim(string(out), "\r\n")) == 0 {
+		return false, nil
+	}
+	return true, nil
+}
+
 // Check if a container exists locally.
 func (exe *Executor) ContainerExists(name string) (bool, error) {
 	out, err := exe.lxcListJqCmd(fmt.Sprintf(`.[] | select(.name == %q) | .`, name)).Output()
@@ -87,8 +100,21 @@ func (exe *Executor) ContainerRunning(name string) (bool, error) {
 
 // lxcListJqCmd forms a command which filters `lxc list` JSON output against
 // the provided JQ query.
-func (exe *Executor) lxcListJqCmd(query string) *exec.Cmd {
-	cmd := logcmd(exec.Command("/bin/bash", "-c", fmt.Sprintf(`%v%v list --format=json | jq -c '%v'`, bashSafeEnvSetup, LXC_BIN, query)))
+func (exe *Executor) lxcListJqCmd(query string, jqFlags ...string) *exec.Cmd {
+	if len(jqFlags) == 0 {
+		jqFlags = []string{"-c"}
+	}
+	cmd := logcmd(exec.Command("/bin/bash", "-c", fmt.Sprintf(`%v%v list --format=json | jq %v '%v'`, bashSafeEnvSetup, LXC_BIN, strings.Join(jqFlags, " "), query)))
+	return cmd
+}
+
+// lxcImageListJqCmd forms a command which filters `lxc image list` JSON output
+// against the provided JQ query.
+func (exe *Executor) lxcImageListJqCmd(query string, jqFlags ...string) *exec.Cmd {
+	if len(jqFlags) == 0 {
+		jqFlags = []string{"-r"}
+	}
+	cmd := logcmd(exec.Command("/bin/bash", "-c", fmt.Sprintf(`%v%v image list --format=json | jq %v '%v'`, bashSafeEnvSetup, LXC_BIN, strings.Join(jqFlags, " "), query)))
 	return cmd
 }
 
@@ -153,6 +179,34 @@ func (exe *Executor) RestartContainer(name string) error {
 	}
 	if err := exe.waitForContainerIP(name); err != nil {
 		return err
+	}
+	return nil
+}
+
+// RestoreContainerFromImage verifies that the requested image exists, checks for and
+// deletes any existing conflicting destination container, then lxc launches
+// and stops to restore the destination container from the contents of the
+// image.
+func (exe *Executor) RestoreContainerFromImage(image string, container string) error {
+	if exists, err := exe.ImageExists(image); err != nil {
+		return err
+	} else if !exists {
+		return fmt.Errorf("restoring image: specified image not found")
+	}
+
+	if exists, err := exe.ContainerExists(container); err != nil {
+		return err
+	} else if exists {
+		if err := exe.DestroyContainer(container); err != nil {
+			return err
+		}
+	}
+
+	if err := exe.Run(LXC_BIN, "launch", image, container); err != nil {
+		return fmt.Errorf("restoring image from container: %s", err)
+	}
+	if err := exe.StopContainer(container); err != nil {
+		return fmt.Errorf("stopping image after restore: %s", err)
 	}
 	return nil
 }
