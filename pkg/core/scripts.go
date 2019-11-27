@@ -432,7 +432,7 @@ def portForward(action, container, ip, port):
                 time.sleep(0.5)
                 continue
             else:
-                raise subprocess.CalledProcessError(statusCode, 'iptables failure; no handler for exit status code {0}'.format(statusCode))
+                raise subprocess.CalledProcessError(statusCode, 'iptables failure; no handler available for exit status code {0}'.format(statusCode))
 `
 
 	// AutoIPTablesScript is the automatic IP tables fixer script to allow
@@ -568,12 +568,12 @@ def showHelpAndExit(argv):
 
        For example, here is how you would boot a container with the following attributes:
 
-           {
+           {{
                "app-name": "myApp",
                "version-tag": "v1337",
                "process-type": "web",
                "port-forward": "10001"
-           }
+           }}
 
        $ {} myApp-v1337-web-10001
 '''.format(argv[0])

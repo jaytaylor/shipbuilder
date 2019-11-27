@@ -675,6 +675,7 @@ func main() {
 				[]string{"run", "shell", "console", "Console"},
 				"Run a command in an app container image",
 				flagSpec{
+					typ:      "slice",
 					names:    []string{"command", "c"},
 					usage:    "Command to use",
 					required: true,

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -174,7 +175,7 @@ func (server *Server) handleCall(conn net.Conn, body string) error {
 			defer func() {
 				// Reflect can panic, so recover here.
 				if r := recover(); r != nil {
-					Errorf(conn, "Error: intercepted panic while running command with args=%v: %v", args, r)
+					Errorf(conn, "Error: intercepted panic while running command with args=%v: %v\n\n%v", args, r, strings.TrimSpace(string(debug.Stack())))
 				}
 			}()
 			// For any application specific write commands we lock
