@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -26,8 +27,13 @@ func (server *Server) Rollback(conn net.Conn, applicationName, version string) e
 				return err
 			}
 		}
+
+		if strings.HasPrefix(version, "v") {
+			version = strings.TrimLeft(version, "v")
+		}
+
 		logger := NewLogger(NewTimeLogger(NewMessageLogger(conn)), "[rollback] ")
-		fmt.Fprintf(logger, "Rolling back to %v\n", version)
+		fmt.Fprintf(logger, "Rolling back to v%v\n", version)
 
 		// Get the next version.
 		app, cfg, err := server.IncrementAppVersion(app)
@@ -51,10 +57,13 @@ func (server *Server) Rollback(conn net.Conn, applicationName, version string) e
 			}
 		}()
 
-		if err := deployment.extract(version); err != nil {
+		if err := deployment.restore(version); err != nil {
 			return err
 		}
 		if err := deployment.archive(); err != nil {
+			return err
+		}
+		if err := deployment.publish(); err != nil {
 			return err
 		}
 		if err := deployment.deploy(); err != nil {

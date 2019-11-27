@@ -1043,33 +1043,32 @@ func (d *Deployment) archive() error {
 	return nil
 }
 
-// extract returns the resolved image name.  This is necessary because LXC will
-// refuse to import duplicate fingerprints.  So in cases where the image
-// fingerprint already exists in the LXC image store, that image version must be
-// used.
-//
-// TODO: check for ignored errors.
-func (d *Deployment) extract(version string) error {
-	if err := d.Application.CreateBaseContainerIfMissing(d.exe); err != nil {
-		return err
-	}
-
+// restore ensures the requested version exists or load it from the remote
+// image provider.
+func (d *Deployment) restore(version string) error {
 	// Detect if the container is already present locally.
-	versionedAppContainer := d.Application.Name + DYNO_DELIMITER + version
-	exists, err := d.exe.ContainerExists(versionedAppContainer)
+	image := d.Application.Name + DYNO_DELIMITER + "v" + version
+	exists, err := d.exe.ImageExists(image)
 	if err != nil {
+		fmt.Fprintf(d.Logger, "error: Checking if image %q already exists locally\n", image)
 		return err
 	}
 	if exists {
-		fmt.Fprintf(d.Logger, "Image %v already exists locally\n", version)
-		return nil
+		fmt.Fprintf(d.Logger, "Image %q already exists locally\n", image)
+	} else {
+		fmt.Fprintf(d.Logger, "Image %q already does not exist locally\n", image)
+
+		// The requested app version doesn't exist locally, attempt to download it from
+		// S3.
+		if err := extractAppFromS3(d.exe, d.Application, version); err != nil {
+			return err
+		}
 	}
 
-	// The requested app version doesn't exist locally, attempt to download it from
-	// S3.
-	if err := extractAppFromS3(d.exe, d.Application, version); err != nil {
+	if err := d.exe.RestoreContainerFromImage(image, d.Application.Name); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -1096,7 +1095,9 @@ func extractAppFromS3(e *Executor, app *Application, version string) error {
 
 	fmt.Fprintf(e.Logger, "Importing %v\n", localArchive)
 
-	if err := e.BashCmdf("%v image import %v --public --alias %v", LXC_BIN, localArchive, app.Name+DYNO_DELIMITER+version); err != nil {
+	image := app.Name + DYNO_DELIMITER + version
+
+	if err := e.BashCmdf("%v image import %v --public --alias %v", LXC_BIN, localArchive, image); err != nil {
 		return err
 	}
 	return nil
