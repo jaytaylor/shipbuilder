@@ -11,7 +11,7 @@ export SB_REPO_PATH="${GOPATH:-${HOME}/go}/src/github.com/jaytaylor/shipbuilder"
 export SB_SUDO='sudo --non-interactive'
 export SB_SSH='ssh -o BatchMode=yes -o StrictHostKeyChecking=no'
 
-export goVersion='1.11.5'
+export goVersion='1.13.5'
 export lxcBaseImage='ubuntu:16.04'
 
 # Content of this variable is invoked during funtion RETURN traps.
@@ -655,15 +655,22 @@ function prepareNode() {
 
     installLxc "${lxcFs}" "{zfsPoolArg}"
 
-    fs=$(${SB_SUDO} df -T "${device}" | tail -n 1 | awk '{print $2}')
+    #fs=$(${SB_SUDO} df -T "${device}" | tail -n 1 | awk '{print $2}')
+    fs="$( \
+        blkid "${device}" \
+            | grep -o 'TYPE="[^"]\+"' | sed 's/TYPE="\([^"]\+\)"/\1/' \
+    )"
     test -z "${fs}" && echo "error: failed to determine FS type for ${device}" 1>&2 && exit 1 || :
 
     ${SB_SUDO} umount "${device}" 1>&2 2>/dev/null
     #abortIfNonZero $? "umounting device=${device}"
 
     echo "info: existing fs type on ${device} is ${fs}"
-    if [ "${fs}" = "${lxcFs}" ] ; then
+
+    # n.b. "_member" is a hack to match "zfs_member".
+    if [ "${fs}" = "${lxcFs}" ] || [ "${fs}" = "${lxcFs}_member" ] ; then
         echo "info: ${device} is already formatted with ${lxcFs}"
+
     else
         echo "info: formatting and configuring ${device} with ${lxcFs}"
 
@@ -983,8 +990,7 @@ function lxcInitContainer() {
         ${SB_SUDO} lxc delete --force "${container}"
 
         echo "info: creating lxc container=${container}"
-        ${SB_SUDO} lxc launch "${lxcBaseImage}" "${container}"
-        abortIfNonZero $? "command 'lxc launch ${lxcBaseImage} ${container}'"
+        echo -e '\n' | ${SB_SUDO} lxc launch "${lxcBaseImage}" "${container}"
 
         getContainerIp "${container}"
 
@@ -1017,8 +1023,6 @@ function lxcConfigContainer() {
     echo 'info: adding the container "ubuntu" user to the sudoers list'
     ${SB_SUDO} lxc exec -T "${container}" -- ${SB_SUDO} bash -c 'set -o errexit && set -o pipefail && echo "ubuntu ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers'
     abortIfNonZero $? "adding 'ubuntu' to container=${container} sudoers"
-
-    # sleep 5
 
     echo "info: updating apt repositories in container=${container}"
     # ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "${SB_SUDO} apt update"
