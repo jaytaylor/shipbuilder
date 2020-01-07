@@ -334,6 +334,23 @@ function installLxc() {
     ${SB_SUDO} apt remove --yes --purge zfs-fuse lxd lxd-client lxc lxc1 lxc2 liblxc1 lxc-common lxcfs
     abortIfNonZero $? "command 'apt remove --yes --purge zfs-fuse lxd lxd-client lxc lxc1 lxc2 liblxc1 lxc-common lxcfs'"
 
+    # <pre-cleanup>
+    ${SB_SUDO} systemctl stop snap.lxd.daemon
+    abortIfNonZero $? "systemctl stop snap.lxd.daemon"
+
+    poolExists="$(${SB_SUDO} zpool list | sed '1d' | grep "${zfsPoolArg}")"
+    #if [ -n "${poolExists}" ] ; then
+    #    ${SB_SUDO} zpool export "${zfsPoolArg}"
+    #    abortIfNonZero $? "command: 'zpool export ${zfsPoolArg}'"
+    #fi
+
+    ${SB_SUDO} rm -rf /var/lib/lxd
+    abortIfNonZero $? "command: 'rm -rf /var/lib/lxd'"
+
+    ${SB_SUDO} ln -s /var/snap/lxd/common/lxd /var/lib/lxd
+    abortIfNonZero $? "command: 'ln -s /var/snap/lxd/common/lxd /var/lib/lxd'"
+    # </pre-cleanup>
+
     echo 'info: supported versions of lxc+lxd must be installed'
     echo 'info: as of 2017-12-27, ubuntu comes with lxc+lxd=v2.0.11 by default, and we require lxc=v2.1.1 lxd=2.2.1 or newer'
     echo 'info: installing lxd via snap'
@@ -347,40 +364,29 @@ function installLxc() {
     ${SB_SUDO} usermod -G lxd -a root
     abortIfNonZero $? "command 'usermod -G lxd -a root'"
 
-    if [ -z "$(snap list | sed '1d' | grep '^lxd ')" ] ; then
-        echo 'info: installing lxd via snap'
+    # if [ -z "$(snap list | sed '1d' | grep '^lxd ')" ] ; then
+    echo 'info: installing lxd via snap'
+    ${SB_SUDO} systemctl stop snap.lxd.daemon || :
+    ${SB_SUDO} snap remove lxd || :
+    ${SB_SUDO} zpool destroy "${zfsPoolArg}" || :
+    ${SB_SUDO} snap install lxd
+    abortIfNonZero $? "command 'snap install lxd'"
+    ${SB_SUDO} lxd init --preseed < lxd.yaml
+    abortIfNonZero $? "command 'lxd init --preseed < lxd.yaml'"
 
-            ${SB_SUDO} snap install lxd
-        abortIfNonZero $? "command 'snap install lxd'"
-    else
-        echo 'info: snap reports that lxd is already installed'
-    fi
+    # else
+    #     echo 'info: snap reports that lxd is already installed'
+    # fi
 
     # Attempt to safely ensure snap dir gets linked to /var/lib/lxd.
 
     ${SB_SUDO} systemctl restart snap.lxd.daemon
     abortIfNonZero $? "systemctl restart snap.lxd.daemon"
 
-    ${SB_SUDO} systemctl stop snap.lxd.daemon
-    abortIfNonZero $? "systemctl stop snap.lxd.daemon"
-
-    poolExists="$(${SB_SUDO} zpool list | sed '1d' | grep "${zfsPoolArg}")"
-
-    if [ -n "${poolExists}" ] ; then
-        ${SB_SUDO} zpool export "${zfsPoolArg}"
-        abortIfNonZero $? "command: 'zpool export ${zfsPoolArg}'"
-    fi
-
-    ${SB_SUDO} rm -rf /var/lib/lxd
-    abortIfNonZero $? "command: 'rm -rf /var/lib/lxd'"
-
-    ${SB_SUDO} ln -s /var/snap/lxd/common/lxd /var/lib/lxd
-    abortIfNonZero $? "command: 'ln -s /var/snap/lxd/common/lxd /var/lib/lxd'"
-
-    if [ -n "${poolExists}" ] ; then
-        ${SB_SUDO} zpool import "${zfsPoolArg}"
-        abortIfNonZero $? "command: 'zpool import ${zfsPoolArg}'"
-    fi
+    #if [ -n "${poolExists:-}" ] ; then
+    #    ${SB_SUDO} zpool import "${zfsPoolArg}"
+    #    abortIfNonZero $? "command: 'zpool import ${zfsPoolArg}'"
+    #fi
 
     ${SB_SUDO} systemctl start snap.lxd.daemon
     abortIfNonZero $? "command: 'systemctl start snap.lxd.daemon'"
@@ -653,14 +659,17 @@ function prepareNode() {
     # Strip leading '/' from $zfsPool, this is actually a compatibility update for 2017.
     zfsPoolArg="$(echo "${zfsPool}" | sed 's/^\///')"
 
-    installLxc "${lxcFs}" "{zfsPoolArg}"
+    installLxc "${lxcFs}" "${zfsPoolArg}"
 
     #fs=$(${SB_SUDO} df -T "${device}" | tail -n 1 | awk '{print $2}')
     fs="$( \
         blkid "${device}" \
             | grep -o 'TYPE="[^"]\+"' | sed 's/TYPE="\([^"]\+\)"/\1/' \
     )"
-    test -z "${fs}" && echo "error: failed to determine FS type for ${device}" 1>&2 && exit 1 || :
+    if [ -z "${fs}" ]; then
+        echo "error: failed to determine FS type for ${device}" 1>&2
+        exit 1
+    fi
 
     ${SB_SUDO} umount "${device}" 1>&2 2>/dev/null
     #abortIfNonZero $? "umounting device=${device}"
@@ -673,6 +682,14 @@ function prepareNode() {
 
     else
         echo "info: formatting and configuring ${device} with ${lxcFs}"
+
+        echo 'info: installing lxd via snap'
+        ${SB_SUDO} snap remove lxd || :
+        ${SB_SUDO} zpool destroy "${zfsPoolArg}" || :
+        ${SB_SUDO} snap install lxd
+        abortIfNonZero $? "command 'snap install lxd'"
+        ${SB_SUDO} lxd init --preseed < lxd.yaml
+        abortIfNonZero $? "command 'lxd init --preseed < lxd.yaml'"
 
         if [ "${lxcFs}" = 'btrfs' ] ; then
             echo 'fatal: prepareNode(): BTRFS support currently not available, needs migration for shipbuilder v2' 1>&2 && exit 1
