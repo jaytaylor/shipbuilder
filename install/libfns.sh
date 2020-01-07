@@ -349,9 +349,13 @@ function installLxc() {
 
     if [ -z "$(snap list | sed '1d' | grep '^lxd ')" ] ; then
         echo 'info: installing lxd via snap'
-
-            ${SB_SUDO} snap install lxd
+        ${SB_SUDO} snap remove lxd || :
+        ${SB_SUDO} zpool destroy "${zfsPoolArg}" || :
+        ${SB_SUDO} snap install lxd
         abortIfNonZero $? "command 'snap install lxd'"
+        ${SB_SUDO} lxd init --preseed < lxd.yaml
+        abortIfNonZero $? "command 'lxd init --preseed < lxd.yaml'"
+
     else
         echo 'info: snap reports that lxd is already installed'
     fi
@@ -660,7 +664,10 @@ function prepareNode() {
         blkid "${device}" \
             | grep -o 'TYPE="[^"]\+"' | sed 's/TYPE="\([^"]\+\)"/\1/' \
     )"
-    test -z "${fs}" && echo "error: failed to determine FS type for ${device}" 1>&2 && exit 1 || :
+    if [ -z "${fs}" ]; then
+        echo "error: failed to determine FS type for ${device}" 1>&2
+        exit 1
+    fi
 
     ${SB_SUDO} umount "${device}" 1>&2 2>/dev/null
     #abortIfNonZero $? "umounting device=${device}"
@@ -673,6 +680,14 @@ function prepareNode() {
 
     else
         echo "info: formatting and configuring ${device} with ${lxcFs}"
+
+        echo 'info: installing lxd via snap'
+        ${SB_SUDO} snap remove lxd || :
+        ${SB_SUDO} zpool destroy "${zfsPoolArg}" || :
+        ${SB_SUDO} snap install lxd
+        abortIfNonZero $? "command 'snap install lxd'"
+        ${SB_SUDO} lxd init --preseed < lxd.yaml
+        abortIfNonZero $? "command 'lxd init --preseed < lxd.yaml'"
 
         if [ "${lxcFs}" = 'btrfs' ] ; then
             echo 'fatal: prepareNode(): BTRFS support currently not available, needs migration for shipbuilder v2' 1>&2 && exit 1
