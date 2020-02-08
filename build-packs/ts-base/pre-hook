@@ -39,7 +39,7 @@ if [ -r 'requirements.txt' ]; then
     pip install --upgrade pip
     abortIfNonZero $? "Command 'pip install --upgrade pip'"
 
-    pip install --upgrade setuptools
+    pip install --upgrade 'setuptools<45.0.0'
     abortIfNonZero $? "Command 'pip install --upgrade setuptools'"
 
     echo '--> Installing requirements.txt'
