@@ -206,7 +206,7 @@ function initSbServerKeys() {
         sudo -n ssh-keygen -f /root/.ssh/id_rsa -t rsa -N ""
         abortIfNonZero $? "ssh-keygen command failed"
     fi
-    if [ test -z "$(sudo -n grep "$(sudo -n cat /root/.ssh/id_rsa.pub)" /root/.ssh/authorized_keys)" ] ; then
+    if [ -z "$(sudo -n grep "$(sudo -n cat /root/.ssh/id_rsa.pub)" /root/.ssh/authorized_keys)" ] ; then
         echo "remote: info: adding root to root user authorized_keys"
         sudo -n cat /root/.ssh/id_rsa.pub | sudo -n tee -a /root/.ssh/authorized_keys >/dev/null
         abortIfNonZero $? "appending public-key to authorized_keys command"
@@ -310,6 +310,11 @@ function installAccessForSshHost() {
     echo 'info: ssh access installation succeeded'
 }
 
+die() {
+    echo "ERROR: $*" 1>&2
+    exit 1
+}
+
 function installLxc() {
     # @param $1 $lxcFs lxc filesystem to use (zfs, btrfs are both supported).
     # @param $2 $zfsPoolArg ZFS pool name.
@@ -336,7 +341,20 @@ function installLxc() {
 
     # <pre-cleanup>
     ${SB_SUDO} systemctl stop snap.lxd.daemon
-    abortIfNonZero $? "systemctl stop snap.lxd.daemon"
+    #abortIfNonZero $? "systemctl stop snap.lxd.daemon"
+
+        # Add supporting package(s) for selected filesystem type.
+    fsPackages="$(test "${lxcFs}" = 'btrfs' && echo 'btrfs-tools' || :) $(test "${lxcFs}" = 'zfs' && echo 'zfsutils-linux' || :)"
+
+    required="${fsPackages} git mercurial bzr build-essential bzip2 daemontools ntp ntpdate jq"
+    echo "info: installing required build-server packages: ${required}"
+    ${SB_SUDO} apt install --yes ${required}
+    abortIfNonZero $? "command 'apt install --yes ${required}'"
+
+    recommended='aptitude htop iotop unzip screen bzip2 bmon'
+    echo "info: installing recommended packages: ${recommended}"
+    ${SB_SUDO} apt install --yes ${recommended}
+    abortIfNonZero $? "command 'apt install --yes ${recommended}'"
 
     poolExists="$(${SB_SUDO} zpool list | sed '1d' | grep "${zfsPoolArg}")"
     #if [ -n "${poolExists}" ] ; then
@@ -354,59 +372,112 @@ function installLxc() {
     echo 'info: supported versions of lxc+lxd must be installed'
     echo 'info: as of 2017-12-27, ubuntu comes with lxc+lxd=v2.0.11 by default, and we require lxc=v2.1.1 lxd=2.2.1 or newer'
     echo 'info: installing lxd via snap'
-    ${SB_SUDO} groupadd --system lxd
-    rc=$?
-    # NB: if group already exists, groupadd exits with status code 9.
-    if [ ${rc} -ne 0 ] && [ ${rc} -ne 9 ] ; then
-        abortWithError "command 'groupadd --system lxd' exited with unhappy non-zero status code ${rc}"
+    if ! grep -q '^lxd:' /etc/group ; then
+        ${SB_SUDO} groupadd --system lxd
+        rc=$?
+        # NB: if group already exists, groupadd exits with status code 9.
+        if [ ${rc} -ne 0 ] && [ ${rc} -ne 9 ] ; then
+            abortWithError "command 'groupadd --system lxd' exited with unhappy non-zero status code ${rc}"
+        fi
     fi
 
-    ${SB_SUDO} usermod -G lxd -a root
-    abortIfNonZero $? "command 'usermod -G lxd -a root'"
+    if ! getent group lxd | grep -q '\broot\b' ; then
+        ${SB_SUDO} usermod -G lxd -a root
+        abortIfNonZero $? "command 'usermod -G lxd -a root'"
+    fi
 
-    # if [ -z "$(snap list | sed '1d' | grep '^lxd ')" ] ; then
     echo 'info: installing lxd via snap'
-    ${SB_SUDO} systemctl stop snap.lxd.daemon || :
-    ${SB_SUDO} snap remove lxd || :
-    ${SB_SUDO} zpool destroy "${zfsPoolArg}" || :
-    ${SB_SUDO} snap install lxd
-    abortIfNonZero $? "command 'snap install lxd'"
-    ${SB_SUDO} lxd init --preseed < lxd.yaml
-    abortIfNonZero $? "command 'lxd init --preseed < lxd.yaml'"
+    cd /tmp
 
-    # else
-    #     echo 'info: snap reports that lxd is already installed'
-    # fi
+    set -o errexit
 
-    # Attempt to safely ensure snap dir gets linked to /var/lib/lxd.
+    if [ -n "$(snap list | awk '/lxd/ { print }')" ]; then
+        echo 'INFO: LXD snap installation detected' 1>&2
+        if ! ${SB_SUDO} snap remove lxd --purge; then
+            # n.b. Sometimes this resolves "device busy" errors due to tank being mounted
+            #      under /var/lib/lxd/.
+            ${SB_SUDO} zpool destroy -f tank
+            ${SB_SUDO} snap remove lxd --purge
+        fi
+    fi
 
-    ${SB_SUDO} systemctl restart snap.lxd.daemon
-    abortIfNonZero $? "systemctl restart snap.lxd.daemon"
+    if [ -n "$(${SB_SUDO} zpool list | awk '/tank/ { print }')" ]; then
+        ${SB_SUDO} zpool destroy -f tank
+    fi
 
-    #if [ -n "${poolExists:-}" ] ; then
-    #    ${SB_SUDO} zpool import "${zfsPoolArg}"
-    #    abortIfNonZero $? "command: 'zpool import ${zfsPoolArg}'"
-    #fi
+    cd /tmp
 
-    ${SB_SUDO} systemctl start snap.lxd.daemon
-    abortIfNonZero $? "command: 'systemctl start snap.lxd.daemon'"
+    #
+    # Generated via:
+    #     snap download lxd --channel=3.0/stable
+    #     snap ack lxd_11348.assert
+    #
+    curl -sSLO 'https://whaleymood.gigawatt.io/ts/lxd_11348.assert'
+    curl -sSLO 'https://whaleymood.gigawatt.io/ts/lxd_11348.snap'
+    curl -sSLO 'https://whaleymood.gigawatt.io/ts/SHA-256'
 
-    # </Attempt>.
+    sha256sum --check SHA-256
+
+    ${SB_SUDO} snap ack 'lxd_11348.assert'
+    ${SB_SUDO} snap install 'lxd_11348.snap'
+
+    cd - 2>/dev/null
+
+    ${SB_SUDO} lxd init --preseed << EOF
+config: {}
+networks:
+- config:
+    ipv4.address: auto
+    ipv6.address: auto
+  description: ""
+  managed: false
+  name: lxdbr0
+  type: ""
+storage_pools:
+- config:
+    source: /dev/nvme1n1
+  description: ""
+  name: tank
+  driver: zfs
+profiles:
+- config: {}
+  description: ""
+  devices:
+    eth0:
+      name: eth0
+      nictype: bridged
+      parent: lxdbr0
+      type: nic
+    root:
+      path: /
+      pool: tank
+      type: disk
+  name: default
+cluster: null
+EOF
+
+    set +o errexit
+
+    # # else
+    # #     echo 'info: snap reports that lxd is already installed'
+    # # fi
+
+    # # Attempt to safely ensure snap dir gets linked to /var/lib/lxd.
+
+    # ${SB_SUDO} systemctl restart snap.lxd.daemon
+    # abortIfNonZero $? "systemctl restart snap.lxd.daemon"
+
+    # #if [ -n "${poolExists:-}" ] ; then
+    # #    ${SB_SUDO} zpool import "${zfsPoolArg}"
+    # #    abortIfNonZero $? "command: 'zpool import ${zfsPoolArg}'"
+    # #fi
+
+    # ${SB_SUDO} systemctl start snap.lxd.daemon
+    # abortIfNonZero $? "command: 'systemctl start snap.lxd.daemon'"
+
+    # # </Attempt>.
 
     echo "info: installed version of lxc=$(${SB_SUDO} lxc version) and lxd=$(${SB_SUDO} lxd --version) (all must be v2.21 or newer)"
-
-    # Add supporting package(s) for selected filesystem type.
-    fsPackages="$(test "${lxcFs}" = 'btrfs' && echo 'btrfs-tools' || :) $(test "${lxcFs}" = 'zfs' && echo 'zfsutils-linux' || :)"
-
-    required="${fsPackages} git mercurial bzr build-essential bzip2 daemontools ntp ntpdate jq"
-    echo "info: installing required build-server packages: ${required}"
-    ${SB_SUDO} apt install --yes ${required}
-    abortIfNonZero $? "command 'apt install --yes ${required}'"
-
-    recommended='aptitude htop iotop unzip screen bzip2 bmon'
-    echo "info: installing recommended packages: ${recommended}"
-    ${SB_SUDO} apt install --yes ${recommended}
-    abortIfNonZero $? "command 'apt install --yes ${recommended}'"
     echo 'info: installLxc() succeeded'
 }
 
@@ -684,7 +755,7 @@ function prepareNode() {
         echo "info: formatting and configuring ${device} with ${lxcFs}"
 
         echo 'info: installing lxd via snap'
-        ${SB_SUDO} snap remove lxd || :
+        ${SB_SUDO} snap remove --purge lxd || :
         ${SB_SUDO} zpool destroy "${zfsPoolArg}" || :
         ${SB_SUDO} snap install lxd
         abortIfNonZero $? "command 'snap install lxd'"
