@@ -36,11 +36,11 @@ fi
 . "${dependenciesPath}/venv/bin/activate"
 
 if [ -r 'requirements.txt' ]; then
-    pip install --upgrade pip
-    abortIfNonZero $? "Command 'pip install --upgrade pip'"
+    #pip install --upgrade pip
+    #abortIfNonZero $? "Command 'pip install --upgrade pip'"
 
-    pip install --upgrade setuptools
-    abortIfNonZero $? "Command 'pip install --upgrade setuptools'"
+    #pip install --upgrade setuptools
+    #abortIfNonZero $? "Command 'pip install --upgrade setuptools'"
 
     echo '--> Installing requirements.txt'
     stdbuf -o0 pip install -r requirements.txt 2>&1

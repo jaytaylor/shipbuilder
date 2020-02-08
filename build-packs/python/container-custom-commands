@@ -1,5 +1,5 @@
 
-sudo pip install virtualenv
+sudo pip install --upgrade 'setuptools<45.0.0'
 
 exit 0
 
