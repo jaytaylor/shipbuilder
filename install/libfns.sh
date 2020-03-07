@@ -318,14 +318,14 @@ die() {
 function installLxc() {
     # @param $1 $lxcFs lxc filesystem to use (zfs, btrfs are both supported).
     # @param $2 $zfsPoolArg ZFS pool name.
-    local lxcFs=${1:-}
-    local zfsPoolArg=${2:-}
+    local lxcFs="${1:-}"
+    local zfsPoolArg="${2:-}"
+    local device="${3:-}"
 
     test -z "${lxcFs}" && echo 'error: installLxc() missing required parameter: $lxcFs' 1>&2 && exit 1 || :
     test -z "${zfsPoolArg}" && echo 'error: installLxc() missing required parameter: $zfsPoolArg' 1>&2 && exit 1 || :
 
     local rc
-    local poolExists
     local fsPackages
     local required
     local recommended
@@ -351,16 +351,10 @@ function installLxc() {
     ${SB_SUDO} apt install --yes ${required}
     abortIfNonZero $? "command 'apt install --yes ${required}'"
 
-    recommended='aptitude htop iotop unzip screen bzip2 bmon'
+    recommended='htop iotop unzip screen bzip2 bmon iptraf-ng'
     echo "info: installing recommended packages: ${recommended}"
     ${SB_SUDO} apt install --yes ${recommended}
     abortIfNonZero $? "command 'apt install --yes ${recommended}'"
-
-    poolExists="$(${SB_SUDO} zpool list | sed '1d' | grep "${zfsPoolArg}")"
-    #if [ -n "${poolExists}" ] ; then
-    #    ${SB_SUDO} zpool export "${zfsPoolArg}"
-    #    abortIfNonZero $? "command: 'zpool export ${zfsPoolArg}'"
-    #fi
 
     ${SB_SUDO} rm -rf /var/lib/lxd
     abortIfNonZero $? "command: 'rm -rf /var/lib/lxd'"
@@ -456,26 +450,12 @@ profiles:
 cluster: null
 EOF
 
+    # Create zfs storage tank only if not already present.
+    if ! ${SB_SUDO} lxc storage list | grep -q "${zfsPoolArg}" ; then
+        ${SB_SUDO} lxc storage create "${zfsPoolArg}" zfs "source=${device}"
+    fi
+
     set +o errexit
-
-    # # else
-    # #     echo 'info: snap reports that lxd is already installed'
-    # # fi
-
-    # # Attempt to safely ensure snap dir gets linked to /var/lib/lxd.
-
-    # ${SB_SUDO} systemctl restart snap.lxd.daemon
-    # abortIfNonZero $? "systemctl restart snap.lxd.daemon"
-
-    # #if [ -n "${poolExists:-}" ] ; then
-    # #    ${SB_SUDO} zpool import "${zfsPoolArg}"
-    # #    abortIfNonZero $? "command: 'zpool import ${zfsPoolArg}'"
-    # #fi
-
-    # ${SB_SUDO} systemctl start snap.lxd.daemon
-    # abortIfNonZero $? "command: 'systemctl start snap.lxd.daemon'"
-
-    # # </Attempt>.
 
     echo "info: installed version of lxc=$(${SB_SUDO} lxc version) and lxd=$(${SB_SUDO} lxd --version) (all must be v2.21 or newer)"
     echo 'info: installLxc() succeeded'
@@ -500,52 +480,6 @@ function setupSysctlAndLimits() {
         echo "* ${param} nofile ${limitsValue}" | ${SB_SUDO} tee -a /etc/security/limits.conf
         abortIfNonZero $? "setting config param=${param} in /etc/security/limits.conf"
     done
-}
-
-function prepareZfsPoolDevice() {
-    local zfsPoolArg=${1:-}
-    local device=${2:-}
-
-    test -z "${zfsPoolArg}" && echo 'error: prepareZfsPoolDevice() missing required parameter: $zfsPoolArg' 1>&2 && exit 1 || :
-    test -z "${device}" && echo 'error: prepareZfsPoolDevice() missing required parameter: $device' 1>&2 && exit 1 || :
-
-    local numPartitions
-    local storage
-    local lxcBasePath
-
-    # Create ZFS pool mount point.
-    # test ! -d "/${zfsPoolArg}" && ${SB_SUDO} rm -rf "/${zfsPoolArg}" && ${SB_SUDO} mkdir "/${zfsPoolArg}" || :
-    # abortIfNonZero $? "creating /${zfsPool} mountpoint"
-
-    # Create ZFS pool and attach to a device.
-    if [ -z "$(${SB_SUDO} zfs list -o name | sed '1d' | grep "^${zfsPoolArg}"'$')" ] ; then
-        # Reset any partitions on the device.
-        numPartitions=$(
-            ${SB_SUDO} fdisk -l "${device}" \
-                | grep -A 100 '^Device' \
-                | awk '{print $1}' \
-                | grep --only-matching '[0-9]\+$' \
-                | wc -l
-        )
-        if [ ${numPartitions} -ne 0 ] ; then
-            echo "info: removing ${numPartitions} partitions from device=${device}"
-            echo -e "$(
-                ${SB_SUDO} fdisk -l "${device}" \
-                    | grep -A 999 '^Device' \
-                    | awk '{print $1}' \
-                    | grep --only-matching '[0-9]\+$' \
-                    | xargs -n1 -IX echo -e 'd\nX' \
-                ; \
-                echo w \
-            )" \
-                | ${SB_SUDO} fdisk "${device}"
-            abortIfNonZero $? "removing ${numPartitions} from device=${device}"
-        fi
-
-        # Format the device with any filesystem (mkfs.ext4 is fast).
-        echo y | ${SB_SUDO} mkfs.ext4 -q "${device}"
-        abortIfNonZero $? "command 'mkfs.ext4 -q ${device}', ensure the device is not in use and partitions are all removed"
-    fi
 }
 
 function prepareZfsDirs() {
@@ -730,107 +664,17 @@ function prepareNode() {
     # Strip leading '/' from $zfsPool, this is actually a compatibility update for 2017.
     zfsPoolArg="$(echo "${zfsPool}" | sed 's/^\///')"
 
-    installLxc "${lxcFs}" "${zfsPoolArg}"
+    installLxc "${lxcFs}" "${zfsPoolArg}" "${device}"
 
-    #fs=$(${SB_SUDO} df -T "${device}" | tail -n 1 | awk '{print $2}')
-    fs="$( \
-        blkid "${device}" \
-            | grep -o 'TYPE="[^"]\+"' | sed 's/TYPE="\([^"]\+\)"/\1/' \
-    )"
-    if [ -z "${fs}" ]; then
-        echo "error: failed to determine FS type for ${device}" 1>&2
-        exit 1
-    fi
+    # Enable zfs snapshot listing.
+    ${SB_SUDO} zpool set listsnapshots=on "${zfsPoolArg}"
+    abortIfNonZero $? "command 'zpool set listsnapshots=on ${zfsPoolArg}'"
 
-    ${SB_SUDO} umount "${device}" 1>&2 2>/dev/null
-    #abortIfNonZero $? "umounting device=${device}"
+    prepareZfsDirs
 
-    echo "info: existing fs type on ${device} is ${fs}"
-
-    # n.b. "_member" is a hack to match "zfs_member".
-    if [ "${fs}" = "${lxcFs}" ] || [ "${fs}" = "${lxcFs}_member" ] ; then
-        echo "info: ${device} is already formatted with ${lxcFs}"
-
-    else
-        echo "info: formatting and configuring ${device} with ${lxcFs}"
-
-        echo 'info: installing lxd via snap'
-        ${SB_SUDO} snap remove --purge lxd || :
-        ${SB_SUDO} zpool destroy "${zfsPoolArg}" || :
-        ${SB_SUDO} snap install lxd
-        abortIfNonZero $? "command 'snap install lxd'"
-        ${SB_SUDO} lxd init --preseed < lxd.yaml
-        abortIfNonZero $? "command 'lxd init --preseed < lxd.yaml'"
-
-        if [ "${lxcFs}" = 'btrfs' ] ; then
-            echo 'fatal: prepareNode(): BTRFS support currently not available, needs migration for shipbuilder v2' 1>&2 && exit 1
-
-            ${SB_SUDO} mkfs.btrfs ${device}
-            abortIfNonZero $? "mkfs.btrfs ${device}"
-
-            echo "info: updating /etc/fstab to map /mnt/build to the ${lxcFs} device"
-            if [ -z "$(grep "$(echo ${device} | sed 's:/:\\/:g')" /etc/fstab)" ] ; then
-                echo "info: adding new fstab entry for ${device}"
-                echo "${device} /mnt/build auto defaults 0 0" | ${SB_SUDO} tee -a /etc/fstab >/dev/null
-                abortIfNonZero $? "fstab add"
-            else
-                echo 'info: editing existing fstab entry'
-                ${SB_SUDO} sed -i "s-^\s*${device}\s\+.*\$-${device} /mnt/build auto defaults 0 0-" /etc/fstab
-                abortIfNonZero $? "fstab edit"
-            fi
-
-            echo "info: mounting device ${device}"
-            ${SB_SUDO} mount ${device}
-            abortIfNonZero $? "command 'mount ${device}"
-
-            configureLxd "${lxcFs}" "${isServer}"
-
-        elif [ "${lxcFs}" = 'zfs' ] ; then
-            prepareZfsPoolDevice "${zfsPoolArg}" "${device}"
-
-            configureLxd "${lxcFs}" "${isServer}"
-
-            # Unmount all ZFS volumes.
-            ${SB_SUDO} zfs umount -a
-            abortIfNonZero $? "command 'zfs umount -a'"
-
-            ${SB_SUDO} lxc list --format=json | jq -r '.[].name' | xargs -n1 sudo ${SB_SUDO} lxc stop --force 2>/dev/null
-
-            # Export the pool.
-            ${SB_SUDO} zpool export "${zfsPoolArg}"
-            abortIfNonZero $? "command 'zpool export ${zfsPoolArg}'"
-
-            # Import the zfs pool, this will mount the volumes.
-            ${SB_SUDO} zpool import "${zfsPoolArg}"
-            abortIfNonZero $? "command 'zpool import ${zfsPoolArg}'"
-
-            # Enable zfs snapshot listing.
-            ${SB_SUDO} zpool set listsnapshots=on "${zfsPoolArg}"
-            abortIfNonZero $? "command 'zpool set listsnapshots=on ${zfsPoolArg}'"
-
-            # Remove any fstab entry for the ZFS device (ZFS will auto-mount one pool).
-            ${SB_SUDO} sed -i "/.*$(echo "${device}" | sed 's/\//\\\//g').*/d" /etc/fstab
-
-            prepareZfsDirs
-
-            # Chmod 777 /${zfsPoolArg}/git
-            ${SB_SUDO} chmod 777 "/git"
-            abortIfNonZero $? "command 'chmod 777 /git'"
-
-            # # Link /var/lib/lxc to /${zfsPoolArg}/lxc, and then link /mnt/build/lxc to /var/lib/lxc.
-            # test -d '/var/lib/lxc' && ${SB_SUDO} mv /var/lib/lxc{,.bak} || :
-            # test ! -h '/var/lib/lxc' && ${SB_SUDO} ln -s "/${zfsPoolArg}/lxc" /var/lib/lxc || :
-            # test ! -h '/mnt/build/lxc' && ${SB_SUDO} ln -s "/${zfsPoolArg}/lxc" /mnt/build/lxc || :
-
-            # # Also might as well resolve the git linkage while we're here.
-            # test ! -h '/mnt/build/git' && ${SB_SUDO} ln -s "/${zfsPoolArg}/git" /mnt/build/git || :
-            # test ! -h '/git' && ${SB_SUDO} ln -s "/${zfsPoolArg}/git" /git || :
-
-        else
-            echo "error: prepareNode() got unrecognized filesystem=${lxcFs}" 1>&2
-            exit 1
-        fi
-    fi
+    # Chmod 777 /${zfsPoolArg}/git
+    ${SB_SUDO} chmod 777 '/git'
+    abortIfNonZero $? "command 'chmod 777 /git'"
 
     if ! [ -z "${swapDevice}" ] && [ -e "${swapDevice}" ] ; then
         echo "info: activating swap device or partition: ${swapDevice}"
