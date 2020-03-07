@@ -11,7 +11,7 @@ export SB_REPO_PATH="${GOPATH:-${HOME}/go}/src/github.com/jaytaylor/shipbuilder"
 export SB_SUDO='sudo --non-interactive'
 export SB_SSH='ssh -o BatchMode=yes -o StrictHostKeyChecking=no'
 
-export goVersion='1.13.5'
+export goVersion='1.14'
 export lxcBaseImage='ubuntu:16.04'
 
 # Content of this variable is invoked during funtion RETURN traps.
