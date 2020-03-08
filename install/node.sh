@@ -75,7 +75,7 @@ function main() {
 
     if [ "${action}" = "list-devices" ] ; then
         echo '----'
-        ${SB_SSH} "${nodeHost}" "${SB_SUDO}"' find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
+        ${SB_SSH} "${nodeHost}" 'sudo -n find /dev/ -regex ".*\/\(\([hms]\|xv\)d\|disk\).*"'
         abortIfNonZero $? "retrieving storage devices from host ${SB_SSH_HOST}"
         exit 0
 
@@ -100,7 +100,7 @@ function main() {
         abortIfNonZero $? 'remote prepareNode() invocation'
         set +x
 
-        ${SB_SSH} "${nodeHost}" "(${SB_SUDO} lxc remote list | grep '${SB_SSH_HOST}' || ${SB_SUDO} lxc remote add --accept-certificate --public sb-server ${SB_SSH_HOST})"
+        ${SB_SSH} "${nodeHost}" "(sudo -n lxc remote list | grep '${SB_SSH_HOST}' || sudo -n lxc remote add --accept-certificate --public sb-server ${SB_SSH_HOST})"
         abortIfNonZero $? 'adding sb-server lxc remote image server to slave node'
         ${SB_SSH} "${nodeHost}" 'sudo cp -a $(sudo find /root -type d -name "*.config" | head -n1) "${HOME}/" && sudo chown -R ${USER}:${USER} "${HOME}/.config"'
         abortIfNonZero $? 'copying .config'
@@ -110,7 +110,7 @@ function main() {
 
         if test -z "${denyRestart}"; then
             echo 'info: checking if system restart is necessary'
-            ${SB_SSH} "${nodeHost}" "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && ${SB_SUDO} reboot || echo 'no system restart is necessary'"
+            ${SB_SSH} "${nodeHost}" "test -r '/tmp/SB_RESTART_REQUIRED' && test -n \"\$(cat /tmp/SB_RESTART_REQUIRED)\" && echo 'info: system restart required, restarting now' && sudo -n reboot || echo 'no system restart is necessary'"
             abortIfNonZero $? 'remote system restart check failed'
         else
             echo 'warn: a restart may be required on the node to complete installation, but the action was disabled by a flag' 1>&2

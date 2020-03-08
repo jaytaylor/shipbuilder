@@ -195,7 +195,7 @@ function main() {
             abortIfNonZero $? 'activating lxc image server'
 
             # # Enable the LXC image server to bind on 0.0.0.0.
-            # ${SB_SUDO} lxc config set core.https_address '[::]:8443'
+            # sudo -n lxc config set core.https_address '[::]:8443'
             # abortIfNonZero $? "enabling the LXC image server to bind on 0.0.0.0"
 
             ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' "${SB_SSH_HOST}" "source /tmp/libfns.sh && $(dumpAutoDetectedVars) prepareServerPart2 ${skipIfExists} ${SB_LXC_FS}"

@@ -8,7 +8,6 @@ else
 fi
 
 export SB_REPO_PATH="${GOPATH:-${HOME}/go}/src/github.com/jaytaylor/shipbuilder"
-export SB_SUDO='sudo --non-interactive'
 export SB_SSH='ssh -o BatchMode=yes -o StrictHostKeyChecking=no'
 
 export goVersion='1.14'
@@ -42,7 +41,7 @@ function checkUserPermissions() {
         echo 'error: must not be run as root' 1>&2
         exit 1
     fi
-    ${SB_SUDO} bash -c ':'
+    sudo -n bash -c ':'
     if [ $? -ne 0 ] ; then
         echo 'error: must be run by a user who has passwordless sudo access'
         exit 1
@@ -142,7 +141,7 @@ function verifySshAndSudoForHosts() {
     echo "info: verifying ssh and sudo access for $(echo "${sshHosts}" | tr ' ' '\n' | grep -v '^ *$' | wc -l | sed 's/^[ \t]*//g') hosts"
     for sshHost in ${sshHosts} ; do
         echo -n "info:     testing host ${sshHost} .. "
-        result=$(ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' -o 'ConnectTimeout=15' -q "${sshHost}" "${SB_SUDO} echo 'succeeded' 2>/dev/null")
+        result=$(ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' -o 'ConnectTimeout=15' -q "${sshHost}" "sudo -n echo 'succeeded' 2>/dev/null")
         rc=$?
         test ${rc} -ne 0 && echo 'failed' && abortWithError "error: ssh connection test failed for host: ${sshHost} (exited with status code: ${rc})"
         test -z "${result}" && echo 'failed' && abortWithError "error: sudo access test failed for host: ${sshHost}"
@@ -330,17 +329,17 @@ function installLxc() {
     local required
     local recommended
 
-    ${SB_SUDO} apt update
+    sudo -n apt update
     abortIfNonZero $? "command 'apt update'"
 
     # Legacy migration: zfs-fuse dependency is now switched to zfsutils-linux
     # for shipbuilder v2.
     # LXC and LXD get installed via snap.
-    ${SB_SUDO} apt remove --yes --purge zfs-fuse lxd lxd-client lxc lxc1 lxc2 liblxc1 lxc-common lxcfs
+    sudo -n apt remove --yes --purge zfs-fuse lxd lxd-client lxc lxc1 lxc2 liblxc1 lxc-common lxcfs
     abortIfNonZero $? "command 'apt remove --yes --purge zfs-fuse lxd lxd-client lxc lxc1 lxc2 liblxc1 lxc-common lxcfs'"
 
     # <pre-cleanup>
-    ${SB_SUDO} systemctl stop snap.lxd.daemon
+    sudo -n systemctl stop snap.lxd.daemon
     #abortIfNonZero $? "systemctl stop snap.lxd.daemon"
 
         # Add supporting package(s) for selected filesystem type.
@@ -348,26 +347,25 @@ function installLxc() {
 
     required="${fsPackages} git mercurial bzr build-essential bzip2 daemontools ntp ntpdate jq"
     echo "info: installing required build-server packages: ${required}"
-    ${SB_SUDO} apt install --yes ${required}
+    sudo -n apt install --yes ${required}
     abortIfNonZero $? "command 'apt install --yes ${required}'"
 
     recommended='htop iotop unzip screen bzip2 bmon iptraf-ng'
     echo "info: installing recommended packages: ${recommended}"
-    ${SB_SUDO} apt install --yes ${recommended}
+    sudo -n apt install --yes ${recommended}
     abortIfNonZero $? "command 'apt install --yes ${recommended}'"
 
-    ${SB_SUDO} rm -rf /var/lib/lxd
+    sudo -n rm -rf /var/lib/lxd
     abortIfNonZero $? "command: 'rm -rf /var/lib/lxd'"
 
-    ${SB_SUDO} ln -s /var/snap/lxd/common/lxd /var/lib/lxd
+    sudo -n ln -s /var/snap/lxd/common/lxd /var/lib/lxd
     abortIfNonZero $? "command: 'ln -s /var/snap/lxd/common/lxd /var/lib/lxd'"
     # </pre-cleanup>
 
     echo 'info: supported versions of lxc+lxd must be installed'
     echo 'info: as of 2017-12-27, ubuntu comes with lxc+lxd=v2.0.11 by default, and we require lxc=v2.1.1 lxd=2.2.1 or newer'
-    echo 'info: installing lxd via snap'
     if ! grep -q '^lxd:' /etc/group ; then
-        ${SB_SUDO} groupadd --system lxd
+        sudo -n groupadd --system lxd
         rc=$?
         # NB: if group already exists, groupadd exits with status code 9.
         if [ ${rc} -ne 0 ] && [ ${rc} -ne 9 ] ; then
@@ -376,28 +374,29 @@ function installLxc() {
     fi
 
     if ! getent group lxd | grep -q '\broot\b' ; then
-        ${SB_SUDO} usermod -G lxd -a root
+        sudo -n usermod -G lxd -a root
         abortIfNonZero $? "command 'usermod -G lxd -a root'"
     fi
 
     echo 'info: installing lxd via snap'
-    cd /tmp
 
     set -o errexit
 
     if [ -n "$(snap list | awk '/lxd/ { print }')" ]; then
         echo 'INFO: LXD snap installation detected' 1>&2
-        if ! ${SB_SUDO} snap remove lxd --purge; then
-            # n.b. Sometimes this resolves "device busy" errors due to tank being mounted
-            #      under /var/lib/lxd/.
-            ${SB_SUDO} zpool destroy -f tank
-            ${SB_SUDO} snap remove lxd --purge
-        fi
+        echo 'info: skipping lxd installation, already appears to be installed'
+        return
+#        if ! sudo -n snap remove lxd --purge; then
+#            # n.b. Sometimes this resolves "device busy" errors due to tank being mounted
+#            #      under /var/lib/lxd/.
+#            sudo -n zpool destroy -f tank
+#            sudo -n snap remove lxd --purge
+#        fi
     fi
-
-    if [ -n "$(${SB_SUDO} zpool list | awk '/tank/ { print }')" ]; then
-        ${SB_SUDO} zpool destroy -f tank
-    fi
+#
+#    if [ -n "$(sudo -n zpool list | awk '/tank/ { print }')" ]; then
+#        sudo -n zpool destroy -f tank
+#    fi
 
     cd /tmp
 
@@ -412,12 +411,12 @@ function installLxc() {
 
     sha256sum --check SHA-256
 
-    ${SB_SUDO} snap ack 'lxd_11348.assert'
-    ${SB_SUDO} snap install 'lxd_11348.snap'
+    sudo -n snap ack 'lxd_11348.assert'
+    sudo -n snap install 'lxd_11348.snap'
 
     cd - 2>/dev/null
 
-    ${SB_SUDO} lxd init --preseed << EOF
+    sudo -n lxd init --preseed << EOF
 config: {}
 networks:
 - config:
@@ -429,9 +428,9 @@ networks:
   type: ""
 storage_pools:
 - config:
-    source: /dev/nvme1n1
+    source: ${device}
   description: ""
-  name: tank
+  name: ${zfsPoolArg}
   driver: zfs
 profiles:
 - config: {}
@@ -444,20 +443,20 @@ profiles:
       type: nic
     root:
       path: /
-      pool: tank
+      pool: ${zfsPoolArg}
       type: disk
   name: default
 cluster: null
 EOF
 
     # Create zfs storage tank only if not already present.
-    if ! ${SB_SUDO} lxc storage list | grep -q "${zfsPoolArg}" ; then
-        ${SB_SUDO} lxc storage create "${zfsPoolArg}" zfs "source=${device}"
+    if ! sudo -n lxc storage list | grep -q "${zfsPoolArg}" ; then
+        sudo -n lxc storage create "${zfsPoolArg}" zfs "source=${device}"
     fi
 
     set +o errexit
 
-    echo "info: installed version of lxc=$(${SB_SUDO} lxc version) and lxd=$(${SB_SUDO} lxd --version) (all must be v2.21 or newer)"
+    echo "info: installed version of lxc=$(sudo -n lxc version) and lxd=$(sudo -n lxd --version) (all must be v2.21 or newer)"
     echo 'info: installLxc() succeeded'
 }
 
@@ -467,17 +466,17 @@ function setupSysctlAndLimits() {
 
     echo 'info: installing config params to /etc/sysctl.conf'
     for param in max_queued_events max_user_instances max_user_watches ; do
-        ${SB_SUDO} sed -i "/^fs\.inotify\.${param} *=.*\$/d" /etc/sysctl.conf
+        sudo -n sed -i "/^fs\.inotify\.${param} *=.*\$/d" /etc/sysctl.conf
         abortIfNonZero $? "cleaning config param=${param} from /etc/sysctl.conf"
-        echo "fs.inotify.${param} = ${fsValue}" | ${SB_SUDO} tee -a /etc/sysctl.conf
+        echo "fs.inotify.${param} = ${fsValue}" | sudo -n tee -a /etc/sysctl.conf
         abortIfNonZero $? "setting config param=${param} in /etc/sysctl.conf"
     done
 
     echo 'info: installing config params to /etc/security/limits.conf'
     for param in soft hard ; do
-        ${SB_SUDO} sed -i "/^\* ${param} .*\$/d" /etc/security/limits.conf
+        sudo -n sed -i "/^\* ${param} .*\$/d" /etc/security/limits.conf
         abortIfNonZero $? "cleaning config param=${param} from /etc/security/limits.conf"
-        echo "* ${param} nofile ${limitsValue}" | ${SB_SUDO} tee -a /etc/security/limits.conf
+        echo "* ${param} nofile ${limitsValue}" | sudo -n tee -a /etc/security/limits.conf
         abortIfNonZero $? "setting config param=${param} in /etc/security/limits.conf"
     done
 }
@@ -487,16 +486,16 @@ function prepareZfsDirs() {
 
     # Create lxc and git volumes and set mountpoints.
     for volume in git ; do
-        #test -z "$(${SB_SUDO} zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" && ${SB_SUDO} zfs create -o compression=on "${zfsPoolArg}/${volume}" || :
-        test -n "$(${SB_SUDO} zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" || ${SB_SUDO} zfs create -o compression=on "${zfsPoolArg}/${volume}"
+        #test -z "$(sudo -n zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" && sudo -n zfs create -o compression=on "${zfsPoolArg}/${volume}" || :
+        test -n "$(sudo -n zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" || sudo -n zfs create -o compression=on "${zfsPoolArg}/${volume}"
         abortIfNonZero $? "command 'zfs create -o compression=on ${zfsPoolArg}/${volume}'"
 
-        ${SB_SUDO} zfs set "mountpoint=/${volume}" "${zfsPoolArg}/${volume}"
+        sudo -n zfs set "mountpoint=/${volume}" "${zfsPoolArg}/${volume}"
         abortIfNonZero $? "setting mountpoint via 'zfs set mountpoint=/${zfsPoolArg}/${volume} ${zfsPoolArg}/${volume}'"
 
-        ${SB_SUDO} zfs umount "${zfsPoolArg}/${volume}" 2>/dev/null || :
+        sudo -n zfs umount "${zfsPoolArg}/${volume}" 2>/dev/null || :
 
-        ${SB_SUDO} zfs mount "${zfsPoolArg}/${volume}"
+        sudo -n zfs mount "${zfsPoolArg}/${volume}"
         abortIfNonZero $? "zfs mount'ing ${zfsPoolArg}/${volume}"
     done
 
@@ -505,34 +504,34 @@ function prepareZfsDirs() {
     lxcBasePath=/var/lib/lxd
 
     # if [ -h "${lxcBasePath}" ] ; then
-    #     ${SB_SUDO} unlink "${lxcBasePath}"
+    #     sudo -n unlink "${lxcBasePath}"
     #     abortIfNonZero $? "command 'unlink ${lxcBasePath}'"
     # elif [ -d "${lxcBasePath}" ] ; then
     #     mvPath="${lxcBasePath}-$(date +%Y%m%d)"
     #     if [ -e "${mvPath}" ] ; then
     #         abortWithError "Refusing to rename ${lxcBasePath} to ${mvPath} because ${mvPath} already exists"
     #     fi
-    #     ${SB_SUDO} mv "${lxcBasePath}" "${mvPath}"
+    #     sudo -n mv "${lxcBasePath}" "${mvPath}"
     #     abortIfNonZero $? "command 'rmdir ${lxcBasePath}'"
     # fi
-    # ${SB_SUDO} ln -s /var/snap/lxd/common/ "${lxcBasePath}"
+    # sudo -n ln -s /var/snap/lxd/common/ "${lxcBasePath}"
     # abortIfNonZero $? "symlinking /var/snap/lxd/common to ${lxcBasePath}"
 
     for volume in containers images snapshots ; do
-        test -n "$(${SB_SUDO} zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" || ${SB_SUDO} zfs create -o compression=on "${zfsPoolArg}/${volume}"
+        test -n "$(sudo -n zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" || sudo -n zfs create -o compression=on "${zfsPoolArg}/${volume}"
         abortIfNonZero $? "command 'zfs create -o compression=on ${zfsPoolArg}/${volume}'"
 
-        ${SB_SUDO} zfs set "mountpoint=${lxcBasePath}/${volume}" "${zfsPoolArg}/${volume}"
+        sudo -n zfs set "mountpoint=${lxcBasePath}/${volume}" "${zfsPoolArg}/${volume}"
         abortIfNonZero $? "setting mountpoint via 'zfs set mountpoint=${lxcBasePath}/${volume} ${zfsPoolArg}/${volume}'"
 
-        ${SB_SUDO} zfs umount "${zfsPoolArg}/${volume}" 2>/dev/null || :
+        sudo -n zfs umount "${zfsPoolArg}/${volume}" 2>/dev/null || :
 
-        ${SB_SUDO} zfs mount "${zfsPoolArg}/${volume}"
+        sudo -n zfs mount "${zfsPoolArg}/${volume}"
         abortIfNonZero $? "zfs mount'ing ${zfsPoolArg}/${volume}"
 
-        # ${SB_SUDO} unlink "/${volume}" 2>/dev/null || :
+        # sudo -n unlink "/${volume}" 2>/dev/null || :
 
-        # ${SB_SUDO} ln -s "/${zfsPoolArg}/${volume}" "/${volume}"
+        # sudo -n ln -s "/${zfsPoolArg}/${volume}" "/${volume}"
         # abortIfNonZero $? "setting up symlink for volume=${volume}"
     done
 }
@@ -544,13 +543,13 @@ function configureLxdNetworking() {
     # Setup LXC/LXD networking.
     ip addr show lxdbr0 1>/dev/null 2>/dev/null
     if [ $? -eq 0 ] ; then
-        test -n "$(ip addr show lxdbr0 | grep ' inet ')" || ${SB_SUDO} lxc network delete lxdbr0
+        test -n "$(ip addr show lxdbr0 | grep ' inet ')" || sudo -n lxc network delete lxdbr0
         abortIfNonZero $? "lxc/lxd removal of non-ipv4 network bridge lxdbr0 (recommendation: reboot and re-run installer)"
     fi
 
-    lxcNetExistsTest="$(${SB_SUDO} lxc network show lxdbr0 2>/dev/null)"
+    lxcNetExistsTest="$(sudo -n lxc network show lxdbr0 2>/dev/null)"
     if [ -z "${lxcNetExistsTest}" ] ; then
-        ${SB_SUDO} lxc network create lxdbr0 ipv6.address=none ipv4.address=10.0.1.1/24 ipv4.nat=true
+        sudo -n lxc network create lxdbr0 ipv6.address=none ipv4.address=10.0.1.1/24 ipv4.nat=true
         abortIfNonZero $? "lxc/lxd ipv4 network bridge creation of lxdbr0"
     fi
 
@@ -559,26 +558,26 @@ function configureLxdNetworking() {
         abortWithError "no network interface found to attach to LXC"
     fi
 
-    ${SB_SUDO} lxc network detach-profile lxdbr0 default ${topInterface} 2>/dev/null || :
+    sudo -n lxc network detach-profile lxdbr0 default ${topInterface} 2>/dev/null || :
 
-    ${SB_SUDO} lxc network attach-profile lxdbr0 default ${topInterface}
+    sudo -n lxc network attach-profile lxdbr0 default ${topInterface}
     abortIfNonZero $? "command 'lxc network attach-profile lxdbr0 default ${topInterface}'"
 }
 
 function configureLxdZfs() {
-    storage="$(${SB_SUDO} lxc storage show "${zfsPoolArg}" 2>/dev/null)"
+    storage="$(sudo -n lxc storage show "${zfsPoolArg}" 2>/dev/null)"
     if [ -z "${storage}" ] ; then
-        ${SB_SUDO} lxc storage create "${zfsPoolArg}" zfs "source=${device}"
+        sudo -n lxc storage create "${zfsPoolArg}" zfs "source=${device}"
         abortIfNonZero $? "command 'lxc storage create ${zfsPoolArg} zfs source=${device}'"
     fi
 
-    if [ -z "$(${SB_SUDO} lxc profile device show default | grep -A3 '^root:' | grep "pool: ${zfsPoolArg}")" ] ; then
-        ${SB_SUDO} lxc profile device remove default root
+    if [ -z "$(sudo -n lxc profile device show default | grep -A3 '^root:' | grep "pool: ${zfsPoolArg}")" ] ; then
+        sudo -n lxc profile device remove default root
 
-        ${SB_SUDO} lxc profile device add default root disk path=/ "pool=${zfsPoolArg}"
+        sudo -n lxc profile device add default root disk path=/ "pool=${zfsPoolArg}"
         abortIfNonZero $? "LXC root zfs device assertion"
     fi
-    # ${SB_SUDO} lxc profile device show default || ${SB_SUDO} lxc profile device add default root disk path=/ "pool=${zfsPoolArg}"
+    # sudo -n lxc profile device show default || sudo -n lxc profile device add default root disk path=/ "pool=${zfsPoolArg}"
     # abortIfNonZero $? "LXC root zfs device assertion"
 }
 
@@ -593,13 +592,13 @@ function configureLxd() {
 
     local sbServerRemote
 
-    ${SB_SUDO} systemctl restart snap.lxd.daemon
+    sudo -n systemctl restart snap.lxd.daemon
     abortIfNonZero $? "command 'systemctl restart snap.lxd.daemon'"
 
     # Give the LXD daemon a moment to come up.
     sleep 3
 
-    ${SB_SUDO} lxd init --auto
+    sudo -n lxd init --auto
     abortIfNonZero $? "command 'lxd init --auto'"
 
 
@@ -610,20 +609,20 @@ function configureLxd() {
     fi
 
     if [ -n "${isServer}" ] ; then
-        ${SB_SUDO} lxc config set core.https_address [::]:8443
+        sudo -n lxc config set core.https_address [::]:8443
         abortIfNonZero $? "command 'lxc config set core.https_address [::]:8443'"
     fi
 
-    sbServerRemote=$(${SB_SUDO} lxc remote list | awk '{print $2}' | grep -v '^$' | sed 1d | grep '^sb-server$' | wc -l)
+    sbServerRemote=$(sudo -n lxc remote list | awk '{print $2}' | grep -v '^$' | sed 1d | grep '^sb-server$' | wc -l)
     if [ ${sbServerRemote} -ne 1 ] ; then
-        ${SB_SUDO} lxc remote add --accept-certificate --public sb-server ${SB_SSH_HOST}
+        sudo -n lxc remote add --accept-certificate --public sb-server ${SB_SSH_HOST}
         abortIfNonZero $? "command 'lxc remote add --accept-certificate --public sb-server ${SB_SSH_HOST}' on $(hostname --fqdn)"
     fi
 
     # TODO: Find out what cmd creates .config and run it to ensure the
     # directory will exist.
     if [ -d "${HOME}/.config" ] ; then
-        ${SB_SUDO} cp -a "${HOME}/.config" /root/
+        sudo -n cp -a "${HOME}/.config" /root/
         abortIfNonZero $? "command 'cp -a ${HOME}/.config /root/'"
     else
         echo 'info: no ${HOME}/.config directory found'
@@ -658,7 +657,7 @@ function prepareNode() {
 
     if [ -n "${swapDevice}" ] ; then
         echo "info: attempting to unmount swap device=${swapDevice} to be cautious/safe"
-        ${SB_SUDO} umount "${swapDevice}" 1>&2 2>/dev/null
+        sudo -n umount "${swapDevice}" 1>&2 2>/dev/null
     fi
 
     # Strip leading '/' from $zfsPool, this is actually a compatibility update for 2017.
@@ -667,28 +666,28 @@ function prepareNode() {
     installLxc "${lxcFs}" "${zfsPoolArg}" "${device}"
 
     # Enable zfs snapshot listing.
-    ${SB_SUDO} zpool set listsnapshots=on "${zfsPoolArg}"
+    sudo -n zpool set listsnapshots=on "${zfsPoolArg}"
     abortIfNonZero $? "command 'zpool set listsnapshots=on ${zfsPoolArg}'"
 
     prepareZfsDirs
 
     # Chmod 777 /${zfsPoolArg}/git
-    ${SB_SUDO} chmod 777 '/git'
+    sudo -n chmod 777 '/git'
     abortIfNonZero $? "command 'chmod 777 /git'"
 
     if ! [ -z "${swapDevice}" ] && [ -e "${swapDevice}" ] ; then
         echo "info: activating swap device or partition: ${swapDevice}"
         # Ensure the swap device target us unmounted.
-        ${SB_SUDO} umount "${swapDevice}" 1>/dev/null 2>/dev/null || :
+        sudo -n umount "${swapDevice}" 1>/dev/null 2>/dev/null || :
         # Purge any pre-existing fstab entries before adding the swap device.
-        ${SB_SUDO} sed -i "/^$(echo "${swapDevice}" | sed 's/\//\\&/g')[ \t].*/d" /etc/fstab
+        sudo -n sed -i "/^$(echo "${swapDevice}" | sed 's/\//\\&/g')[ \t].*/d" /etc/fstab
         abortIfNonZero $? "purging pre-existing ${swapDevice} entries from /etc/fstab"
-        echo "${swapDevice} none swap sw 0 0" | ${SB_SUDO} tee -a /etc/fstab 1>/dev/null
-        ${SB_SUDO} swapoff --all
+        echo "${swapDevice} none swap sw 0 0" | sudo -n tee -a /etc/fstab 1>/dev/null
+        sudo -n swapoff --all
         abortIfNonZero $? "adding ${swapDevice} to /etc/fstab"
-        ${SB_SUDO} mkswap -f "${swapDevice}"
+        sudo -n mkswap -f "${swapDevice}"
         abortIfNonZero $? "command 'mkswap ${swapDevice}'"
-        ${SB_SUDO} swapon --all
+        sudo -n swapon --all
         abortIfNonZero $? "command 'swapon --all'"
     fi
 
@@ -696,18 +695,18 @@ function prepareNode() {
     majorVersion=$(lsb_release --release | sed 's/^[^0-9]*\([0-9]*\)\..*$/\1/')
     if [ ${majorVersion} -eq 12 ] ; then
         echo 'info: installing 3.8 or newer kernel, a system restart will be required to complete installation'
-        ${SB_SUDO} apt install --yes linux-generic-lts-raring-eol-upgrade
+        sudo -n apt install --yes linux-generic-lts-raring-eol-upgrade
         abortIfNonZero $? 'installing linux-generic-lts-raring-eol-upgrade'
-        echo 1 | ${SB_SUDO} tee -a /tmp/SB_RESTART_REQUIRED
+        echo 1 | sudo -n tee -a /tmp/SB_RESTART_REQUIRED
     fi
 
     echo 'info: installing automatic zpool importer to system startup script /etc/rc.local'
     if [ ! -e /etc/rc.local ] ; then
-        ${SB_SUDO} rm -rf /etc/rc.local
-        echo '#!/bin/sh -e' | ${SB_SUDO} sudo tee /etc/rc.local
+        sudo -n rm -rf /etc/rc.local
+        echo '#!/bin/sh -e' | sudo -n sudo tee /etc/rc.local
         abortIfNonZero $? 'creating /etc/rc.local'
     fi
-    ${SB_SUDO} chmod a+x /etc/rc.local
+    sudo -n chmod a+x /etc/rc.local
 
     if [ $(grep '^sudo[ a-zA-Z0-9-]* zpool import -f '"${zfsPoolArg}"'$' /etc/rc.local | wc -l) -eq 0 ] ; then
         # Find best line number offset to insert the zpool import command at.
@@ -722,7 +721,7 @@ function prepareNode() {
         if [ -z "${insertAtLineNo}" ] || [ "${numLines}" = "${insertAtLineNo}" ] ; then
             insertAtLineNo=2
         fi
-        ${SB_SUDO} sed -i "${insertAtLineNo}isudo --non-interactive zpool import -f ${zfsPoolArg}" /etc/rc.local
+        sudo -n sed -i "${insertAtLineNo}isudo --non-interactive zpool import -f ${zfsPoolArg}" /etc/rc.local
         abortIfNonZero $? 'adding zpool auto-import to /etc/rc.local'
     fi
     grep "^sudo[ a-zA-Z0-9-]* zpool import -f ${zfsPoolArg}"'$' /etc/rc.local
@@ -763,44 +762,44 @@ net.core.somaxconn = 32000
 net.ipv4.tcp_max_syn_backlog = 32000
 net.core.netdev_max_backlog = 32000
 net.core.rmem_max = 16777216
-net.core.wmem_max = 16777216' | ${SB_SUDO} tee /etc/sysctl.d/60-shipbuilder.conf
+net.core.wmem_max = 16777216' | sudo -n tee /etc/sysctl.d/60-shipbuilder.conf
     abortIfNonZero $? 'writing out /etc/sysctl.d/60-shipbuilder.conf'
 
-    ${SB_SUDO} systemctl restart procps
+    sudo -n systemctl restart procps
     abortIfNonZero $? 'service procps restart'
 
     echo "info: adding ppa repository for ${version}: ${ppa}"
-    ${SB_SUDO} apt-add-repository --yes "${ppa}"
+    sudo -n apt-add-repository --yes "${ppa}"
     abortIfNonZero $? "command 'apt-add-repository --yes ${ppa}'"
 
     required="haproxy ntp"
     echo "info: installing required packages: ${required}"
-    ${SB_SUDO} apt update
+    sudo -n apt update
     abortIfNonZero $? "updating apt"
-    ${SB_SUDO} apt install --yes ${required}
+    sudo -n apt install --yes ${required}
     abortIfNonZero $? "command 'apt install --yes ${required}'"
 
     optional="vim-haproxy"
     echo "info: installing optional packages: ${optional}"
-    ${SB_SUDO} apt install --yes ${optional}
+    sudo -n apt install --yes ${optional}
     abortIfNonZero $? "command 'apt install --yes ${optional}'"
 
     if [ -n "${certFile}" ] && [ -r "${certFile}" ] ; then
         if ! [ -d "/etc/haproxy/certs.d" ] ; then
-            ${SB_SUDO} mkdir /etc/haproxy/certs.d 2>/dev/null
+            sudo -n mkdir /etc/haproxy/certs.d 2>/dev/null
             abortIfNonZero $? "creating /etc/haproxy/certs.d directory"
         fi
-        ${SB_SUDO} chmod 750 /etc/haproxy/certs.d
+        sudo -n chmod 750 /etc/haproxy/certs.d
         abortIfNonZero $? "chmod 750 /etc/haproxy/certs.d"
 
         echo "info: installing ssl certificate to /etc/haproxy/certs.d"
-        ${SB_SUDO} mv ${certFile} /etc/haproxy/certs.d/
+        sudo -n mv ${certFile} /etc/haproxy/certs.d/
         abortIfNonZero $? "moving certificate to /etc/haproxy/certs.d"
 
-        ${SB_SUDO} chmod 400 /etc/haproxy/certs.d/$(echo ${certFile} | sed "s/^.*\/\(.*\)$/\1/")
+        sudo -n chmod 400 /etc/haproxy/certs.d/$(echo ${certFile} | sed "s/^.*\/\(.*\)$/\1/")
         abortIfNonZero $? "chmod 400 /etc/haproxy/certs.d/<cert-file>"
 
-        ${SB_SUDO} chown -R haproxy:haproxy /etc/haproxy/certs.d
+        sudo -n chown -R haproxy:haproxy /etc/haproxy/certs.d
         abortIfNonZero $? "chown haproxy:haproxy /etc/haproxy/certs.d"
 
     else
@@ -808,7 +807,7 @@ net.core.wmem_max = 16777216' | ${SB_SUDO} tee /etc/sysctl.d/60-shipbuilder.conf
     fi
 
     echo "info: enabling the HAProxy system service in /etc/default/haproxy"
-    ${SB_SUDO} sed -i "s/ENABLED=0/ENABLED=1/" /etc/default/haproxy
+    sudo -n sed -i "s/ENABLED=0/ENABLED=1/" /etc/default/haproxy
     abortIfNonZero $? "enabling haproxy service in /dev/default/haproxy"
     echo 'info: prepareLoadBalancer() succeeded'
 }
@@ -822,9 +821,9 @@ function installGo() {
         echo "info: downloading go binary distribution from url=${downloadUrl}"
         curl --silent --show-error -o "go${goVersion}.tar.gz" "${downloadUrl}"
         abortIfNonZero $? "downloading go-lang binary distribution"
-        ${SB_SUDO} tar -C /usr/local -xzf "go${goVersion}.tar.gz"
+        sudo -n tar -C /usr/local -xzf "go${goVersion}.tar.gz"
         abortIfNonZero $? "decompressing and installing go binary distribution to /usr/local"
-        ${SB_SUDO} tee /etc/profile.d/Z99-go.sh << EOF
+        sudo -n tee /etc/profile.d/Z99-go.sh << EOF
 export GOROOT='/usr/local/go'
 export GOPATH="\${HOME}/go"
 export PATH="\${PATH}:\${GOROOT}/bin:\${GOPATH}/bin"
@@ -847,12 +846,12 @@ function rsyslogLoggingListeners() {
 
     # TCP syslog reception.
     $ModLoad imtcp
-    $InputTCPServerRun 10514' | ${SB_SUDO} tee /etc/rsyslog.d/49-haproxy.conf
+    $InputTCPServerRun 10514' | sudo -n tee /etc/rsyslog.d/49-haproxy.conf
     echo 'info: restarting rsyslog'
-    ${SB_SUDO} systemctl restart rsyslog
+    sudo -n systemctl restart rsyslog
     if [ -e /etc/rsyslog.d/haproxy.conf ] ; then
         echo 'info: detected existing rsyslog haproxy configuration, will disable it'
-        ${SB_SUDO} mv /etc/rsyslog.d/haproxy.conf /etc/rsyslog.d-haproxy.conf.disabled
+        sudo -n mv /etc/rsyslog.d/haproxy.conf /etc/rsyslog.d-haproxy.conf.disabled
     fi
     echo 'info: rsyslog configuration succeeded'
 }
@@ -873,11 +872,11 @@ function getContainerIp() {
 
     echo "info: getting container ip-address for name '${container}'"
     while [ ${i} -lt ${allowedAttempts} ] ; do
-        maybeIp="$(${SB_SUDO} lxc list --format=json | jq -r ".[] | select(.name==\"${container}\") | .state.network.eth0.addresses[].address" | grep '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')"
+        maybeIp="$(sudo -n lxc list --format=json | jq -r ".[] | select(.name==\"${container}\") | .state.network.eth0.addresses[].address" | grep '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')"
         # Verify that after a few seconds the ip hasn't changed.
         if [ -n "${maybeIp}" ] ; then
             sleep 1
-            ip="$(${SB_SUDO} lxc list --format=json | jq -r ".[] | select(.name==\"${container}\") | .state.network.eth0.addresses[].address" | grep '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')"
+            ip="$(sudo -n lxc list --format=json | jq -r ".[] | select(.name==\"${container}\") | .state.network.eth0.addresses[].address" | grep '[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}')"
             if [ "${ip}" = "${maybeIp}" ] ; then
                 echo "info: ip-address verified, value=${ip}"
                 break
@@ -919,10 +918,10 @@ function lxcInitContainer() {
         echo "info: lxcInitContainer() skipping container=${container} because it already exists and the skip flag was passed"
     else
         echo "info: clearing any pre-existing container=${container}"
-        ${SB_SUDO} lxc delete --force "${container}"
+        sudo -n lxc delete --force "${container}"
 
         echo "info: creating lxc container=${container}"
-        echo -e '\n' | ${SB_SUDO} lxc launch "${lxcBaseImage}" "${container}"
+        echo -e '\n' | sudo -n lxc launch "${lxcBaseImage}" "${container}"
 
         getContainerIp "${container}"
 
@@ -941,42 +940,42 @@ function lxcConfigContainer() {
 
     echo "info: adding shipbuilder server's public-key to authorized_keys file in container=${container}"
 
-    ${SB_SUDO} lxc exec -T "${container}" -- bash -c "set -o errexit && set -o pipefail && ${SB_SUDO} -u ubuntu mkdir -p /home/ubuntu/.ssh && chown -R ubuntu:ubuntu /home/ubuntu/.ssh && chmod 700 /home/ubuntu/.ssh"
+    sudo -n lxc exec -T "${container}" -- bash -c "set -o errexit && set -o pipefail && sudo -n -u ubuntu mkdir -p /home/ubuntu/.ssh && chown -R ubuntu:ubuntu /home/ubuntu/.ssh && chmod 700 /home/ubuntu/.ssh"
     abortIfNonZero $? "creation of container=${container} ~/.ssh directory"
 
-    ${SB_SUDO} lxc exec -T "${container}" -- ${SB_SUDO} -u ubuntu ls -lah /home/ubuntu/
+    sudo -n lxc exec -T "${container}" -- sudo -n -u ubuntu ls -lah /home/ubuntu/
 
-    ${SB_SUDO} lxc exec -T "${container}" -- ${SB_SUDO} -u ubuntu tee /home/ubuntu/.ssh/authorized_keys < ~/.ssh/id_rsa.pub
+    sudo -n lxc exec -T "${container}" -- sudo -n -u ubuntu tee /home/ubuntu/.ssh/authorized_keys < ~/.ssh/id_rsa.pub
     abortIfNonZero $? "creation of container=${container} ssh authorized_keys"
 
-    ${SB_SUDO} lxc exec -T "${container}" -- chmod 600 /home/ubuntu/.ssh/authorized_keys
+    sudo -n lxc exec -T "${container}" -- chmod 600 /home/ubuntu/.ssh/authorized_keys
     abortIfNonZero $? "chmod 600 container=${container} .ssh/authorized_keys"
 
     echo 'info: adding the container "ubuntu" user to the sudoers list'
-    ${SB_SUDO} lxc exec -T "${container}" -- ${SB_SUDO} bash -c 'set -o errexit && set -o pipefail && echo "ubuntu ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers'
+    sudo -n lxc exec -T "${container}" -- sudo -n bash -c 'set -o errexit && set -o pipefail && echo "ubuntu ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers'
     abortIfNonZero $? "adding 'ubuntu' to container=${container} sudoers"
 
     echo "info: updating apt repositories in container=${container}"
-    # ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "${SB_SUDO} apt update"
-    ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "${SB_DEBUG_BASH} && set -o errexit && DEBIAN_FRONTEND=noninteractive apt update"
+    # ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo -n apt update"
+    sudo -n lxc exec -T "${container}" -- /bin/bash -c "${SB_DEBUG_BASH} && set -o errexit && DEBIAN_FRONTEND=noninteractive apt update"
     abortIfNonZero $? "container=${container} apt update"
 
     packages='daemontools git-core curl unzip'
     echo "info: installing packages to container=${container}: ${packages}"
-    ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "${SB_DEBUG_BASH} && set -o errexit && DEBIAN_FRONTEND=noninteractive apt install --yes ${packages}"
+    sudo -n lxc exec -T "${container}" -- /bin/bash -c "${SB_DEBUG_BASH} && set -o errexit && DEBIAN_FRONTEND=noninteractive apt install --yes ${packages}"
     abortIfNonZero $? "container=${container} apt install --yes ${packages}"
 
     echo "info: removing $(shipbuilder containers list-purge-packages | tr $'\n' ' ') packages"
-    ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "${SB_DEBUG_BASH} && set -o errexit && DEBIAN_FRONTEND=noninteractive apt purge --yes $(shipbuilder containers list-purge-packages | tr $'\n' ' ')"
+    sudo -n lxc exec -T "${container}" -- /bin/bash -c "${SB_DEBUG_BASH} && set -o errexit && DEBIAN_FRONTEND=noninteractive apt purge --yes $(shipbuilder containers list-purge-packages | tr $'\n' ' ')"
     abortIfNonZero $? "container=${container} apt purge --yes $(shipbuilder containers list-purge-packages | tr $'\n' ' ')"
 
     echo "info: disabling unnecessary system services - $(shipbuilder containers list-disable-services | tr $'\n' ' ')"
-    shipbuilder containers list-disable-services | ${SB_SUDO} lxc exec -T "${container}" -- \
+    shipbuilder containers list-disable-services | sudo -n lxc exec -T "${container}" -- \
         /bin/bash -c "${SB_DEBUG_BASH} && set -o errexit && xargs -n 1 -IX /bin/bash -c 'systemctl is-enabled X 1>/dev/null ; test \$? -ne 0 && return 0 ; systemctl stop X ; set -o errexit ; systemctl disable X'"
     abortIfNonZero $? "container=${container} disabling unnecessary system services - $(shipbuilder containers list-disable-services | tr $'\n' ' ')"
 
     echo "info: stopping container=${container}"
-    ${SB_SUDO} lxc stop --force "${container}"
+    sudo -n lxc stop --force "${container}"
 
     echo "info: configuration succeeded for container=${container}"
 }
@@ -987,7 +986,7 @@ function lxcContainerExists() {
     test -z "${container}" && echo 'error: lxcContainerExists() missing required parameter: $container' 1>&2 && exit 1
 
     # Test whether or not the container already exists.
-    test -z "$(${SB_SUDO} lxc list --format=json | jq -r ".[] | select(.name==\"${container}\")")"
+    test -z "$(sudo -n lxc list --format=json | jq -r ".[] | select(.name==\"${container}\")")"
 }
 
 function lxcContainerRunning() {
@@ -996,7 +995,7 @@ function lxcContainerRunning() {
     test -z "${container}" && echo 'error: lxcContainerRunning() missing required parameter: $container' 1>&2 && exit 1
 
     # Test whether or not the container already exists and is running.
-    test "$(${SB_SUDO} lxc list --format=json | jq -r ".[] | select(.name==\"${container}\") | .status")" = 'Running'
+    test "$(sudo -n lxc list --format=json | jq -r ".[] | select(.name==\"${container}\") | .status")" = 'Running'
 }
 
 function lxcDestroyContainer() {
@@ -1016,10 +1015,10 @@ function lxcDestroyContainer() {
     lxcContainerExists "${container}"
     existsRc=$?
     if [ ${existsRc} -eq 0 ] ; then
-        ${SB_SUDO} lxc stop --force "${container}"
+        sudo -n lxc stop --force "${container}"
         local attempts=10
         while [ ${attempts} -gt 0 ] ; do
-            ${SB_SUDO} lxc delete --force "${container}"
+            sudo -n lxc delete --force "${container}"
             test $? -eq 0 && break
             attempts=$((${attempts}-1))
         done
@@ -1033,7 +1032,7 @@ function lxcDestroyContainer() {
             result=1
         else
             # Ensure zfs volume gets destroyed.
-            test "${lxcFs}" = 'zfs' && ${SB_SUDO} zfs destroy "tank/base@${container}" || true
+            test "${lxcFs}" = 'zfs' && sudo -n zfs destroy "tank/base@${container}" || true
             echo "info: lxcDestroyContainer() successfully destroyed container=${container}"
         fi
     else
@@ -1089,25 +1088,25 @@ function lxcConfigBuildPack() {
         echo "info: creating build-pack ${container} container"
 
         # Ensure any pre-existing image gets removed.
-        ${SB_SUDO} lxc delete --force "${container}" 1>/dev/null 2>/dev/null
+        sudo -n lxc delete --force "${container}" 1>/dev/null 2>/dev/null
 
-        ${SB_SUDO} lxc copy base "${container}"
+        sudo -n lxc copy base "${container}"
         abortIfNonZero $? "command 'lxc copy base ${container}'"
 
-        ${SB_SUDO} lxc start "${container}"
+        sudo -n lxc start "${container}"
         abortIfNonZero $? "command 'lxc start ${container}"
 
         getContainerIp "${container}"
 
         # Install packages.
         echo "info: installing packages to ${container} container: ${packages}"
-        ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "set -o errexit && apt update && apt -o Dpkg::Options::='--force-overwrite' install --yes ${packages}"
+        sudo -n lxc exec -T "${container}" -- /bin/bash -c "set -o errexit && apt update && apt -o Dpkg::Options::='--force-overwrite' install --yes ${packages}"
         rc=$?
         if [ ${rc} -ne 0 ] ; then
             echo 'warning: first attempt at installing packages failed, falling back to trying installation of packages one by one..'
             for package in ${packages} ; do
-                #ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "${SB_SUDO} apt install --yes ${package}"
-                ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "set -o errexit && apt install -o Dpkg::Options::='--force-overwrite' --yes ${package}"
+                #ssh -o 'StrictHostKeyChecking=no' -o 'BatchMode=yes' "ubuntu@${ip}" "sudo -n apt install --yes ${package}"
+                sudo -n lxc exec -T "${container}" -- /bin/bash -c "set -o errexit && apt install -o Dpkg::Options::='--force-overwrite' --yes ${package}"
                 abortIfNonZero $? "[${container}] container apt install --yes ${package}"
             done
         fi
@@ -1118,17 +1117,17 @@ function lxcConfigBuildPack() {
                 echo "error: lxcConfigBuildPack(buildPack=${buildPack}, skipIfExists=${skipIfExists}, lxcFs=${lxcFs}): unable to read customCommandsFile=${customCommandsFile}" 1>&2 && exit 1
             fi
             echo "info: running customCommandsFile: ${customCommandsFile}"
-            base64 < "${customCommandsFile}" | ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash -c "set -o errexit && base64 -d > /tmp/custom.sh && chmod a+x /tmp/custom.sh"
+            base64 < "${customCommandsFile}" | sudo -n lxc exec -T "${container}" -- /bin/bash -c "set -o errexit && base64 -d > /tmp/custom.sh && chmod a+x /tmp/custom.sh"
             abortIfNonZero $? "[${container}] sending customCommandsFile=${customCommandsFile} to ${container} failed"
-            ${SB_SUDO} lxc exec -T "${container}" -- /bin/bash /tmp/custom.sh
+            sudo -n lxc exec -T "${container}" -- /bin/bash /tmp/custom.sh
             rc=$?
             # Cleanup temp custom commands script.
-            ${SB_SUDO} lxc exec -T "${container}" -- rm -f /tmp/custom.sh
+            sudo -n lxc exec -T "${container}" -- rm -f /tmp/custom.sh
             abortIfNonZero ${rc} "[${container}] container customCommandsFile=${customCommandsFile}"
         fi
 
         echo "info: stopping ${container} container"
-        ${SB_SUDO} lxc stop --force "${container}"
+        sudo -n lxc stop --force "${container}"
         abortIfNonZero $? "[${container}] lxc stop --force ${container}"
 
         echo 'info: build-pack configuration succeeded'
