@@ -983,10 +983,15 @@ function lxcConfigContainer() {
 function lxcContainerExists() {
     local container=${1:-}
 
-    test -z "${container}" && echo 'error: lxcContainerExists() missing required parameter: $container' 1>&2 && exit 1
+    if [ -z "${container}" ]; then
+        echo 'error: lxcContainerExists() missing required parameter: $container' 1>&2
+        exit 1
+    fi
 
     # Test whether or not the container already exists.
-    test -z "$(sudo -n lxc list --format=json | jq -r ".[] | select(.name==\"${container}\")")"
+    if [ -z "$(sudo -n lxc list --format=json | jq -r ".[] | select(.name==\"${container}\")")" ]; then
+        return 1
+    fi
 }
 
 function lxcContainerRunning() {
