@@ -1537,21 +1537,16 @@ func (d *Deployment) deploy() error {
 //
 // As a side-effect, when successful it sets the Deployment.ImageFingerprint.
 func (d *Deployment) publish() error {
-	var (
-		cmd    = logcmd(exec.Command(LXC_BIN, "publish", "--force", "--force-local", "--public", d.Application.Name, "--alias", d.lxcImageName()))
-		stderr = &bytes.Buffer{}
-	)
+	cmd := logcmd(exec.Command(LXC_BIN, "publish", "--force", "--force-local", "--public", d.Application.Name, "--alias", d.lxcImageName()))
 
-	cmd.Stderr = stderr
-
-	output, err := cmd.Output()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("publishing image: %s (stdout=%v stderr=%v)", err, string(output), stderr.String())
+		return fmt.Errorf("publishing image: %s (stdout+stderr=%v)", err, string(output))
 	}
 
 	// Extract the image fingerprint from the output.
 	var (
-		expr    = regexp.MustCompile(`Container published with fingerprint: (.+)`)
+		expr    = regexp.MustCompile(` (?:published with fingerprint|image already exists): (.+)`)
 		matches = expr.FindSubmatch(output)
 	)
 
@@ -1598,6 +1593,7 @@ func (d *Deployment) Deploy() error {
 	defer func() {
 		if err != nil {
 			d.undoVersionBump()
+			// TODO: Undo git change so they can re-push
 		}
 		d.postDeployHooks(err)
 	}()
