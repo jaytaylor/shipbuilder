@@ -518,21 +518,25 @@ function prepareZfsDirs() {
     # abortIfNonZero $? "symlinking /var/snap/lxd/common to ${lxcBasePath}"
 
     for volume in containers images snapshots ; do
-        test -n "$(sudo -n zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" || sudo -n zfs create -o compression=on "${zfsPoolArg}/${volume}"
-        abortIfNonZero $? "command 'zfs create -o compression=on ${zfsPoolArg}/${volume}'"
+        sudo -n zfs destroy -r "${zfsPoolArg}/${volume}" 2>/dev/null || :
 
-        sudo -n zfs set "mountpoint=${lxcBasePath}/${volume}" "${zfsPoolArg}/${volume}"
-        abortIfNonZero $? "setting mountpoint via 'zfs set mountpoint=${lxcBasePath}/${volume} ${zfsPoolArg}/${volume}'"
-
-        sudo -n zfs umount "${zfsPoolArg}/${volume}" 2>/dev/null || :
-
-        sudo -n zfs mount "${zfsPoolArg}/${volume}"
-        abortIfNonZero $? "zfs mount'ing ${zfsPoolArg}/${volume}"
-
-        # sudo -n unlink "/${volume}" 2>/dev/null || :
-
-        # sudo -n ln -s "/${zfsPoolArg}/${volume}" "/${volume}"
-        # abortIfNonZero $? "setting up symlink for volume=${volume}"
+#        test -n "$(sudo -n zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" || sudo -n zfs create -o compression=on "${zfsPoolArg}/${volume}"
+#        abortIfNonZero $? "command 'zfs create -o compression=on ${zfsPoolArg}/${volume}'"
+#
+#        if [ -z "$(sudo -n zfs list -o mountpoint | grep "^${lxcBasePath}\/${volume}")" ]; then
+#            sudo -n zfs set "mountpoint=${lxcBasePath}/${volume}" "${zfsPoolArg}/${volume}"
+#            abortIfNonZero $? "setting mountpoint via 'zfs set mountpoint=${lxcBasePath}/${volume} ${zfsPoolArg}/${volume}'"
+#        fi
+#
+#        sudo -n zfs umount "${zfsPoolArg}/${volume}" 2>/dev/null || :
+#
+#        sudo -n zfs mount "${zfsPoolArg}/${volume}"
+#        abortIfNonZero $? "zfs mount'ing ${zfsPoolArg}/${volume}"
+#
+#        # sudo -n unlink "/${volume}" 2>/dev/null || :
+#
+#        # sudo -n ln -s "/${zfsPoolArg}/${volume}" "/${volume}"
+#        # abortIfNonZero $? "setting up symlink for volume=${volume}"
     done
 }
 
