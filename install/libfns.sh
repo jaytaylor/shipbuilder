@@ -405,16 +405,14 @@ function installLxc() {
     #     snap download lxd --channel=3.0/stable
     #     snap ack lxd_11348.assert
     #
-    curl -sSLO 'https://whaleymood.gigawatt.io/ts/lxd_11348.assert'
-    curl -sSLO 'https://whaleymood.gigawatt.io/ts/lxd_11348.snap'
-    curl -sSLO 'https://whaleymood.gigawatt.io/ts/SHA-256'
+    git clone https://github.com/jaytaylor/shipbuilder-statics.git
+
+    cd shipbuilder-statics
 
     sha256sum --check SHA-256
 
     sudo -n snap ack 'lxd_11348.assert'
     sudo -n snap install 'lxd_11348.snap'
-
-    cd - 2>/dev/null
 
     sudo -n lxd init --preseed << EOF
 config: {}
