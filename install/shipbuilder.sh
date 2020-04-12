@@ -60,6 +60,9 @@ function deployShipBuilder() {
     sudo --non-interactive systemctl daemon-reload
     abortIfNonZero $? "command: 'systemctl daemon-reload'"
 
+    sudo --non-interactive systemctl enable shipbuilder
+    abortIfNonZero $? "command: 'systemctl enable shipbuilder'"
+
     sudo --non-interactive systemctl start shipbuilder
     abortIfNonZero $? "command: 'systemctl start shipbuilder'"
 
