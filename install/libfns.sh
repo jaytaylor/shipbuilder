@@ -405,7 +405,8 @@ function installLxc() {
     #     snap download lxd --channel=3.0/stable
     #     snap ack lxd_11348.assert
     #
-    git clone https://github.com/jaytaylor/shipbuilder-statics.git
+    rm -rf shipbuilder-statics
+    git clone https://github.com/jaytaylor/shipbuilder-statics
 
     cd shipbuilder-statics
 
