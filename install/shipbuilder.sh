@@ -71,7 +71,7 @@ function deployShipBuilder() {
 
 function rsyncLibfns() {
     pwd
-    rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" "$(dirname "$0")/libfns.sh" "$(dirname "$0")/lxd.yaml" "${SB_SSH_HOST}:/tmp/"
+    rsync -azve "ssh -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no'" "$(dirname "$0")/libfns.sh" "${SB_SSH_HOST}:/tmp/"
     abortIfNonZero $? 'rsync libfns.sh failed'
 }
 
