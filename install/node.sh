@@ -85,7 +85,7 @@ function main() {
 
         installAccessForSshHost "${nodeHost}"
 
-        rsync -azve "${SB_SSH}" "$(dirname "$0")/libfns.sh" "$(dirname "$0")/lxd.yaml" "${nodeHost}:/tmp/"
+        rsync -azve "${SB_SSH}" "$(dirname "$0")/libfns.sh" "${nodeHost}:/tmp/"
         abortIfNonZero $? 'rsync libfns.sh to nodeHost=${nodeHost}'
 
 

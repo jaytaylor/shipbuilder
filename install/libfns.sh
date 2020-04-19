@@ -1,4 +1,6 @@
 set -o nounset
+set -o pipefail
+set -x
 
 if [[ "$(echo "${SB_DEBUG:-}" | tr '[:upper:]' '[:lower:]')" =~ ^1|true|t|yes|y$ ]] ; then
     echo 'INFO: debug mode enabled'
@@ -355,65 +357,96 @@ function installLxc() {
     sudo -n apt install --yes ${recommended}
     abortIfNonZero $? "command 'apt install --yes ${recommended}'"
 
-    sudo -n rm -rf /var/lib/lxd
-    abortIfNonZero $? "command: 'rm -rf /var/lib/lxd'"
+    # sudo -n rm -rf /var/lib/lxd
+    # abortIfNonZero $? "command: 'rm -rf /var/lib/lxd'"
 
-    sudo -n ln -s /var/snap/lxd/common/lxd /var/lib/lxd
-    abortIfNonZero $? "command: 'ln -s /var/snap/lxd/common/lxd /var/lib/lxd'"
-    # </pre-cleanup>
+    # sudo -n ln -s /var/snap/lxd/common/lxd /var/lib/lxd
+    # abortIfNonZero $? "command: 'ln -s /var/snap/lxd/common/lxd /var/lib/lxd'"
+    # # </pre-cleanup>
 
-    echo 'info: supported versions of lxc+lxd must be installed'
-    echo 'info: as of 2017-12-27, ubuntu comes with lxc+lxd=v2.0.11 by default, and we require lxc=v2.1.1 lxd=2.2.1 or newer'
-    if ! grep -q '^lxd:' /etc/group ; then
-        sudo -n groupadd --system lxd
-        rc=$?
-        # NB: if group already exists, groupadd exits with status code 9.
-        if [ ${rc} -ne 0 ] && [ ${rc} -ne 9 ] ; then
-            abortWithError "command 'groupadd --system lxd' exited with unhappy non-zero status code ${rc}"
-        fi
-    fi
+    # echo 'info: supported versions of lxc+lxd must be installed'
+    # echo 'info: as of 2017-12-27, ubuntu comes with lxc+lxd=v2.0.11 by default, and we require lxc=v2.1.1 lxd=2.2.1 or newer'
+    # if ! grep -q '^lxd:' /etc/group ; then
+    #     sudo -n groupadd --system lxd
+    #     rc=$?
+    #     # NB: if group already exists, groupadd exits with status code 9.
+    #     if [ ${rc} -ne 0 ] && [ ${rc} -ne 9 ] ; then
+    #         abortWithError "command 'groupadd --system lxd' exited with unhappy non-zero status code ${rc}"
+    #     fi
+    # fi
 
-    if ! getent group lxd | grep -q '\broot\b' ; then
-        sudo -n usermod -G lxd -a root
-        abortIfNonZero $? "command 'usermod -G lxd -a root'"
-    fi
+    # if ! getent group lxd | grep -q '\broot\b' ; then
+    #     sudo -n usermod -G lxd -a root
+    #     abortIfNonZero $? "command 'usermod -G lxd -a root'"
+    # fi
 
-    echo 'info: installing lxd via snap'
+#     echo 'info: installing lxd via snap'
 
-    set -o errexit
+#     set -o errexit
 
-    if [ -n "$(snap list | awk '/lxd/ { print }')" ]; then
-        echo 'INFO: LXD snap installation detected' 1>&2
-        echo 'info: skipping lxd installation, already appears to be installed'
+# #     if [ -n "$(snap list | awk '/lxd/ { print }')" ]; then
+# #         echo 'INFO: LXD snap installation detected' 1>&2
+# #         echo 'info: skipping lxd installation, already appears to be installed'
+# #         return
+# # #        if ! sudo -n snap remove lxd --purge; then
+# # #            # n.b. Sometimes this resolves "device busy" errors due to tank being mounted
+# # #            #      under /var/lib/lxd/.
+# # #            sudo -n zpool destroy -f tank
+# # #            sudo -n snap remove lxd --purge
+# # #        fi
+# #     fi
+# # #
+# # #    if [ -n "$(sudo -n zpool list | awk '/tank/ { print }')" ]; then
+# # #        sudo -n zpool destroy -f tank
+# # #    fi
+
+# cat > /tmp/install-lxc.sh << EOF
+# #!/usr/bin/env bash
+
+    if [ -e /snap/bin/lxc ]; then
+        echo 'info: Skipping lxc install as it already appears under /snap/bin/lxc'
         return
-#        if ! sudo -n snap remove lxd --purge; then
-#            # n.b. Sometimes this resolves "device busy" errors due to tank being mounted
-#            #      under /var/lib/lxd/.
-#            sudo -n zpool destroy -f tank
-#            sudo -n snap remove lxd --purge
-#        fi
     fi
-#
-#    if [ -n "$(sudo -n zpool list | awk '/tank/ { print }')" ]; then
-#        sudo -n zpool destroy -f tank
-#    fi
 
     cd /tmp
 
-    #
-    # Generated via:
-    #     snap download lxd --channel=3.0/stable
-    #     snap ack lxd_11348.assert
-    #
-    rm -rf shipbuilder-statics
-    git clone https://github.com/jaytaylor/shipbuilder-statics
+#     #
+#     # Generated via:
+#     #     snap download lxd --channel=3.0/stable
+#     #     snap ack lxd_11348.assert
+#     #
+# #    rm -rf shipbuilder-statics
+# #    git clone https://github.com/jaytaylor/shipbuilder-statics
+# #    cd shipbuilder-statics
+# #    sha256sum --check SHA-256
+# #    sudo -n snap ack 'lxd_11348.assert'
+# #    sudo -n snap install 'lxd_11348.snap'
 
-    cd shipbuilder-statics
+    sudo -n rm -rf lxd_*.assert lxd_*.snap
+    sudo -n snap download lxd --channel=4.0/stable
+    sudo -n snap ack lxd_*.assert
+    sudo -n snap install lxd_*.snap
 
-    sha256sum --check SHA-256
+#     cd - 1>/dev/null
 
-    sudo -n snap ack 'lxd_11348.assert'
-    sudo -n snap install 'lxd_11348.snap'
+# echo -e "no
+# yes
+# ${zfsPoolArg:-tank}
+# ${lxcFs:-zfs}
+# yes
+# yes
+# ${device:-/dev/nvme1n1}
+# no
+# yes
+# lxdbr0
+# auto
+# auto
+# no
+# yes
+# yes" \
+#     | sudo -n lxd init
+
+#     exec bash -c "sudo -n strace /snap/bin/lxc launch ubuntu:18.04"
 
     sudo -n lxd init --preseed << EOF
 config: {}
@@ -422,40 +455,66 @@ networks:
     ipv4.address: auto
     ipv6.address: auto
   description: ""
-  managed: false
   name: lxdbr0
   type: ""
 storage_pools:
 - config:
-    source: ${device}
+    source: ${device:-/dev/nvme1n1}
   description: ""
-  name: ${zfsPoolArg}
-  driver: zfs
+  name: ${zfsPoolArg:-tank}
+  driver: ${lxcFs:-zfs}
 profiles:
 - config: {}
   description: ""
   devices:
     eth0:
       name: eth0
-      nictype: bridged
-      parent: lxdbr0
+      network: lxdbr0
       type: nic
     root:
       path: /
-      pool: ${zfsPoolArg}
+      pool: ${zfsPoolArg:-tank}
       type: disk
   name: default
 cluster: null
 EOF
 
-    # Create zfs storage tank only if not already present.
-    if ! sudo -n lxc storage list | grep -q "${zfsPoolArg}" ; then
-        sudo -n lxc storage create "${zfsPoolArg}" zfs "source=${device}"
-    fi
+# #     sudo -n lxd init --preseed << EOF
+# # config: {}
+# # networks:
+# # - config:
+# #     ipv4.address: auto
+# #     ipv6.address: auto
+# #   description: ""
+# #   managed: false
+# #   name: lxdbr0
+# #   type: ""
+# # storage_pools:
+# # - config:
+# #     source: ${device:-/dev/nvme1n1}
+# #   description: ""
+# #   name: ${zfsPoolArg:-tank}
+# #   driver: zfs
+# # profiles:
+# # - config: {}
+# #   description: ""
+# #   devices:
+# #     eth0:
+# #       name: eth0
+# #       nictype: bridged
+# #       parent: lxdbr0
+# #       type: nic
+# #     root:
+# #       path: /
+# #       pool: ${zfsPoolArg:-tank}
+# #       type: disk
+# #   name: default
+# # cluster: null
+# # EOF
 
     set +o errexit
 
-    echo "info: installed version of lxc=$(sudo -n lxc version) and lxd=$(sudo -n lxd --version) (all must be v2.21 or newer)"
+    echo "info: installed version of lxc=$(sudo -n lxc version) and lxd=$(sudo -n lxd --version)"
     echo 'info: installLxc() succeeded'
 }
 
@@ -497,115 +556,24 @@ function prepareZfsDirs() {
         sudo -n zfs mount "${zfsPoolArg}/${volume}"
         abortIfNonZero $? "zfs mount'ing ${zfsPoolArg}/${volume}"
     done
-
-    # Mount remaining volumes under LXC base path (rather than $zfsPoolArg
-    # [e.g. "/tank"]).
-    lxcBasePath=/var/lib/lxd
-
-    # if [ -h "${lxcBasePath}" ] ; then
-    #     sudo -n unlink "${lxcBasePath}"
-    #     abortIfNonZero $? "command 'unlink ${lxcBasePath}'"
-    # elif [ -d "${lxcBasePath}" ] ; then
-    #     mvPath="${lxcBasePath}-$(date +%Y%m%d)"
-    #     if [ -e "${mvPath}" ] ; then
-    #         abortWithError "Refusing to rename ${lxcBasePath} to ${mvPath} because ${mvPath} already exists"
-    #     fi
-    #     sudo -n mv "${lxcBasePath}" "${mvPath}"
-    #     abortIfNonZero $? "command 'rmdir ${lxcBasePath}'"
-    # fi
-    # sudo -n ln -s /var/snap/lxd/common/ "${lxcBasePath}"
-    # abortIfNonZero $? "symlinking /var/snap/lxd/common to ${lxcBasePath}"
-
-    for volume in containers images snapshots ; do
-        sudo -n zfs destroy -r "${zfsPoolArg}/${volume}" 2>/dev/null || :
-
-#        test -n "$(sudo -n zfs list -o name | sed '1d' | grep "^${zfsPoolArg}\/${volume}")" || sudo -n zfs create -o compression=on "${zfsPoolArg}/${volume}"
-#        abortIfNonZero $? "command 'zfs create -o compression=on ${zfsPoolArg}/${volume}'"
-#
-#        if [ -z "$(sudo -n zfs list -o mountpoint | grep "^${lxcBasePath}\/${volume}")" ]; then
-#            sudo -n zfs set "mountpoint=${lxcBasePath}/${volume}" "${zfsPoolArg}/${volume}"
-#            abortIfNonZero $? "setting mountpoint via 'zfs set mountpoint=${lxcBasePath}/${volume} ${zfsPoolArg}/${volume}'"
-#        fi
-#
-#        sudo -n zfs umount "${zfsPoolArg}/${volume}" 2>/dev/null || :
-#
-#        sudo -n zfs mount "${zfsPoolArg}/${volume}"
-#        abortIfNonZero $? "zfs mount'ing ${zfsPoolArg}/${volume}"
-#
-#        # sudo -n unlink "/${volume}" 2>/dev/null || :
-#
-#        # sudo -n ln -s "/${zfsPoolArg}/${volume}" "/${volume}"
-#        # abortIfNonZero $? "setting up symlink for volume=${volume}"
-    done
-}
-
-function configureLxdNetworking() {
-    local lxcNetExistsTest
-    local topInterface
-
-    # Setup LXC/LXD networking.
-    ip addr show lxdbr0 1>/dev/null 2>/dev/null
-    if [ $? -eq 0 ] ; then
-        test -n "$(ip addr show lxdbr0 | grep ' inet ')" || sudo -n lxc network delete lxdbr0
-        abortIfNonZero $? "lxc/lxd removal of non-ipv4 network bridge lxdbr0 (recommendation: reboot and re-run installer)"
-    fi
-
-    lxcNetExistsTest="$(sudo -n lxc network show lxdbr0 2>/dev/null)"
-    if [ -z "${lxcNetExistsTest}" ] ; then
-        sudo -n lxc network create lxdbr0 ipv6.address=none ipv4.address=10.0.1.1/24 ipv4.nat=true
-        abortIfNonZero $? "lxc/lxd ipv4 network bridge creation of lxdbr0"
-    fi
-
-    topInterface=$(ip addr | grep '^[0-9]\+: \([^l]\|l[^o]\)' | head -n 1 | awk '{print $2}' | tr -d ':')
-    if [ -z "${topInterface}" ] ; then
-        abortWithError "no network interface found to attach to LXC"
-    fi
-
-    sudo -n lxc network detach-profile lxdbr0 default ${topInterface} 2>/dev/null || :
-
-    sudo -n lxc network attach-profile lxdbr0 default ${topInterface}
-    abortIfNonZero $? "command 'lxc network attach-profile lxdbr0 default ${topInterface}'"
-}
-
-function configureLxdZfs() {
-    storage="$(sudo -n lxc storage show "${zfsPoolArg}" 2>/dev/null)"
-    if [ -z "${storage}" ] ; then
-        sudo -n lxc storage create "${zfsPoolArg}" zfs "source=${device}"
-        abortIfNonZero $? "command 'lxc storage create ${zfsPoolArg} zfs source=${device}'"
-    fi
-
-    if [ -z "$(sudo -n lxc profile device show default | grep -A3 '^root:' | grep "pool: ${zfsPoolArg}")" ] ; then
-        sudo -n lxc profile device remove default root
-
-        sudo -n lxc profile device add default root disk path=/ "pool=${zfsPoolArg}"
-        abortIfNonZero $? "LXC root zfs device assertion"
-    fi
-    # sudo -n lxc profile device show default || sudo -n lxc profile device add default root disk path=/ "pool=${zfsPoolArg}"
-    # abortIfNonZero $? "LXC root zfs device assertion"
 }
 
 function configureLxd() {
     # @precondition $SB_SSH_HOST must not be empty.
-    test -z "${SB_SSH_HOST:-}" && echo 'error: configureLxd(): required parameter $SB_SSH_HOST cannot be empty' 1>&2 && exit 1
+    if [ -z "${SB_SSH_HOST:-}" ]; then
+        echo 'error: configureLxd(): required parameter $SB_SSH_HOST cannot be empty' 1>&2
+        exit 1
+    fi
 
     local lxcFs=${1:-}
     local isServer=${2:-}
 
-    test -z "${lxcFs}" && echo 'configureLxd: missing required parameter: lxcFs' 1>&2 && exit 1 || :
+    if [ -z "${lxcFs}" ]; then
+        echo 'configureLxd: missing required parameter: lxcFs' 1>&2
+        exit 1
+    fi
 
     local sbServerRemote
-
-    sudo -n systemctl restart snap.lxd.daemon
-    abortIfNonZero $? "command 'systemctl restart snap.lxd.daemon'"
-
-    # Give the LXD daemon a moment to come up.
-    sleep 3
-
-    sudo -n lxd init --auto
-    abortIfNonZero $? "command 'lxd init --auto'"
-
-
-    configureLxdNetworking
 
     if [ "${lxcFs}" = 'zfs' ] ; then
         configureLxdZfs
@@ -667,6 +635,8 @@ function prepareNode() {
     zfsPoolArg="$(echo "${zfsPool}" | sed 's/^\///')"
 
     installLxc "${lxcFs}" "${zfsPoolArg}" "${device}"
+
+    configureLxd "${lxcFs}" "${isServer}"
 
     # Enable zfs snapshot listing.
     sudo -n zpool set listsnapshots=on "${zfsPoolArg}"
@@ -925,6 +895,7 @@ function lxcInitContainer() {
 
         echo "info: creating lxc container=${container}"
         echo -e '\n' | sudo -n lxc launch "${lxcBaseImage}" "${container}"
+        abortIfNonZero $? "lxc launch ${lxcBaseImage} ${container}"
 
         getContainerIp "${container}"
 
